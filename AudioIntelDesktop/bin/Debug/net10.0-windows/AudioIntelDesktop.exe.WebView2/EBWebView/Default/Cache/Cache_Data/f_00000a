@@ -1,0 +1,753 @@
+import { createHotContext as __vite__createHotContext } from "/@vite/client";import.meta.hot = __vite__createHotContext("/src/components/Dashboard.tsx");import __vite__cjsImport0_react_jsxDevRuntime from "/node_modules/.vite/deps/react_jsx-dev-runtime.js?v=66a2a425"; const jsxDEV = __vite__cjsImport0_react_jsxDevRuntime["jsxDEV"];
+import __vite__cjsImport1_react_compilerRuntime from "/node_modules/.vite/deps/react_compiler-runtime.js?v=66a2a425"; const _c = __vite__cjsImport1_react_compilerRuntime["c"];
+import { Link } from "/node_modules/.vite/deps/react-router-dom.js?v=66a2a425";
+import { FileAudio, Users, Network, AlertTriangle, TrendingUp, Clock, ArrowRight } from "/node_modules/.vite/deps/lucide-react.js?v=66a2a425";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from "/node_modules/.vite/deps/recharts.js?v=66a2a425";
+const activityData = [{
+  date: "Mon",
+  files: 12
+}, {
+  date: "Tue",
+  files: 19
+}, {
+  date: "Wed",
+  files: 15
+}, {
+  date: "Thu",
+  files: 25
+}, {
+  date: "Fri",
+  files: 22
+}, {
+  date: "Sat",
+  files: 8
+}, {
+  date: "Sun",
+  files: 5
+}];
+const speakerData = [{
+  month: "Jan",
+  speakers: 45
+}, {
+  month: "Feb",
+  speakers: 52
+}, {
+  month: "Mar",
+  speakers: 61
+}, {
+  month: "Apr",
+  speakers: 58
+}, {
+  month: "May",
+  speakers: 73
+}, {
+  month: "Jun",
+  speakers: 89
+}];
+const recentUploads = [{
+  id: "AUD-2025-0847",
+  filename: "intercept_alpha_dec30.wav",
+  duration: "12:34",
+  status: "completed",
+  speakers: 3
+}, {
+  id: "AUD-2025-0846",
+  filename: "call_monitoring_546.mp3",
+  duration: "08:15",
+  status: "processing",
+  speakers: 2
+}, {
+  id: "AUD-2025-0845",
+  filename: "meeting_transcript_12.wav",
+  duration: "45:02",
+  status: "completed",
+  speakers: 5
+}, {
+  id: "AUD-2025-0844",
+  filename: "phone_call_789.mp3",
+  duration: "06:47",
+  status: "completed",
+  speakers: 2
+}];
+const alerts = [{
+  id: 1,
+  type: "high",
+  message: "New speaker matched to existing profile SPK-00234",
+  time: "10 min ago"
+}, {
+  id: 2,
+  type: "medium",
+  message: 'Keyword "operation" detected in 3 conversations',
+  time: "1 hour ago"
+}, {
+  id: 3,
+  type: "low",
+  message: "Network cluster analysis completed",
+  time: "2 hours ago"
+}];
+export default function Dashboard() {
+  const $ = _c(26);
+  if ($[0] !== "e0a58dd2b491d7300198b8f4413bf2b6bf02a1cc44351b4feaf16221542204f3") {
+    for (let $i = 0; $i < 26; $i += 1) {
+      $[$i] = /* @__PURE__ */ Symbol.for("react.memo_cache_sentinel");
+    }
+    $[0] = "e0a58dd2b491d7300198b8f4413bf2b6bf02a1cc44351b4feaf16221542204f3";
+  }
+  let t0;
+  if ($[1] === /* @__PURE__ */ Symbol.for("react.memo_cache_sentinel")) {
+    t0 = /* @__PURE__ */ jsxDEV("div", { className: "mb-8", children: [
+      /* @__PURE__ */ jsxDEV("h1", { className: "text-white text-3xl mb-2", children: "Intelligence Dashboard" }, void 0, false, {
+        fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+        lineNumber: 97,
+        columnNumber: 32
+      }, this),
+      /* @__PURE__ */ jsxDEV("p", { className: "text-slate-400", children: "Real-time audio analysis overview" }, void 0, false, {
+        fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+        lineNumber: 97,
+        columnNumber: 100
+      }, this)
+    ] }, void 0, true, {
+      fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+      lineNumber: 97,
+      columnNumber: 10
+    }, this);
+    $[1] = t0;
+  } else {
+    t0 = $[1];
+  }
+  let t1;
+  if ($[2] === /* @__PURE__ */ Symbol.for("react.memo_cache_sentinel")) {
+    t1 = /* @__PURE__ */ jsxDEV("div", { className: "bg-blue-600/10 p-3 rounded-lg", children: /* @__PURE__ */ jsxDEV(FileAudio, { className: "w-6 h-6 text-blue-500" }, void 0, false, {
+      fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+      lineNumber: 104,
+      columnNumber: 57
+    }, this) }, void 0, false, {
+      fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+      lineNumber: 104,
+      columnNumber: 10
+    }, this);
+    $[2] = t1;
+  } else {
+    t1 = $[2];
+  }
+  let t2;
+  if ($[3] === /* @__PURE__ */ Symbol.for("react.memo_cache_sentinel")) {
+    t2 = /* @__PURE__ */ jsxDEV("div", { className: "bg-slate-900 border border-slate-800 rounded-lg p-6", children: [
+      /* @__PURE__ */ jsxDEV("div", { className: "flex items-center justify-between mb-4", children: [
+        t1,
+        /* @__PURE__ */ jsxDEV("span", { className: "text-green-500 text-sm flex items-center gap-1", children: [
+          /* @__PURE__ */ jsxDEV(TrendingUp, { className: "w-4 h-4" }, void 0, false, {
+            fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+            lineNumber: 111,
+            columnNumber: 204
+          }, this),
+          "+12%"
+        ] }, void 0, true, {
+          fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+          lineNumber: 111,
+          columnNumber: 139
+        }, this)
+      ] }, void 0, true, {
+        fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+        lineNumber: 111,
+        columnNumber: 79
+      }, this),
+      /* @__PURE__ */ jsxDEV("div", { className: "text-white text-2xl mb-1", children: "1,847" }, void 0, false, {
+        fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+        lineNumber: 111,
+        columnNumber: 255
+      }, this),
+      /* @__PURE__ */ jsxDEV("div", { className: "text-slate-400 text-sm", children: "Audio Files Processed" }, void 0, false, {
+        fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+        lineNumber: 111,
+        columnNumber: 308
+      }, this)
+    ] }, void 0, true, {
+      fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+      lineNumber: 111,
+      columnNumber: 10
+    }, this);
+    $[3] = t2;
+  } else {
+    t2 = $[3];
+  }
+  let t3;
+  if ($[4] === /* @__PURE__ */ Symbol.for("react.memo_cache_sentinel")) {
+    t3 = /* @__PURE__ */ jsxDEV("div", { className: "bg-purple-600/10 p-3 rounded-lg", children: /* @__PURE__ */ jsxDEV(Users, { className: "w-6 h-6 text-purple-500" }, void 0, false, {
+      fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+      lineNumber: 118,
+      columnNumber: 59
+    }, this) }, void 0, false, {
+      fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+      lineNumber: 118,
+      columnNumber: 10
+    }, this);
+    $[4] = t3;
+  } else {
+    t3 = $[4];
+  }
+  let t4;
+  if ($[5] === /* @__PURE__ */ Symbol.for("react.memo_cache_sentinel")) {
+    t4 = /* @__PURE__ */ jsxDEV("div", { className: "bg-slate-900 border border-slate-800 rounded-lg p-6", children: [
+      /* @__PURE__ */ jsxDEV("div", { className: "flex items-center justify-between mb-4", children: [
+        t3,
+        /* @__PURE__ */ jsxDEV("span", { className: "text-green-500 text-sm flex items-center gap-1", children: [
+          /* @__PURE__ */ jsxDEV(TrendingUp, { className: "w-4 h-4" }, void 0, false, {
+            fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+            lineNumber: 125,
+            columnNumber: 204
+          }, this),
+          "+8%"
+        ] }, void 0, true, {
+          fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+          lineNumber: 125,
+          columnNumber: 139
+        }, this)
+      ] }, void 0, true, {
+        fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+        lineNumber: 125,
+        columnNumber: 79
+      }, this),
+      /* @__PURE__ */ jsxDEV("div", { className: "text-white text-2xl mb-1", children: "342" }, void 0, false, {
+        fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+        lineNumber: 125,
+        columnNumber: 254
+      }, this),
+      /* @__PURE__ */ jsxDEV("div", { className: "text-slate-400 text-sm", children: "Identified Speakers" }, void 0, false, {
+        fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+        lineNumber: 125,
+        columnNumber: 305
+      }, this)
+    ] }, void 0, true, {
+      fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+      lineNumber: 125,
+      columnNumber: 10
+    }, this);
+    $[5] = t4;
+  } else {
+    t4 = $[5];
+  }
+  let t5;
+  if ($[6] === /* @__PURE__ */ Symbol.for("react.memo_cache_sentinel")) {
+    t5 = /* @__PURE__ */ jsxDEV("div", { className: "bg-cyan-600/10 p-3 rounded-lg", children: /* @__PURE__ */ jsxDEV(Network, { className: "w-6 h-6 text-cyan-500" }, void 0, false, {
+      fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+      lineNumber: 132,
+      columnNumber: 57
+    }, this) }, void 0, false, {
+      fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+      lineNumber: 132,
+      columnNumber: 10
+    }, this);
+    $[6] = t5;
+  } else {
+    t5 = $[6];
+  }
+  let t6;
+  if ($[7] === /* @__PURE__ */ Symbol.for("react.memo_cache_sentinel")) {
+    t6 = /* @__PURE__ */ jsxDEV("div", { className: "bg-slate-900 border border-slate-800 rounded-lg p-6", children: [
+      /* @__PURE__ */ jsxDEV("div", { className: "flex items-center justify-between mb-4", children: [
+        t5,
+        /* @__PURE__ */ jsxDEV("span", { className: "text-green-500 text-sm flex items-center gap-1", children: [
+          /* @__PURE__ */ jsxDEV(TrendingUp, { className: "w-4 h-4" }, void 0, false, {
+            fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+            lineNumber: 139,
+            columnNumber: 204
+          }, this),
+          "+15%"
+        ] }, void 0, true, {
+          fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+          lineNumber: 139,
+          columnNumber: 139
+        }, this)
+      ] }, void 0, true, {
+        fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+        lineNumber: 139,
+        columnNumber: 79
+      }, this),
+      /* @__PURE__ */ jsxDEV("div", { className: "text-white text-2xl mb-1", children: "89" }, void 0, false, {
+        fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+        lineNumber: 139,
+        columnNumber: 255
+      }, this),
+      /* @__PURE__ */ jsxDEV("div", { className: "text-slate-400 text-sm", children: "Active Networks" }, void 0, false, {
+        fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+        lineNumber: 139,
+        columnNumber: 305
+      }, this)
+    ] }, void 0, true, {
+      fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+      lineNumber: 139,
+      columnNumber: 10
+    }, this);
+    $[7] = t6;
+  } else {
+    t6 = $[7];
+  }
+  let t7;
+  if ($[8] === /* @__PURE__ */ Symbol.for("react.memo_cache_sentinel")) {
+    t7 = /* @__PURE__ */ jsxDEV("div", { className: "bg-red-600/10 p-3 rounded-lg", children: /* @__PURE__ */ jsxDEV(AlertTriangle, { className: "w-6 h-6 text-red-500" }, void 0, false, {
+      fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+      lineNumber: 146,
+      columnNumber: 56
+    }, this) }, void 0, false, {
+      fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+      lineNumber: 146,
+      columnNumber: 10
+    }, this);
+    $[8] = t7;
+  } else {
+    t7 = $[8];
+  }
+  let t8;
+  if ($[9] === /* @__PURE__ */ Symbol.for("react.memo_cache_sentinel")) {
+    t8 = /* @__PURE__ */ jsxDEV("div", { className: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8", children: [
+      t2,
+      t4,
+      t6,
+      /* @__PURE__ */ jsxDEV("div", { className: "bg-slate-900 border border-slate-800 rounded-lg p-6", children: [
+        /* @__PURE__ */ jsxDEV("div", { className: "flex items-center justify-between mb-4", children: [
+          t7,
+          /* @__PURE__ */ jsxDEV("span", { className: "text-red-500 text-sm flex items-center gap-1", children: [
+            /* @__PURE__ */ jsxDEV(Clock, { className: "w-4 h-4" }, void 0, false, {
+              fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+              lineNumber: 153,
+              columnNumber: 289
+            }, this),
+            "New"
+          ] }, void 0, true, {
+            fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+            lineNumber: 153,
+            columnNumber: 226
+          }, this)
+        ] }, void 0, true, {
+          fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+          lineNumber: 153,
+          columnNumber: 166
+        }, this),
+        /* @__PURE__ */ jsxDEV("div", { className: "text-white text-2xl mb-1", children: "12" }, void 0, false, {
+          fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+          lineNumber: 153,
+          columnNumber: 334
+        }, this),
+        /* @__PURE__ */ jsxDEV("div", { className: "text-slate-400 text-sm", children: "Pending Alerts" }, void 0, false, {
+          fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+          lineNumber: 153,
+          columnNumber: 384
+        }, this)
+      ] }, void 0, true, {
+        fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+        lineNumber: 153,
+        columnNumber: 97
+      }, this)
+    ] }, void 0, true, {
+      fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+      lineNumber: 153,
+      columnNumber: 10
+    }, this);
+    $[9] = t8;
+  } else {
+    t8 = $[9];
+  }
+  let t9;
+  if ($[10] === /* @__PURE__ */ Symbol.for("react.memo_cache_sentinel")) {
+    t9 = /* @__PURE__ */ jsxDEV("h2", { className: "text-white mb-4", children: "Weekly Activity" }, void 0, false, {
+      fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+      lineNumber: 160,
+      columnNumber: 10
+    }, this);
+    $[10] = t9;
+  } else {
+    t9 = $[10];
+  }
+  let t10;
+  let t11;
+  let t12;
+  if ($[11] === /* @__PURE__ */ Symbol.for("react.memo_cache_sentinel")) {
+    t10 = /* @__PURE__ */ jsxDEV(CartesianGrid, { strokeDasharray: "3 3", stroke: "#334155" }, void 0, false, {
+      fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+      lineNumber: 169,
+      columnNumber: 11
+    }, this);
+    t11 = /* @__PURE__ */ jsxDEV(XAxis, { dataKey: "date", stroke: "#94a3b8" }, void 0, false, {
+      fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+      lineNumber: 170,
+      columnNumber: 11
+    }, this);
+    t12 = /* @__PURE__ */ jsxDEV(YAxis, { stroke: "#94a3b8" }, void 0, false, {
+      fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+      lineNumber: 171,
+      columnNumber: 11
+    }, this);
+    $[11] = t10;
+    $[12] = t11;
+    $[13] = t12;
+  } else {
+    t10 = $[11];
+    t11 = $[12];
+    t12 = $[13];
+  }
+  let t13;
+  if ($[14] === /* @__PURE__ */ Symbol.for("react.memo_cache_sentinel")) {
+    t13 = /* @__PURE__ */ jsxDEV(Tooltip, { contentStyle: {
+      backgroundColor: "#1e293b",
+      border: "1px solid #334155",
+      borderRadius: "8px"
+    }, labelStyle: {
+      color: "#e2e8f0"
+    } }, void 0, false, {
+      fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+      lineNumber: 182,
+      columnNumber: 11
+    }, this);
+    $[14] = t13;
+  } else {
+    t13 = $[14];
+  }
+  let t14;
+  if ($[15] === /* @__PURE__ */ Symbol.for("react.memo_cache_sentinel")) {
+    t14 = /* @__PURE__ */ jsxDEV("div", { className: "bg-slate-900 border border-slate-800 rounded-lg p-6", children: [
+      t9,
+      /* @__PURE__ */ jsxDEV(ResponsiveContainer, { width: "100%", height: 200, children: /* @__PURE__ */ jsxDEV(BarChart, { data: activityData, children: [
+        t10,
+        t11,
+        t12,
+        t13,
+        /* @__PURE__ */ jsxDEV(Bar, { dataKey: "files", fill: "#3b82f6", radius: [4, 4, 0, 0] }, void 0, false, {
+          fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+          lineNumber: 195,
+          columnNumber: 181
+        }, this)
+      ] }, void 0, true, {
+        fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+        lineNumber: 195,
+        columnNumber: 131
+      }, this) }, void 0, false, {
+        fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+        lineNumber: 195,
+        columnNumber: 84
+      }, this)
+    ] }, void 0, true, {
+      fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+      lineNumber: 195,
+      columnNumber: 11
+    }, this);
+    $[15] = t14;
+  } else {
+    t14 = $[15];
+  }
+  let t15;
+  if ($[16] === /* @__PURE__ */ Symbol.for("react.memo_cache_sentinel")) {
+    t15 = /* @__PURE__ */ jsxDEV("h2", { className: "text-white mb-4", children: "Speaker Growth" }, void 0, false, {
+      fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+      lineNumber: 202,
+      columnNumber: 11
+    }, this);
+    $[16] = t15;
+  } else {
+    t15 = $[16];
+  }
+  let t16;
+  let t17;
+  let t18;
+  if ($[17] === /* @__PURE__ */ Symbol.for("react.memo_cache_sentinel")) {
+    t16 = /* @__PURE__ */ jsxDEV(CartesianGrid, { strokeDasharray: "3 3", stroke: "#334155" }, void 0, false, {
+      fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+      lineNumber: 211,
+      columnNumber: 11
+    }, this);
+    t17 = /* @__PURE__ */ jsxDEV(XAxis, { dataKey: "month", stroke: "#94a3b8" }, void 0, false, {
+      fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+      lineNumber: 212,
+      columnNumber: 11
+    }, this);
+    t18 = /* @__PURE__ */ jsxDEV(YAxis, { stroke: "#94a3b8" }, void 0, false, {
+      fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+      lineNumber: 213,
+      columnNumber: 11
+    }, this);
+    $[17] = t16;
+    $[18] = t17;
+    $[19] = t18;
+  } else {
+    t16 = $[17];
+    t17 = $[18];
+    t18 = $[19];
+  }
+  let t19;
+  if ($[20] === /* @__PURE__ */ Symbol.for("react.memo_cache_sentinel")) {
+    t19 = /* @__PURE__ */ jsxDEV("div", { className: "grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8", children: [
+      t14,
+      /* @__PURE__ */ jsxDEV("div", { className: "bg-slate-900 border border-slate-800 rounded-lg p-6", children: [
+        t15,
+        /* @__PURE__ */ jsxDEV(ResponsiveContainer, { width: "100%", height: 200, children: /* @__PURE__ */ jsxDEV(LineChart, { data: speakerData, children: [
+          t16,
+          t17,
+          t18,
+          /* @__PURE__ */ jsxDEV(Tooltip, { contentStyle: {
+            backgroundColor: "#1e293b",
+            border: "1px solid #334155",
+            borderRadius: "8px"
+          }, labelStyle: {
+            color: "#e2e8f0"
+          } }, void 0, false, {
+            fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+            lineNumber: 224,
+            columnNumber: 242
+          }, this),
+          /* @__PURE__ */ jsxDEV(Line, { type: "monotone", dataKey: "speakers", stroke: "#a855f7", strokeWidth: 2 }, void 0, false, {
+            fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+            lineNumber: 230,
+            columnNumber: 18
+          }, this)
+        ] }, void 0, true, {
+          fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+          lineNumber: 224,
+          columnNumber: 197
+        }, this) }, void 0, false, {
+          fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+          lineNumber: 224,
+          columnNumber: 150
+        }, this)
+      ] }, void 0, true, {
+        fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+        lineNumber: 224,
+        columnNumber: 76
+      }, this)
+    ] }, void 0, true, {
+      fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+      lineNumber: 224,
+      columnNumber: 11
+    }, this);
+    $[20] = t19;
+  } else {
+    t19 = $[20];
+  }
+  let t20;
+  if ($[21] === /* @__PURE__ */ Symbol.for("react.memo_cache_sentinel")) {
+    t20 = /* @__PURE__ */ jsxDEV("h2", { className: "text-white", children: "Recent Uploads" }, void 0, false, {
+      fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+      lineNumber: 237,
+      columnNumber: 11
+    }, this);
+    $[21] = t20;
+  } else {
+    t20 = $[21];
+  }
+  let t21;
+  if ($[22] === /* @__PURE__ */ Symbol.for("react.memo_cache_sentinel")) {
+    t21 = /* @__PURE__ */ jsxDEV("div", { className: "flex items-center justify-between mb-4", children: [
+      t20,
+      /* @__PURE__ */ jsxDEV(Link, { to: "/all-uploads", className: "flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg transition-colors", children: [
+        "View All",
+        /* @__PURE__ */ jsxDEV(ArrowRight, { className: "w-4 h-4" }, void 0, false, {
+          fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+          lineNumber: 244,
+          columnNumber: 228
+        }, this)
+      ] }, void 0, true, {
+        fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+        lineNumber: 244,
+        columnNumber: 72
+      }, this)
+    ] }, void 0, true, {
+      fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+      lineNumber: 244,
+      columnNumber: 11
+    }, this);
+    $[22] = t21;
+  } else {
+    t21 = $[22];
+  }
+  let t22;
+  if ($[23] === /* @__PURE__ */ Symbol.for("react.memo_cache_sentinel")) {
+    t22 = /* @__PURE__ */ jsxDEV("div", { className: "lg:col-span-2 bg-slate-900 border border-slate-800 rounded-lg p-6", children: [
+      t21,
+      /* @__PURE__ */ jsxDEV("div", { className: "space-y-3", children: recentUploads.map(_temp) }, void 0, false, {
+        fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+        lineNumber: 251,
+        columnNumber: 99
+      }, this)
+    ] }, void 0, true, {
+      fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+      lineNumber: 251,
+      columnNumber: 11
+    }, this);
+    $[23] = t22;
+  } else {
+    t22 = $[23];
+  }
+  let t23;
+  if ($[24] === /* @__PURE__ */ Symbol.for("react.memo_cache_sentinel")) {
+    t23 = /* @__PURE__ */ jsxDEV("h2", { className: "text-white mb-4", children: "Recent Alerts" }, void 0, false, {
+      fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+      lineNumber: 258,
+      columnNumber: 11
+    }, this);
+    $[24] = t23;
+  } else {
+    t23 = $[24];
+  }
+  let t24;
+  if ($[25] === /* @__PURE__ */ Symbol.for("react.memo_cache_sentinel")) {
+    t24 = /* @__PURE__ */ jsxDEV("div", { className: "p-8", children: [
+      t0,
+      t8,
+      t19,
+      /* @__PURE__ */ jsxDEV("div", { className: "grid grid-cols-1 lg:grid-cols-3 gap-6", children: [
+        t22,
+        /* @__PURE__ */ jsxDEV("div", { className: "bg-slate-900 border border-slate-800 rounded-lg p-6", children: [
+          t23,
+          /* @__PURE__ */ jsxDEV("div", { className: "space-y-3", children: alerts.map(_temp2) }, void 0, false, {
+            fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+            lineNumber: 265,
+            columnNumber: 179
+          }, this)
+        ] }, void 0, true, {
+          fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+          lineNumber: 265,
+          columnNumber: 105
+        }, this)
+      ] }, void 0, true, {
+        fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+        lineNumber: 265,
+        columnNumber: 45
+      }, this)
+    ] }, void 0, true, {
+      fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+      lineNumber: 265,
+      columnNumber: 11
+    }, this);
+    $[25] = t24;
+  } else {
+    t24 = $[25];
+  }
+  return t24;
+}
+_c2 = Dashboard;
+function _temp2(alert) {
+  return /* @__PURE__ */ jsxDEV("div", { className: "p-4 bg-slate-800 rounded-lg border border-slate-700", children: /* @__PURE__ */ jsxDEV("div", { className: "flex items-start gap-3", children: [
+    /* @__PURE__ */ jsxDEV("div", { className: `p-1 rounded mt-0.5 ${alert.type === "high" ? "bg-red-600/10" : alert.type === "medium" ? "bg-yellow-600/10" : "bg-blue-600/10"}`, children: /* @__PURE__ */ jsxDEV(AlertTriangle, { className: `w-4 h-4 ${alert.type === "high" ? "text-red-500" : alert.type === "medium" ? "text-yellow-500" : "text-blue-500"}` }, void 0, false, {
+      fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+      lineNumber: 274,
+      columnNumber: 281
+    }, this) }, void 0, false, {
+      fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+      lineNumber: 274,
+      columnNumber: 134
+    }, this),
+    /* @__PURE__ */ jsxDEV("div", { className: "flex-1", children: [
+      /* @__PURE__ */ jsxDEV("p", { className: "text-slate-300 text-sm mb-1", children: alert.message }, void 0, false, {
+        fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+        lineNumber: 274,
+        columnNumber: 456
+      }, this),
+      /* @__PURE__ */ jsxDEV("p", { className: "text-slate-500 text-xs", children: alert.time }, void 0, false, {
+        fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+        lineNumber: 274,
+        columnNumber: 518
+      }, this)
+    ] }, void 0, true, {
+      fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+      lineNumber: 274,
+      columnNumber: 432
+    }, this)
+  ] }, void 0, true, {
+    fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+    lineNumber: 274,
+    columnNumber: 94
+  }, this) }, alert.id, false, {
+    fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+    lineNumber: 274,
+    columnNumber: 10
+  }, this);
+}
+function _temp(upload) {
+  return /* @__PURE__ */ jsxDEV(Link, { to: `/analysis/${upload.id}`, className: "flex items-center justify-between p-4 bg-slate-800 rounded-lg hover:bg-slate-750 transition-colors border border-slate-700", children: [
+    /* @__PURE__ */ jsxDEV("div", { className: "flex items-center gap-4 flex-1", children: [
+      /* @__PURE__ */ jsxDEV("div", { className: "bg-blue-600/10 p-2 rounded", children: /* @__PURE__ */ jsxDEV(FileAudio, { className: "w-5 h-5 text-blue-500" }, void 0, false, {
+        fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+        lineNumber: 277,
+        columnNumber: 289
+      }, this) }, void 0, false, {
+        fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+        lineNumber: 277,
+        columnNumber: 245
+      }, this),
+      /* @__PURE__ */ jsxDEV("div", { className: "flex-1 min-w-0", children: [
+        /* @__PURE__ */ jsxDEV("div", { className: "text-white text-sm mb-1 truncate", children: upload.filename }, void 0, false, {
+          fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+          lineNumber: 277,
+          columnNumber: 374
+        }, this),
+        /* @__PURE__ */ jsxDEV("div", { className: "text-slate-400 text-xs", children: upload.id }, void 0, false, {
+          fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+          lineNumber: 277,
+          columnNumber: 447
+        }, this)
+      ] }, void 0, true, {
+        fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+        lineNumber: 277,
+        columnNumber: 342
+      }, this)
+    ] }, void 0, true, {
+      fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+      lineNumber: 277,
+      columnNumber: 197
+    }, this),
+    /* @__PURE__ */ jsxDEV("div", { className: "flex items-center gap-4", children: [
+      /* @__PURE__ */ jsxDEV("div", { className: "text-slate-400 text-sm", children: upload.duration }, void 0, false, {
+        fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+        lineNumber: 277,
+        columnNumber: 557
+      }, this),
+      /* @__PURE__ */ jsxDEV("div", { className: "text-slate-400 text-sm", children: [
+        upload.speakers,
+        " speakers"
+      ] }, void 0, true, {
+        fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+        lineNumber: 277,
+        columnNumber: 620
+      }, this),
+      /* @__PURE__ */ jsxDEV("div", { className: `px-3 py-1 rounded-full text-xs ${upload.status === "completed" ? "bg-green-600/10 text-green-500" : "bg-yellow-600/10 text-yellow-500"}`, children: upload.status }, void 0, false, {
+        fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+        lineNumber: 277,
+        columnNumber: 692
+      }, this)
+    ] }, void 0, true, {
+      fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+      lineNumber: 277,
+      columnNumber: 516
+    }, this)
+  ] }, upload.id, true, {
+    fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx",
+    lineNumber: 277,
+    columnNumber: 10
+  }, this);
+}
+var _c2;
+$RefreshReg$(_c2, "Dashboard");
+import * as RefreshRuntime from "/@react-refresh";
+const inWebWorker = typeof WorkerGlobalScope !== "undefined" && self instanceof WorkerGlobalScope;
+if (import.meta.hot && !inWebWorker) {
+  if (!window.$RefreshReg$) {
+    throw new Error(
+      "@vitejs/plugin-react can't detect preamble. Something is wrong."
+    );
+  }
+  RefreshRuntime.__hmr_import(import.meta.url).then((currentExports) => {
+    RefreshRuntime.registerExportsForReactRefresh("C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx", currentExports);
+    import.meta.hot.accept((nextExports) => {
+      if (!nextExports) return;
+      const invalidateMessage = RefreshRuntime.validateRefreshBoundaryAndEnqueueUpdate("C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx", currentExports, nextExports);
+      if (invalidateMessage) import.meta.hot.invalidate(invalidateMessage);
+    });
+  });
+}
+function $RefreshReg$(type, id) {
+  return RefreshRuntime.register(type, "C:/Users/97254/AudioIntel/audio-intel-ui/src/components/Dashboard.tsx " + id);
+}
+function $RefreshSig$() {
+  return RefreshRuntime.createSignatureFunctionForTransform();
+}
+
+//# sourceMappingURL=data:application/json;base64,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QUFBQSxlQUFtRDtBQUFBLFdBRnJEO0FBQUE7QUFBQTtBQUFBO0FBQUEsYUFHQTtBQUFBLFNBUEY7QUFBQTtBQUFBO0FBQUE7QUFBQSxXQVFBO0FBQUEsSUFDQSxnQ0FBZSxzQ0FDYjtBQUFBLHNDQUFlLHFDQUEwQmdELGlCQUFNOUMsWUFBL0M7QUFBQTtBQUFBO0FBQUE7QUFBQSxhQUF5RDtBQUFBLE1BQ3pELGdDQUFlLHFDQUEwQjhDO0FBQUFBLGVBQU1sRDtBQUFBQSxRQUFVO0FBQUEsV0FBekQ7QUFBQTtBQUFBO0FBQUE7QUFBQSxhQUFrRTtBQUFBLE1BQ2xFLGdDQUFnQiw2Q0FDZGtELE9BQU03QyxXQUFZLGNBQWxCLHFFQUVzQyxJQUVyQzZDLGlCQUFNN0MsVUFMVDtBQUFBO0FBQUE7QUFBQTtBQUFBLGFBTUE7QUFBQSxTQVRGO0FBQUE7QUFBQTtBQUFBO0FBQUEsV0FVQTtBQUFBLE9BdkJLNkMsT0FBTWhELElBRGI7QUFBQTtBQUFBO0FBQUE7QUFBQSxTQXlCQTtBQUFPO0FBcUNwQixJQUFBOEM7QUFBQUcsYUFBQUgsS0FBQSIsIm5hbWVzIjpbIkxpbmsiLCJGaWxlQXVkaW8iLCJVc2VycyIsIk5ldHdvcmsiLCJBbGVydFRyaWFuZ2xlIiwiVHJlbmRpbmdVcCIsIkNsb2NrIiwiQXJyb3dSaWdodCIsIkJhckNoYXJ0IiwiQmFyIiwiWEF4aXMiLCJZQXhpcyIsIkNhcnRlc2lhbkdyaWQiLCJUb29sdGlwIiwiUmVzcG9uc2l2ZUNvbnRhaW5lciIsIkxpbmVDaGFydCIsIkxpbmUiLCJhY3Rpdml0eURhdGEiLCJkYXRlIiwiZmlsZXMiLCJzcGVha2VyRGF0YSIsIm1vbnRoIiwic3BlYWtlcnMiLCJyZWNlbnRVcGxvYWRzIiwiaWQiLCJmaWxlbmFtZSIsImR1cmF0aW9uIiwic3RhdHVzIiwiYWxlcnRzIiwidHlwZSIsIm1lc3NhZ2UiLCJ0aW1lIiwiRGFzaGJvYXJkIiwiJCIsIl9jIiwiJGkiLCJTeW1ib2wiLCJmb3IiLCJ0MCIsInQxIiwidDIiLCJ0MyIsInQ0IiwidDUiLCJ0NiIsInQ3IiwidDgiLCJ0OSIsInQxMCIsInQxMSIsInQxMiIsInQxMyIsImJhY2tncm91bmRDb2xvciIsImJvcmRlciIsImJvcmRlclJhZGl1cyIsImNvbG9yIiwidDE0IiwidDE1IiwidDE2IiwidDE3IiwidDE4IiwidDE5IiwidDIwIiwidDIxIiwidDIyIiwibWFwIiwiX3RlbXAiLCJ0MjMiLCJ0MjQiLCJfdGVtcDIiLCJfYzIiLCJhbGVydCIsInVwbG9hZCIsIiRSZWZyZXNoUmVnJCJdLCJpZ25vcmVMaXN0IjpbXSwic291cmNlcyI6WyJEYXNoYm9hcmQudHN4Il0sInNvdXJjZXNDb250ZW50IjpbImltcG9ydCB7IExpbmsgfSBmcm9tICdyZWFjdC1yb3V0ZXItZG9tJztcbmltcG9ydCB7IEZpbGVBdWRpbywgVXNlcnMsIE5ldHdvcmssIEFsZXJ0VHJpYW5nbGUsIFRyZW5kaW5nVXAsIENsb2NrLCBBcnJvd1JpZ2h0IH0gZnJvbSAnbHVjaWRlLXJlYWN0JztcbmltcG9ydCB7IEJhckNoYXJ0LCBCYXIsIFhBeGlzLCBZQXhpcywgQ2FydGVzaWFuR3JpZCwgVG9vbHRpcCwgUmVzcG9uc2l2ZUNvbnRhaW5lciwgTGluZUNoYXJ0LCBMaW5lIH0gZnJvbSAncmVjaGFydHMnO1xuXG5jb25zdCBhY3Rpdml0eURhdGEgPSBbXG4gIHsgZGF0ZTogJ01vbicsIGZpbGVzOiAxMiB9LFxuICB7IGRhdGU6ICdUdWUnLCBmaWxlczogMTkgfSxcbiAgeyBkYXRlOiAnV2VkJywgZmlsZXM6IDE1IH0sXG4gIHsgZGF0ZTogJ1RodScsIGZpbGVzOiAyNSB9LFxuICB7IGRhdGU6ICdGcmknLCBmaWxlczogMjIgfSxcbiAgeyBkYXRlOiAnU2F0JywgZmlsZXM6IDggfSxcbiAgeyBkYXRlOiAnU3VuJywgZmlsZXM6IDUgfSxcbl07XG5cbmNvbnN0IHNwZWFrZXJEYXRhID0gW1xuICB7IG1vbnRoOiAnSmFuJywgc3BlYWtlcnM6IDQ1IH0sXG4gIHsgbW9udGg6ICdGZWInLCBzcGVha2VyczogNTIgfSxcbiAgeyBtb250aDogJ01hcicsIHNwZWFrZXJzOiA2MSB9LFxuICB7IG1vbnRoOiAnQXByJywgc3BlYWtlcnM6IDU4IH0sXG4gIHsgbW9udGg6ICdNYXknLCBzcGVha2VyczogNzMgfSxcbiAgeyBtb250aDogJ0p1bicsIHNwZWFrZXJzOiA4OSB9LFxuXTtcblxuY29uc3QgcmVjZW50VXBsb2FkcyA9IFtcbiAgeyBpZDogJ0FVRC0yMDI1LTA4NDcnLCBmaWxlbmFtZTogJ2ludGVyY2VwdF9hbHBoYV9kZWMzMC53YXYnLCBkdXJhdGlvbjogJzEyOjM0Jywgc3RhdHVzOiAnY29tcGxldGVkJywgc3BlYWtlcnM6IDMgfSxcbiAgeyBpZDogJ0FVRC0yMDI1LTA4NDYnLCBmaWxlbmFtZTogJ2NhbGxfbW9uaXRvcmluZ181NDYubXAzJywgZHVyYXRpb246ICcwODoxNScsIHN0YXR1czogJ3Byb2Nlc3NpbmcnLCBzcGVha2VyczogMiB9LFxuICB7IGlkOiAnQVVELTIwMjUtMDg0NScsIGZpbGVuYW1lOiAnbWVldGluZ190cmFuc2NyaXB0XzEyLndhdicsIGR1cmF0aW9uOiAnNDU6MDInLCBzdGF0dXM6ICdjb21wbGV0ZWQnLCBzcGVha2VyczogNSB9LFxuICB7IGlkOiAnQVVELTIwMjUtMDg0NCcsIGZpbGVuYW1lOiAncGhvbmVfY2FsbF83ODkubXAzJywgZHVyYXRpb246ICcwNjo0NycsIHN0YXR1czogJ2NvbXBsZXRlZCcsIHNwZWFrZXJzOiAyIH0sXG5dO1xuXG5jb25zdCBhbGVydHMgPSBbXG4gIHsgaWQ6IDEsIHR5cGU6ICdoaWdoJywgbWVzc2FnZTogJ05ldyBzcGVha2VyIG1hdGNoZWQgdG8gZXhpc3RpbmcgcHJvZmlsZSBTUEstMDAyMzQnLCB0aW1lOiAnMTAgbWluIGFnbycgfSxcbiAgeyBpZDogMiwgdHlwZTogJ21lZGl1bScsIG1lc3NhZ2U6ICdLZXl3b3JkIFwib3BlcmF0aW9uXCIgZGV0ZWN0ZWQgaW4gMyBjb252ZXJzYXRpb25zJywgdGltZTogJzEgaG91ciBhZ28nIH0sXG4gIHsgaWQ6IDMsIHR5cGU6ICdsb3cnLCBtZXNzYWdlOiAnTmV0d29yayBjbHVzdGVyIGFuYWx5c2lzIGNvbXBsZXRlZCcsIHRpbWU6ICcyIGhvdXJzIGFnbycgfSxcbl07XG5cbmV4cG9ydCBkZWZhdWx0IGZ1bmN0aW9uIERhc2hib2FyZCgpIHtcbiAgcmV0dXJuIChcbiAgICA8ZGl2IGNsYXNzTmFtZT1cInAtOFwiPlxuICAgICAgPGRpdiBjbGFzc05hbWU9XCJtYi04XCI+XG4gICAgICAgIDxoMSBjbGFzc05hbWU9XCJ0ZXh0LXdoaXRlIHRleHQtM3hsIG1iLTJcIj5JbnRlbGxpZ2VuY2UgRGFzaGJvYXJkPC9oMT5cbiAgICAgICAgPHAgY2xhc3NOYW1lPVwidGV4dC1zbGF0ZS00MDBcIj5SZWFsLXRpbWUgYXVkaW8gYW5hbHlzaXMgb3ZlcnZpZXc8L3A+XG4gICAgICA8L2Rpdj5cblxuICAgICAgey8qIEtQSSBDYXJkcyAqL31cbiAgICAgIDxkaXYgY2xhc3NOYW1lPVwiZ3JpZCBncmlkLWNvbHMtMSBtZDpncmlkLWNvbHMtMiBsZzpncmlkLWNvbHMtNCBnYXAtNiBtYi04XCI+XG4gICAgICAgIDxkaXYgY2xhc3NOYW1lPVwiYmctc2xhdGUtOTAwIGJvcmRlciBib3JkZXItc2xhdGUtODAwIHJvdW5kZWQtbGcgcC02XCI+XG4gICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJmbGV4IGl0ZW1zLWNlbnRlciBqdXN0aWZ5LWJldHdlZW4gbWItNFwiPlxuICAgICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJiZy1ibHVlLTYwMC8xMCBwLTMgcm91bmRlZC1sZ1wiPlxuICAgICAgICAgICAgICA8RmlsZUF1ZGlvIGNsYXNzTmFtZT1cInctNiBoLTYgdGV4dC1ibHVlLTUwMFwiIC8+XG4gICAgICAgICAgICA8L2Rpdj5cbiAgICAgICAgICAgIDxzcGFuIGNsYXNzTmFtZT1cInRleHQtZ3JlZW4tNTAwIHRleHQtc20gZmxleCBpdGVtcy1jZW50ZXIgZ2FwLTFcIj5cbiAgICAgICAgICAgICAgPFRyZW5kaW5nVXAgY2xhc3NOYW1lPVwidy00IGgtNFwiIC8+XG4gICAgICAgICAgICAgICsxMiVcbiAgICAgICAgICAgIDwvc3Bhbj5cbiAgICAgICAgICA8L2Rpdj5cbiAgICAgICAgICA8ZGl2IGNsYXNzTmFtZT1cInRleHQtd2hpdGUgdGV4dC0yeGwgbWItMVwiPjEsODQ3PC9kaXY+XG4gICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJ0ZXh0LXNsYXRlLTQwMCB0ZXh0LXNtXCI+QXVkaW8gRmlsZXMgUHJvY2Vzc2VkPC9kaXY+XG4gICAgICAgIDwvZGl2PlxuXG4gICAgICAgIDxkaXYgY2xhc3NOYW1lPVwiYmctc2xhdGUtOTAwIGJvcmRlciBib3JkZXItc2xhdGUtODAwIHJvdW5kZWQtbGcgcC02XCI+XG4gICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJmbGV4IGl0ZW1zLWNlbnRlciBqdXN0aWZ5LWJldHdlZW4gbWItNFwiPlxuICAgICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJiZy1wdXJwbGUtNjAwLzEwIHAtMyByb3VuZGVkLWxnXCI+XG4gICAgICAgICAgICAgIDxVc2VycyBjbGFzc05hbWU9XCJ3LTYgaC02IHRleHQtcHVycGxlLTUwMFwiIC8+XG4gICAgICAgICAgICA8L2Rpdj5cbiAgICAgICAgICAgIDxzcGFuIGNsYXNzTmFtZT1cInRleHQtZ3JlZW4tNTAwIHRleHQtc20gZmxleCBpdGVtcy1jZW50ZXIgZ2FwLTFcIj5cbiAgICAgICAgICAgICAgPFRyZW5kaW5nVXAgY2xhc3NOYW1lPVwidy00IGgtNFwiIC8+XG4gICAgICAgICAgICAgICs4JVxuICAgICAgICAgICAgPC9zcGFuPlxuICAgICAgICAgIDwvZGl2PlxuICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPVwidGV4dC13aGl0ZSB0ZXh0LTJ4bCBtYi0xXCI+MzQyPC9kaXY+XG4gICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJ0ZXh0LXNsYXRlLTQwMCB0ZXh0LXNtXCI+SWRlbnRpZmllZCBTcGVha2VyczwvZGl2PlxuICAgICAgICA8L2Rpdj5cblxuICAgICAgICA8ZGl2IGNsYXNzTmFtZT1cImJnLXNsYXRlLTkwMCBib3JkZXIgYm9yZGVyLXNsYXRlLTgwMCByb3VuZGVkLWxnIHAtNlwiPlxuICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPVwiZmxleCBpdGVtcy1jZW50ZXIganVzdGlmeS1iZXR3ZWVuIG1iLTRcIj5cbiAgICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPVwiYmctY3lhbi02MDAvMTAgcC0zIHJvdW5kZWQtbGdcIj5cbiAgICAgICAgICAgICAgPE5ldHdvcmsgY2xhc3NOYW1lPVwidy02IGgtNiB0ZXh0LWN5YW4tNTAwXCIgLz5cbiAgICAgICAgICAgIDwvZGl2PlxuICAgICAgICAgICAgPHNwYW4gY2xhc3NOYW1lPVwidGV4dC1ncmVlbi01MDAgdGV4dC1zbSBmbGV4IGl0ZW1zLWNlbnRlciBnYXAtMVwiPlxuICAgICAgICAgICAgICA8VHJlbmRpbmdVcCBjbGFzc05hbWU9XCJ3LTQgaC00XCIgLz5cbiAgICAgICAgICAgICAgKzE1JVxuICAgICAgICAgICAgPC9zcGFuPlxuICAgICAgICAgIDwvZGl2PlxuICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPVwidGV4dC13aGl0ZSB0ZXh0LTJ4bCBtYi0xXCI+ODk8L2Rpdj5cbiAgICAgICAgICA8ZGl2IGNsYXNzTmFtZT1cInRleHQtc2xhdGUtNDAwIHRleHQtc21cIj5BY3RpdmUgTmV0d29ya3M8L2Rpdj5cbiAgICAgICAgPC9kaXY+XG5cbiAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJiZy1zbGF0ZS05MDAgYm9yZGVyIGJvcmRlci1zbGF0ZS04MDAgcm91bmRlZC1sZyBwLTZcIj5cbiAgICAgICAgICA8ZGl2IGNsYXNzTmFtZT1cImZsZXggaXRlbXMtY2VudGVyIGp1c3RpZnktYmV0d2VlbiBtYi00XCI+XG4gICAgICAgICAgICA8ZGl2IGNsYXNzTmFtZT1cImJnLXJlZC02MDAvMTAgcC0zIHJvdW5kZWQtbGdcIj5cbiAgICAgICAgICAgICAgPEFsZXJ0VHJpYW5nbGUgY2xhc3NOYW1lPVwidy02IGgtNiB0ZXh0LXJlZC01MDBcIiAvPlxuICAgICAgICAgICAgPC9kaXY+XG4gICAgICAgICAgICA8c3BhbiBjbGFzc05hbWU9XCJ0ZXh0LXJlZC01MDAgdGV4dC1zbSBmbGV4IGl0ZW1zLWNlbnRlciBnYXAtMVwiPlxuICAgICAgICAgICAgICA8Q2xvY2sgY2xhc3NOYW1lPVwidy00IGgtNFwiIC8+XG4gICAgICAgICAgICAgIE5ld1xuICAgICAgICAgICAgPC9zcGFuPlxuICAgICAgICAgIDwvZGl2PlxuICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPVwidGV4dC13aGl0ZSB0ZXh0LTJ4bCBtYi0xXCI+MTI8L2Rpdj5cbiAgICAgICAgICA8ZGl2IGNsYXNzTmFtZT1cInRleHQtc2xhdGUtNDAwIHRleHQtc21cIj5QZW5kaW5nIEFsZXJ0czwvZGl2PlxuICAgICAgICA8L2Rpdj5cbiAgICAgIDwvZGl2PlxuXG4gICAgICB7LyogQ2hhcnRzIFJvdyAqL31cbiAgICAgIDxkaXYgY2xhc3NOYW1lPVwiZ3JpZCBncmlkLWNvbHMtMSBsZzpncmlkLWNvbHMtMiBnYXAtNiBtYi04XCI+XG4gICAgICAgIDxkaXYgY2xhc3NOYW1lPVwiYmctc2xhdGUtOTAwIGJvcmRlciBib3JkZXItc2xhdGUtODAwIHJvdW5kZWQtbGcgcC02XCI+XG4gICAgICAgICAgPGgyIGNsYXNzTmFtZT1cInRleHQtd2hpdGUgbWItNFwiPldlZWtseSBBY3Rpdml0eTwvaDI+XG4gICAgICAgICAgPFJlc3BvbnNpdmVDb250YWluZXIgd2lkdGg9XCIxMDAlXCIgaGVpZ2h0PXsyMDB9PlxuICAgICAgICAgICAgPEJhckNoYXJ0IGRhdGE9e2FjdGl2aXR5RGF0YX0+XG4gICAgICAgICAgICAgIDxDYXJ0ZXNpYW5HcmlkIHN0cm9rZURhc2hhcnJheT1cIjMgM1wiIHN0cm9rZT1cIiMzMzQxNTVcIiAvPlxuICAgICAgICAgICAgICA8WEF4aXMgZGF0YUtleT1cImRhdGVcIiBzdHJva2U9XCIjOTRhM2I4XCIgLz5cbiAgICAgICAgICAgICAgPFlBeGlzIHN0cm9rZT1cIiM5NGEzYjhcIiAvPlxuICAgICAgICAgICAgICA8VG9vbHRpcCBcbiAgICAgICAgICAgICAgICBjb250ZW50U3R5bGU9e3sgYmFja2dyb3VuZENvbG9yOiAnIzFlMjkzYicsIGJvcmRlcjogJzFweCBzb2xpZCAjMzM0MTU1JywgYm9yZGVyUmFkaXVzOiAnOHB4JyB9fVxuICAgICAgICAgICAgICAgIGxhYmVsU3R5bGU9e3sgY29sb3I6ICcjZTJlOGYwJyB9fVxuICAgICAgICAgICAgICAvPlxuICAgICAgICAgICAgICA8QmFyIGRhdGFLZXk9XCJmaWxlc1wiIGZpbGw9XCIjM2I4MmY2XCIgcmFkaXVzPXtbNCwgNCwgMCwgMF19IC8+XG4gICAgICAgICAgICA8L0JhckNoYXJ0PlxuICAgICAgICAgIDwvUmVzcG9uc2l2ZUNvbnRhaW5lcj5cbiAgICAgICAgPC9kaXY+XG5cbiAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJiZy1zbGF0ZS05MDAgYm9yZGVyIGJvcmRlci1zbGF0ZS04MDAgcm91bmRlZC1sZyBwLTZcIj5cbiAgICAgICAgICA8aDIgY2xhc3NOYW1lPVwidGV4dC13aGl0ZSBtYi00XCI+U3BlYWtlciBHcm93dGg8L2gyPlxuICAgICAgICAgIDxSZXNwb25zaXZlQ29udGFpbmVyIHdpZHRoPVwiMTAwJVwiIGhlaWdodD17MjAwfT5cbiAgICAgICAgICAgIDxMaW5lQ2hhcnQgZGF0YT17c3BlYWtlckRhdGF9PlxuICAgICAgICAgICAgICA8Q2FydGVzaWFuR3JpZCBzdHJva2VEYXNoYXJyYXk9XCIzIDNcIiBzdHJva2U9XCIjMzM0MTU1XCIgLz5cbiAgICAgICAgICAgICAgPFhBeGlzIGRhdGFLZXk9XCJtb250aFwiIHN0cm9rZT1cIiM5NGEzYjhcIiAvPlxuICAgICAgICAgICAgICA8WUF4aXMgc3Ryb2tlPVwiIzk0YTNiOFwiIC8+XG4gICAgICAgICAgICAgIDxUb29sdGlwIFxuICAgICAgICAgICAgICAgIGNvbnRlbnRTdHlsZT17eyBiYWNrZ3JvdW5kQ29sb3I6ICcjMWUyOTNiJywgYm9yZGVyOiAnMXB4IHNvbGlkICMzMzQxNTUnLCBib3JkZXJSYWRpdXM6ICc4cHgnIH19XG4gICAgICAgICAgICAgICAgbGFiZWxTdHlsZT17eyBjb2xvcjogJyNlMmU4ZjAnIH19XG4gICAgICAgICAgICAgIC8+XG4gICAgICAgICAgICAgIDxMaW5lIHR5cGU9XCJtb25vdG9uZVwiIGRhdGFLZXk9XCJzcGVha2Vyc1wiIHN0cm9rZT1cIiNhODU1ZjdcIiBzdHJva2VXaWR0aD17Mn0gLz5cbiAgICAgICAgICAgIDwvTGluZUNoYXJ0PlxuICAgICAgICAgIDwvUmVzcG9uc2l2ZUNvbnRhaW5lcj5cbiAgICAgICAgPC9kaXY+XG4gICAgICA8L2Rpdj5cblxuICAgICAgey8qIFJlY2VudCBVcGxvYWRzIGFuZCBBbGVydHMgKi99XG4gICAgICA8ZGl2IGNsYXNzTmFtZT1cImdyaWQgZ3JpZC1jb2xzLTEgbGc6Z3JpZC1jb2xzLTMgZ2FwLTZcIj5cbiAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJsZzpjb2wtc3Bhbi0yIGJnLXNsYXRlLTkwMCBib3JkZXIgYm9yZGVyLXNsYXRlLTgwMCByb3VuZGVkLWxnIHAtNlwiPlxuICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPVwiZmxleCBpdGVtcy1jZW50ZXIganVzdGlmeS1iZXR3ZWVuIG1iLTRcIj5cbiAgICAgICAgICAgIDxoMiBjbGFzc05hbWU9XCJ0ZXh0LXdoaXRlXCI+UmVjZW50IFVwbG9hZHM8L2gyPlxuICAgICAgICAgICAgPExpbmsgXG4gICAgICAgICAgICAgIHRvPVwiL2FsbC11cGxvYWRzXCIgXG4gICAgICAgICAgICAgIGNsYXNzTmFtZT1cImZsZXggaXRlbXMtY2VudGVyIGdhcC0yIHB4LTQgcHktMiBiZy1ibHVlLTYwMCBob3ZlcjpiZy1ibHVlLTcwMCB0ZXh0LXdoaXRlIHRleHQtc20gcm91bmRlZC1sZyB0cmFuc2l0aW9uLWNvbG9yc1wiXG4gICAgICAgICAgICA+XG4gICAgICAgICAgICAgIFZpZXcgQWxsXG4gICAgICAgICAgICAgIDxBcnJvd1JpZ2h0IGNsYXNzTmFtZT1cInctNCBoLTRcIiAvPlxuICAgICAgICAgICAgPC9MaW5rPlxuICAgICAgICAgIDwvZGl2PlxuICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPVwic3BhY2UteS0zXCI+XG4gICAgICAgICAgICB7cmVjZW50VXBsb2Fkcy5tYXAoKHVwbG9hZCkgPT4gKFxuICAgICAgICAgICAgICA8TGlua1xuICAgICAgICAgICAgICAgIGtleT17dXBsb2FkLmlkfVxuICAgICAgICAgICAgICAgIHRvPXtgL2FuYWx5c2lzLyR7dXBsb2FkLmlkfWB9XG4gICAgICAgICAgICAgICAgY2xhc3NOYW1lPVwiZmxleCBpdGVtcy1jZW50ZXIganVzdGlmeS1iZXR3ZWVuIHAtNCBiZy1zbGF0ZS04MDAgcm91bmRlZC1sZyBob3ZlcjpiZy1zbGF0ZS03NTAgdHJhbnNpdGlvbi1jb2xvcnMgYm9yZGVyIGJvcmRlci1zbGF0ZS03MDBcIlxuICAgICAgICAgICAgICA+XG4gICAgICAgICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJmbGV4IGl0ZW1zLWNlbnRlciBnYXAtNCBmbGV4LTFcIj5cbiAgICAgICAgICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPVwiYmctYmx1ZS02MDAvMTAgcC0yIHJvdW5kZWRcIj5cbiAgICAgICAgICAgICAgICAgICAgPEZpbGVBdWRpbyBjbGFzc05hbWU9XCJ3LTUgaC01IHRleHQtYmx1ZS01MDBcIiAvPlxuICAgICAgICAgICAgICAgICAgPC9kaXY+XG4gICAgICAgICAgICAgICAgICA8ZGl2IGNsYXNzTmFtZT1cImZsZXgtMSBtaW4tdy0wXCI+XG4gICAgICAgICAgICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPVwidGV4dC13aGl0ZSB0ZXh0LXNtIG1iLTEgdHJ1bmNhdGVcIj57dXBsb2FkLmZpbGVuYW1lfTwvZGl2PlxuICAgICAgICAgICAgICAgICAgICA8ZGl2IGNsYXNzTmFtZT1cInRleHQtc2xhdGUtNDAwIHRleHQteHNcIj57dXBsb2FkLmlkfTwvZGl2PlxuICAgICAgICAgICAgICAgICAgPC9kaXY+XG4gICAgICAgICAgICAgICAgPC9kaXY+XG4gICAgICAgICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJmbGV4IGl0ZW1zLWNlbnRlciBnYXAtNFwiPlxuICAgICAgICAgICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJ0ZXh0LXNsYXRlLTQwMCB0ZXh0LXNtXCI+e3VwbG9hZC5kdXJhdGlvbn08L2Rpdj5cbiAgICAgICAgICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPVwidGV4dC1zbGF0ZS00MDAgdGV4dC1zbVwiPnt1cGxvYWQuc3BlYWtlcnN9IHNwZWFrZXJzPC9kaXY+XG4gICAgICAgICAgICAgICAgICA8ZGl2IGNsYXNzTmFtZT17YHB4LTMgcHktMSByb3VuZGVkLWZ1bGwgdGV4dC14cyAke1xuICAgICAgICAgICAgICAgICAgICB1cGxvYWQuc3RhdHVzID09PSAnY29tcGxldGVkJyBcbiAgICAgICAgICAgICAgICAgICAgICA/ICdiZy1ncmVlbi02MDAvMTAgdGV4dC1ncmVlbi01MDAnIFxuICAgICAgICAgICAgICAgICAgICAgIDogJ2JnLXllbGxvdy02MDAvMTAgdGV4dC15ZWxsb3ctNTAwJ1xuICAgICAgICAgICAgICAgICAgfWB9PlxuICAgICAgICAgICAgICAgICAgICB7dXBsb2FkLnN0YXR1c31cbiAgICAgICAgICAgICAgICAgIDwvZGl2PlxuICAgICAgICAgICAgICAgIDwvZGl2PlxuICAgICAgICAgICAgICA8L0xpbms+XG4gICAgICAgICAgICApKX1cbiAgICAgICAgICA8L2Rpdj5cbiAgICAgICAgPC9kaXY+XG5cbiAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJiZy1zbGF0ZS05MDAgYm9yZGVyIGJvcmRlci1zbGF0ZS04MDAgcm91bmRlZC1sZyBwLTZcIj5cbiAgICAgICAgICA8aDIgY2xhc3NOYW1lPVwidGV4dC13aGl0ZSBtYi00XCI+UmVjZW50IEFsZXJ0czwvaDI+XG4gICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJzcGFjZS15LTNcIj5cbiAgICAgICAgICAgIHthbGVydHMubWFwKChhbGVydCkgPT4gKFxuICAgICAgICAgICAgICA8ZGl2XG4gICAgICAgICAgICAgICAga2V5PXthbGVydC5pZH1cbiAgICAgICAgICAgICAgICBjbGFzc05hbWU9XCJwLTQgYmctc2xhdGUtODAwIHJvdW5kZWQtbGcgYm9yZGVyIGJvcmRlci1zbGF0ZS03MDBcIlxuICAgICAgICAgICAgICA+XG4gICAgICAgICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJmbGV4IGl0ZW1zLXN0YXJ0IGdhcC0zXCI+XG4gICAgICAgICAgICAgICAgICA8ZGl2IGNsYXNzTmFtZT17YHAtMSByb3VuZGVkIG10LTAuNSAke1xuICAgICAgICAgICAgICAgICAgICBhbGVydC50eXBlID09PSAnaGlnaCcgPyAnYmctcmVkLTYwMC8xMCcgOlxuICAgICAgICAgICAgICAgICAgICBhbGVydC50eXBlID09PSAnbWVkaXVtJyA/ICdiZy15ZWxsb3ctNjAwLzEwJyA6XG4gICAgICAgICAgICAgICAgICAgICdiZy1ibHVlLTYwMC8xMCdcbiAgICAgICAgICAgICAgICAgIH1gfT5cbiAgICAgICAgICAgICAgICAgICAgPEFsZXJ0VHJpYW5nbGUgY2xhc3NOYW1lPXtgdy00IGgtNCAke1xuICAgICAgICAgICAgICAgICAgICAgIGFsZXJ0LnR5cGUgPT09ICdoaWdoJyA/ICd0ZXh0LXJlZC01MDAnIDpcbiAgICAgICAgICAgICAgICAgICAgICBhbGVydC50eXBlID09PSAnbWVkaXVtJyA/ICd0ZXh0LXllbGxvdy01MDAnIDpcbiAgICAgICAgICAgICAgICAgICAgICAndGV4dC1ibHVlLTUwMCdcbiAgICAgICAgICAgICAgICAgICAgfWB9IC8+XG4gICAgICAgICAgICAgICAgICA8L2Rpdj5cbiAgICAgICAgICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPVwiZmxleC0xXCI+XG4gICAgICAgICAgICAgICAgICAgIDxwIGNsYXNzTmFtZT1cInRleHQtc2xhdGUtMzAwIHRleHQtc20gbWItMVwiPnthbGVydC5tZXNzYWdlfTwvcD5cbiAgICAgICAgICAgICAgICAgICAgPHAgY2xhc3NOYW1lPVwidGV4dC1zbGF0ZS01MDAgdGV4dC14c1wiPnthbGVydC50aW1lfTwvcD5cbiAgICAgICAgICAgICAgICAgIDwvZGl2PlxuICAgICAgICAgICAgICAgIDwvZGl2PlxuICAgICAgICAgICAgICA8L2Rpdj5cbiAgICAgICAgICAgICkpfVxuICAgICAgICAgIDwvZGl2PlxuICAgICAgICA8L2Rpdj5cbiAgICAgIDwvZGl2PlxuICAgIDwvZGl2PlxuICApO1xufSJdLCJmaWxlIjoiQzovVXNlcnMvOTcyNTQvQXVkaW9JbnRlbC9hdWRpby1pbnRlbC11aS9zcmMvY29tcG9uZW50cy9EYXNoYm9hcmQudHN4In0=

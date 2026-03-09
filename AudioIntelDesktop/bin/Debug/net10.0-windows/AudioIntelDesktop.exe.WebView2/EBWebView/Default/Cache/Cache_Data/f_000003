@@ -1,0 +1,326 @@
+import { createHotContext as __vite__createHotContext } from "/@vite/client";import.meta.hot = __vite__createHotContext("/src/App.tsx");import __vite__cjsImport0_react_jsxDevRuntime from "/node_modules/.vite/deps/react_jsx-dev-runtime.js?v=66a2a425"; const jsxDEV = __vite__cjsImport0_react_jsxDevRuntime["jsxDEV"];
+var _s = $RefreshSig$();
+import __vite__cjsImport1_react_compilerRuntime from "/node_modules/.vite/deps/react_compiler-runtime.js?v=66a2a425"; const _c = __vite__cjsImport1_react_compilerRuntime["c"];
+import { BrowserRouter as Router, Routes, Route, Navigate } from "/node_modules/.vite/deps/react-router-dom.js?v=66a2a425";
+import __vite__cjsImport3_react from "/node_modules/.vite/deps/react.js?v=66a2a425"; const useState = __vite__cjsImport3_react["useState"];
+import Login from "/src/components/Login.tsx";
+import Dashboard from "/src/components/Dashboard.tsx";
+import AudioUpload from "/src/components/AudioUpload.tsx";
+import AudioAnalysis from "/src/components/AudioAnalysis.tsx";
+import TranscriptView from "/src/components/TranscriptView.tsx";
+import SpeakerProfile from "/src/components/SpeakerProfile.tsx";
+import NetworkGraph from "/src/components/NetworkGraph.tsx";
+import IdentityMatching from "/src/components/IdentityMatching.tsx";
+import Settings from "/src/components/Settings.tsx";
+import Layout from "/src/components/Layout.tsx";
+import WaveformAnalysis from "/src/components/WaveformAnalysis.tsx";
+import ProfileSearch from "/src/components/ProfileSearch.tsx";
+import AllUploads from "/src/components/AllUploads.tsx";
+export default function App() {
+  _s();
+  const $ = _c(24);
+  if ($[0] !== "7dbc00bec4bdcc97e88f410f6485f68227315e3ea093ea1f2a91c724e02c2b7e") {
+    for (let $i = 0; $i < 24; $i += 1) {
+      $[$i] = /* @__PURE__ */ Symbol.for("react.memo_cache_sentinel");
+    }
+    $[0] = "7dbc00bec4bdcc97e88f410f6485f68227315e3ea093ea1f2a91c724e02c2b7e";
+  }
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  let t0;
+  if ($[1] !== isAuthenticated) {
+    t0 = /* @__PURE__ */ jsxDEV(Route, { path: "/login", element: isAuthenticated ? /* @__PURE__ */ jsxDEV(Navigate, { to: "/dashboard", replace: true }, void 0, false, {
+      fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/App.tsx",
+      lineNumber: 30,
+      columnNumber: 58
+    }, this) : /* @__PURE__ */ jsxDEV(Login, { onLogin: () => setIsAuthenticated(true) }, void 0, false, {
+      fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/App.tsx",
+      lineNumber: 30,
+      columnNumber: 104
+    }, this) }, void 0, false, {
+      fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/App.tsx",
+      lineNumber: 30,
+      columnNumber: 10
+    }, this);
+    $[1] = isAuthenticated;
+    $[2] = t0;
+  } else {
+    t0 = $[2];
+  }
+  let t1;
+  if ($[3] !== isAuthenticated) {
+    t1 = /* @__PURE__ */ jsxDEV(Route, { path: "/", element: isAuthenticated ? /* @__PURE__ */ jsxDEV(Navigate, { to: "/dashboard", replace: true }, void 0, false, {
+      fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/App.tsx",
+      lineNumber: 38,
+      columnNumber: 53
+    }, this) : /* @__PURE__ */ jsxDEV(Navigate, { to: "/login", replace: true }, void 0, false, {
+      fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/App.tsx",
+      lineNumber: 38,
+      columnNumber: 99
+    }, this) }, void 0, false, {
+      fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/App.tsx",
+      lineNumber: 38,
+      columnNumber: 10
+    }, this);
+    $[3] = isAuthenticated;
+    $[4] = t1;
+  } else {
+    t1 = $[4];
+  }
+  let t2;
+  if ($[5] !== isAuthenticated) {
+    t2 = isAuthenticated ? /* @__PURE__ */ jsxDEV(Layout, { onLogout: () => setIsAuthenticated(false) }, void 0, false, {
+      fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/App.tsx",
+      lineNumber: 46,
+      columnNumber: 28
+    }, this) : /* @__PURE__ */ jsxDEV(Navigate, { to: "/login", replace: true }, void 0, false, {
+      fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/App.tsx",
+      lineNumber: 46,
+      columnNumber: 84
+    }, this);
+    $[5] = isAuthenticated;
+    $[6] = t2;
+  } else {
+    t2 = $[6];
+  }
+  let t3;
+  if ($[7] === /* @__PURE__ */ Symbol.for("react.memo_cache_sentinel")) {
+    t3 = /* @__PURE__ */ jsxDEV(Route, { path: "dashboard", element: /* @__PURE__ */ jsxDEV(Dashboard, {}, void 0, false, {
+      fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/App.tsx",
+      lineNumber: 54,
+      columnNumber: 43
+    }, this) }, void 0, false, {
+      fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/App.tsx",
+      lineNumber: 54,
+      columnNumber: 10
+    }, this);
+    $[7] = t3;
+  } else {
+    t3 = $[7];
+  }
+  let t4;
+  if ($[8] === /* @__PURE__ */ Symbol.for("react.memo_cache_sentinel")) {
+    t4 = /* @__PURE__ */ jsxDEV(Route, { path: "upload", element: /* @__PURE__ */ jsxDEV(AudioUpload, {}, void 0, false, {
+      fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/App.tsx",
+      lineNumber: 61,
+      columnNumber: 40
+    }, this) }, void 0, false, {
+      fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/App.tsx",
+      lineNumber: 61,
+      columnNumber: 10
+    }, this);
+    $[8] = t4;
+  } else {
+    t4 = $[8];
+  }
+  let t5;
+  if ($[9] === /* @__PURE__ */ Symbol.for("react.memo_cache_sentinel")) {
+    t5 = /* @__PURE__ */ jsxDEV(Route, { path: "all-uploads", element: /* @__PURE__ */ jsxDEV(AllUploads, {}, void 0, false, {
+      fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/App.tsx",
+      lineNumber: 68,
+      columnNumber: 45
+    }, this) }, void 0, false, {
+      fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/App.tsx",
+      lineNumber: 68,
+      columnNumber: 10
+    }, this);
+    $[9] = t5;
+  } else {
+    t5 = $[9];
+  }
+  let t6;
+  if ($[10] === /* @__PURE__ */ Symbol.for("react.memo_cache_sentinel")) {
+    t6 = /* @__PURE__ */ jsxDEV(Route, { path: "analysis/:id", element: /* @__PURE__ */ jsxDEV(AudioAnalysis, {}, void 0, false, {
+      fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/App.tsx",
+      lineNumber: 75,
+      columnNumber: 46
+    }, this) }, void 0, false, {
+      fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/App.tsx",
+      lineNumber: 75,
+      columnNumber: 10
+    }, this);
+    $[10] = t6;
+  } else {
+    t6 = $[10];
+  }
+  let t7;
+  if ($[11] === /* @__PURE__ */ Symbol.for("react.memo_cache_sentinel")) {
+    t7 = /* @__PURE__ */ jsxDEV(Route, { path: "waveform/:id", element: /* @__PURE__ */ jsxDEV(WaveformAnalysis, {}, void 0, false, {
+      fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/App.tsx",
+      lineNumber: 82,
+      columnNumber: 46
+    }, this) }, void 0, false, {
+      fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/App.tsx",
+      lineNumber: 82,
+      columnNumber: 10
+    }, this);
+    $[11] = t7;
+  } else {
+    t7 = $[11];
+  }
+  let t8;
+  if ($[12] === /* @__PURE__ */ Symbol.for("react.memo_cache_sentinel")) {
+    t8 = /* @__PURE__ */ jsxDEV(Route, { path: "transcript/:id", element: /* @__PURE__ */ jsxDEV(TranscriptView, {}, void 0, false, {
+      fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/App.tsx",
+      lineNumber: 89,
+      columnNumber: 48
+    }, this) }, void 0, false, {
+      fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/App.tsx",
+      lineNumber: 89,
+      columnNumber: 10
+    }, this);
+    $[12] = t8;
+  } else {
+    t8 = $[12];
+  }
+  let t9;
+  if ($[13] === /* @__PURE__ */ Symbol.for("react.memo_cache_sentinel")) {
+    t9 = /* @__PURE__ */ jsxDEV(Route, { path: "speaker/:id", element: /* @__PURE__ */ jsxDEV(SpeakerProfile, {}, void 0, false, {
+      fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/App.tsx",
+      lineNumber: 96,
+      columnNumber: 45
+    }, this) }, void 0, false, {
+      fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/App.tsx",
+      lineNumber: 96,
+      columnNumber: 10
+    }, this);
+    $[13] = t9;
+  } else {
+    t9 = $[13];
+  }
+  let t10;
+  if ($[14] === /* @__PURE__ */ Symbol.for("react.memo_cache_sentinel")) {
+    t10 = /* @__PURE__ */ jsxDEV(Route, { path: "network", element: /* @__PURE__ */ jsxDEV(NetworkGraph, {}, void 0, false, {
+      fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/App.tsx",
+      lineNumber: 103,
+      columnNumber: 42
+    }, this) }, void 0, false, {
+      fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/App.tsx",
+      lineNumber: 103,
+      columnNumber: 11
+    }, this);
+    $[14] = t10;
+  } else {
+    t10 = $[14];
+  }
+  let t11;
+  if ($[15] === /* @__PURE__ */ Symbol.for("react.memo_cache_sentinel")) {
+    t11 = /* @__PURE__ */ jsxDEV(Route, { path: "identity", element: /* @__PURE__ */ jsxDEV(IdentityMatching, {}, void 0, false, {
+      fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/App.tsx",
+      lineNumber: 110,
+      columnNumber: 43
+    }, this) }, void 0, false, {
+      fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/App.tsx",
+      lineNumber: 110,
+      columnNumber: 11
+    }, this);
+    $[15] = t11;
+  } else {
+    t11 = $[15];
+  }
+  let t12;
+  if ($[16] === /* @__PURE__ */ Symbol.for("react.memo_cache_sentinel")) {
+    t12 = /* @__PURE__ */ jsxDEV(Route, { path: "settings", element: /* @__PURE__ */ jsxDEV(Settings, {}, void 0, false, {
+      fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/App.tsx",
+      lineNumber: 117,
+      columnNumber: 43
+    }, this) }, void 0, false, {
+      fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/App.tsx",
+      lineNumber: 117,
+      columnNumber: 11
+    }, this);
+    $[16] = t12;
+  } else {
+    t12 = $[16];
+  }
+  let t13;
+  if ($[17] === /* @__PURE__ */ Symbol.for("react.memo_cache_sentinel")) {
+    t13 = /* @__PURE__ */ jsxDEV(Route, { path: "profile-search", element: /* @__PURE__ */ jsxDEV(ProfileSearch, {}, void 0, false, {
+      fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/App.tsx",
+      lineNumber: 124,
+      columnNumber: 49
+    }, this) }, void 0, false, {
+      fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/App.tsx",
+      lineNumber: 124,
+      columnNumber: 11
+    }, this);
+    $[17] = t13;
+  } else {
+    t13 = $[17];
+  }
+  let t14;
+  if ($[18] !== t2) {
+    t14 = /* @__PURE__ */ jsxDEV(Route, { path: "/*", element: t2, children: [
+      t3,
+      t4,
+      t5,
+      t6,
+      t7,
+      t8,
+      t9,
+      t10,
+      t11,
+      t12,
+      t13
+    ] }, void 0, true, {
+      fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/App.tsx",
+      lineNumber: 131,
+      columnNumber: 11
+    }, this);
+    $[18] = t2;
+    $[19] = t14;
+  } else {
+    t14 = $[19];
+  }
+  let t15;
+  if ($[20] !== t0 || $[21] !== t1 || $[22] !== t14) {
+    t15 = /* @__PURE__ */ jsxDEV(Router, { children: /* @__PURE__ */ jsxDEV(Routes, { children: [
+      t0,
+      t1,
+      t14
+    ] }, void 0, true, {
+      fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/App.tsx",
+      lineNumber: 139,
+      columnNumber: 19
+    }, this) }, void 0, false, {
+      fileName: "C:/Users/97254/AudioIntel/audio-intel-ui/src/App.tsx",
+      lineNumber: 139,
+      columnNumber: 11
+    }, this);
+    $[20] = t0;
+    $[21] = t1;
+    $[22] = t14;
+    $[23] = t15;
+  } else {
+    t15 = $[23];
+  }
+  return t15;
+}
+_s(App, "7rNyFrw5FVpFFCFYkWAjQci0NUk=");
+_c2 = App;
+var _c2;
+$RefreshReg$(_c2, "App");
+import * as RefreshRuntime from "/@react-refresh";
+const inWebWorker = typeof WorkerGlobalScope !== "undefined" && self instanceof WorkerGlobalScope;
+if (import.meta.hot && !inWebWorker) {
+  if (!window.$RefreshReg$) {
+    throw new Error(
+      "@vitejs/plugin-react can't detect preamble. Something is wrong."
+    );
+  }
+  RefreshRuntime.__hmr_import(import.meta.url).then((currentExports) => {
+    RefreshRuntime.registerExportsForReactRefresh("C:/Users/97254/AudioIntel/audio-intel-ui/src/App.tsx", currentExports);
+    import.meta.hot.accept((nextExports) => {
+      if (!nextExports) return;
+      const invalidateMessage = RefreshRuntime.validateRefreshBoundaryAndEnqueueUpdate("C:/Users/97254/AudioIntel/audio-intel-ui/src/App.tsx", currentExports, nextExports);
+      if (invalidateMessage) import.meta.hot.invalidate(invalidateMessage);
+    });
+  });
+}
+function $RefreshReg$(type, id) {
+  return RefreshRuntime.register(type, "C:/Users/97254/AudioIntel/audio-intel-ui/src/App.tsx " + id);
+}
+function $RefreshSig$() {
+  return RefreshRuntime.createSignatureFunctionForTransform();
+}
+
+//# sourceMappingURL=data:application/json;base64,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RkM7QUFBQUE7QUFBQUEsTUFDQUM7QUFBQUEsTUFDQUM7QUFBQUEsTUFDQUM7QUFBQUEsTUFDQUM7QUFBQUEsTUFDQUM7QUFBQUEsTUFDQUM7QUFBQUEsTUFDQUM7QUFBQUEsTUFDQUM7QUFBQUEsTUFDQUM7QUFBQUEsTUFDQUM7QUFBQUEsU0FsQkY7QUFBQTtBQUFBO0FBQUE7QUFBQSxXQW1CQTtBQUFRcEIsTUFBQSxNQUFBUztBQUFBVCxNQUFBLE1BQUFxQjtBQUFBQSxFQUFBO0FBQUFBLFVBQUFyQixFQUFBO0FBQUE7QUFBQSxNQUFBc0I7QUFBQSxNQUFBdEIsRUFBQSxRQUFBTyxNQUFBUCxFQUFBLFFBQUFRLE1BQUFSLEVBQUEsUUFBQXFCLEtBQUE7QUFyQ1pDLFVBQUEsdUJBQUMsVUFDQyxpQ0FBQyxVQUNDZjtBQUFBQTtBQUFBQSxNQVFBQztBQUFBQSxNQVFBYTtBQUFBQSxTQWpCRjtBQUFBO0FBQUE7QUFBQTtBQUFBLFdBcUNBLEtBdENGO0FBQUE7QUFBQTtBQUFBO0FBQUEsV0F1Q0E7QUFBU3JCLE1BQUEsTUFBQU87QUFBQVAsTUFBQSxNQUFBUTtBQUFBUixNQUFBLE1BQUFxQjtBQUFBckIsTUFBQSxNQUFBc0I7QUFBQUEsRUFBQTtBQUFBQSxVQUFBdEIsRUFBQTtBQUFBO0FBQUEsU0F2Q1RzQjtBQXVDUztBQUVadkIsR0FBQUQsS0FBQTtBQUFBeUIsTUFBQXpCO0FBQUEsSUFBQXlCO0FBQUFDLGFBQUFELEtBQUEiLCJuYW1lcyI6WyJCcm93c2VyUm91dGVyIiwiUm91dGVyIiwiUm91dGVzIiwiUm91dGUiLCJOYXZpZ2F0ZSIsInVzZVN0YXRlIiwiTG9naW4iLCJEYXNoYm9hcmQiLCJBdWRpb1VwbG9hZCIsIkF1ZGlvQW5hbHlzaXMiLCJUcmFuc2NyaXB0VmlldyIsIlNwZWFrZXJQcm9maWxlIiwiTmV0d29ya0dyYXBoIiwiSWRlbnRpdHlNYXRjaGluZyIsIlNldHRpbmdzIiwiTGF5b3V0IiwiV2F2ZWZvcm1BbmFseXNpcyIsIlByb2ZpbGVTZWFyY2giLCJBbGxVcGxvYWRzIiwiQXBwIiwiX3MiLCIkIiwiX2MiLCIkaSIsIlN5bWJvbCIsImZvciIsImlzQXV0aGVudGljYXRlZCIsInNldElzQXV0aGVudGljYXRlZCIsInQwIiwidDEiLCJ0MiIsInQzIiwidDQiLCJ0NSIsInQ2IiwidDciLCJ0OCIsInQ5IiwidDEwIiwidDExIiwidDEyIiwidDEzIiwidDE0IiwidDE1IiwiX2MyIiwiJFJlZnJlc2hSZWckIl0sImlnbm9yZUxpc3QiOltdLCJzb3VyY2VzIjpbIkFwcC50c3giXSwic291cmNlc0NvbnRlbnQiOlsiaW1wb3J0IHsgQnJvd3NlclJvdXRlciBhcyBSb3V0ZXIsIFJvdXRlcywgUm91dGUsIE5hdmlnYXRlIH0gZnJvbSAncmVhY3Qtcm91dGVyLWRvbSc7XG5pbXBvcnQgeyB1c2VTdGF0ZSB9IGZyb20gJ3JlYWN0JztcbmltcG9ydCBMb2dpbiBmcm9tICcuL2NvbXBvbmVudHMvTG9naW4nO1xuaW1wb3J0IERhc2hib2FyZCBmcm9tICcuL2NvbXBvbmVudHMvRGFzaGJvYXJkJztcbmltcG9ydCBBdWRpb1VwbG9hZCBmcm9tICcuL2NvbXBvbmVudHMvQXVkaW9VcGxvYWQnO1xuaW1wb3J0IEF1ZGlvQW5hbHlzaXMgZnJvbSAnLi9jb21wb25lbnRzL0F1ZGlvQW5hbHlzaXMnO1xuaW1wb3J0IFRyYW5zY3JpcHRWaWV3IGZyb20gJy4vY29tcG9uZW50cy9UcmFuc2NyaXB0Vmlldyc7XG5pbXBvcnQgU3BlYWtlclByb2ZpbGUgZnJvbSAnLi9jb21wb25lbnRzL1NwZWFrZXJQcm9maWxlJztcbmltcG9ydCBOZXR3b3JrR3JhcGggZnJvbSAnLi9jb21wb25lbnRzL05ldHdvcmtHcmFwaCc7XG5pbXBvcnQgSWRlbnRpdHlNYXRjaGluZyBmcm9tICcuL2NvbXBvbmVudHMvSWRlbnRpdHlNYXRjaGluZyc7XG5pbXBvcnQgU2V0dGluZ3MgZnJvbSAnLi9jb21wb25lbnRzL1NldHRpbmdzJztcbmltcG9ydCBMYXlvdXQgZnJvbSAnLi9jb21wb25lbnRzL0xheW91dCc7XG5pbXBvcnQgV2F2ZWZvcm1BbmFseXNpcyBmcm9tICcuL2NvbXBvbmVudHMvV2F2ZWZvcm1BbmFseXNpcyc7XG5pbXBvcnQgUHJvZmlsZVNlYXJjaCBmcm9tICcuL2NvbXBvbmVudHMvUHJvZmlsZVNlYXJjaCc7XG5pbXBvcnQgQWxsVXBsb2FkcyBmcm9tICcuL2NvbXBvbmVudHMvQWxsVXBsb2Fkcyc7XG5cbmV4cG9ydCBkZWZhdWx0IGZ1bmN0aW9uIEFwcCgpIHtcbiAgY29uc3QgW2lzQXV0aGVudGljYXRlZCwgc2V0SXNBdXRoZW50aWNhdGVkXSA9IHVzZVN0YXRlKGZhbHNlKTtcblxuICByZXR1cm4gKFxuICAgIDxSb3V0ZXI+XG4gICAgICA8Um91dGVzPlxuICAgICAgICA8Um91dGUgXG4gICAgICAgICAgcGF0aD1cIi9sb2dpblwiIFxuICAgICAgICAgIGVsZW1lbnQ9e1xuICAgICAgICAgICAgaXNBdXRoZW50aWNhdGVkID8gXG4gICAgICAgICAgICAgIDxOYXZpZ2F0ZSB0bz1cIi9kYXNoYm9hcmRcIiByZXBsYWNlIC8+IDogXG4gICAgICAgICAgICAgIDxMb2dpbiBvbkxvZ2luPXsoKSA9PiBzZXRJc0F1dGhlbnRpY2F0ZWQodHJ1ZSl9IC8+XG4gICAgICAgICAgfSBcbiAgICAgICAgLz5cbiAgICAgICAgPFJvdXRlXG4gICAgICAgICAgcGF0aD1cIi9cIlxuICAgICAgICAgIGVsZW1lbnQ9e1xuICAgICAgICAgICAgaXNBdXRoZW50aWNhdGVkID8gXG4gICAgICAgICAgICAgIDxOYXZpZ2F0ZSB0bz1cIi9kYXNoYm9hcmRcIiByZXBsYWNlIC8+IDogXG4gICAgICAgICAgICAgIDxOYXZpZ2F0ZSB0bz1cIi9sb2dpblwiIHJlcGxhY2UgLz5cbiAgICAgICAgICB9XG4gICAgICAgIC8+XG4gICAgICAgIDxSb3V0ZVxuICAgICAgICAgIHBhdGg9XCIvKlwiXG4gICAgICAgICAgZWxlbWVudD17XG4gICAgICAgICAgICBpc0F1dGhlbnRpY2F0ZWQgPyBcbiAgICAgICAgICAgICAgPExheW91dCBvbkxvZ291dD17KCkgPT4gc2V0SXNBdXRoZW50aWNhdGVkKGZhbHNlKX0gLz4gOiBcbiAgICAgICAgICAgICAgPE5hdmlnYXRlIHRvPVwiL2xvZ2luXCIgcmVwbGFjZSAvPlxuICAgICAgICAgIH1cbiAgICAgICAgPlxuICAgICAgICAgIDxSb3V0ZSBwYXRoPVwiZGFzaGJvYXJkXCIgZWxlbWVudD17PERhc2hib2FyZCAvPn0gLz5cbiAgICAgICAgICA8Um91dGUgcGF0aD1cInVwbG9hZFwiIGVsZW1lbnQ9ezxBdWRpb1VwbG9hZCAvPn0gLz5cbiAgICAgICAgICA8Um91dGUgcGF0aD1cImFsbC11cGxvYWRzXCIgZWxlbWVudD17PEFsbFVwbG9hZHMgLz59IC8+XG4gICAgICAgICAgPFJvdXRlIHBhdGg9XCJhbmFseXNpcy86aWRcIiBlbGVtZW50PXs8QXVkaW9BbmFseXNpcyAvPn0gLz5cbiAgICAgICAgICA8Um91dGUgcGF0aD1cIndhdmVmb3JtLzppZFwiIGVsZW1lbnQ9ezxXYXZlZm9ybUFuYWx5c2lzIC8+fSAvPlxuICAgICAgICAgIDxSb3V0ZSBwYXRoPVwidHJhbnNjcmlwdC86aWRcIiBlbGVtZW50PXs8VHJhbnNjcmlwdFZpZXcgLz59IC8+XG4gICAgICAgICAgPFJvdXRlIHBhdGg9XCJzcGVha2VyLzppZFwiIGVsZW1lbnQ9ezxTcGVha2VyUHJvZmlsZSAvPn0gLz5cbiAgICAgICAgICA8Um91dGUgcGF0aD1cIm5ldHdvcmtcIiBlbGVtZW50PXs8TmV0d29ya0dyYXBoIC8+fSAvPlxuICAgICAgICAgIDxSb3V0ZSBwYXRoPVwiaWRlbnRpdHlcIiBlbGVtZW50PXs8SWRlbnRpdHlNYXRjaGluZyAvPn0gLz5cbiAgICAgICAgICA8Um91dGUgcGF0aD1cInNldHRpbmdzXCIgZWxlbWVudD17PFNldHRpbmdzIC8+fSAvPlxuICAgICAgICAgIDxSb3V0ZSBwYXRoPVwicHJvZmlsZS1zZWFyY2hcIiBlbGVtZW50PXs8UHJvZmlsZVNlYXJjaCAvPn0gLz5cbiAgICAgICAgPC9Sb3V0ZT5cbiAgICAgIDwvUm91dGVzPlxuICAgIDwvUm91dGVyPlxuICApO1xufSJdLCJmaWxlIjoiQzovVXNlcnMvOTcyNTQvQXVkaW9JbnRlbC9hdWRpby1pbnRlbC11aS9zcmMvQXBwLnRzeCJ9
