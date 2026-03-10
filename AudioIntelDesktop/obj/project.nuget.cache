@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "dgSpecHash": "mjnwa6Uiuck=",
+  "success": true,
+  "projectFilePath": "C:\\Users\\97254\\AudioIntel\\AudioIntelDesktop\\AudioIntelDesktop.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\97254\\.nuget\\packages\\microsoft.web.webview2\\1.0.3800.47\\microsoft.web.webview2.1.0.3800.47.nupkg.sha512"
+  ],
+  "logs": []
+}
