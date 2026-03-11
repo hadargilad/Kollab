@@ -1,16 +1,16 @@
 {
   "version": 2,
-  "dgSpecHash": "cJKPUu4mVtY=",
+  "dgSpecHash": "qJ1seQ84DSI=",
   "success": true,
-  "projectFilePath": "C:\\Users\\97252\\BarIlan\\AudioIntel\\AudioIntelDesktop\\AudioIntelDesktop.csproj",
+  "projectFilePath": "C:\\Users\\97254\\AudioIntel\\AudioIntelDesktop\\AudioIntelDesktop.csproj",
   "expectedPackageFiles": [
-    "C:\\Users\\97252\\.nuget\\packages\\microsoft.data.sqlite\\9.0.0\\microsoft.data.sqlite.9.0.0.nupkg.sha512",
-    "C:\\Users\\97252\\.nuget\\packages\\microsoft.data.sqlite.core\\9.0.0\\microsoft.data.sqlite.core.9.0.0.nupkg.sha512",
-    "C:\\Users\\97252\\.nuget\\packages\\microsoft.web.webview2\\1.0.3800.47\\microsoft.web.webview2.1.0.3800.47.nupkg.sha512",
-    "C:\\Users\\97252\\.nuget\\packages\\sqlitepclraw.bundle_e_sqlite3\\2.1.10\\sqlitepclraw.bundle_e_sqlite3.2.1.10.nupkg.sha512",
-    "C:\\Users\\97252\\.nuget\\packages\\sqlitepclraw.core\\2.1.10\\sqlitepclraw.core.2.1.10.nupkg.sha512",
-    "C:\\Users\\97252\\.nuget\\packages\\sqlitepclraw.lib.e_sqlite3\\2.1.10\\sqlitepclraw.lib.e_sqlite3.2.1.10.nupkg.sha512",
-    "C:\\Users\\97252\\.nuget\\packages\\sqlitepclraw.provider.e_sqlite3\\2.1.10\\sqlitepclraw.provider.e_sqlite3.2.1.10.nupkg.sha512"
+    "C:\\Users\\97254\\.nuget\\packages\\microsoft.data.sqlite\\9.0.0\\microsoft.data.sqlite.9.0.0.nupkg.sha512",
+    "C:\\Users\\97254\\.nuget\\packages\\microsoft.data.sqlite.core\\9.0.0\\microsoft.data.sqlite.core.9.0.0.nupkg.sha512",
+    "C:\\Users\\97254\\.nuget\\packages\\microsoft.web.webview2\\1.0.3800.47\\microsoft.web.webview2.1.0.3800.47.nupkg.sha512",
+    "C:\\Users\\97254\\.nuget\\packages\\sqlitepclraw.bundle_e_sqlite3\\2.1.10\\sqlitepclraw.bundle_e_sqlite3.2.1.10.nupkg.sha512",
+    "C:\\Users\\97254\\.nuget\\packages\\sqlitepclraw.core\\2.1.10\\sqlitepclraw.core.2.1.10.nupkg.sha512",
+    "C:\\Users\\97254\\.nuget\\packages\\sqlitepclraw.lib.e_sqlite3\\2.1.10\\sqlitepclraw.lib.e_sqlite3.2.1.10.nupkg.sha512",
+    "C:\\Users\\97254\\.nuget\\packages\\sqlitepclraw.provider.e_sqlite3\\2.1.10\\sqlitepclraw.provider.e_sqlite3.2.1.10.nupkg.sha512"
   ],
   "logs": []
 }
