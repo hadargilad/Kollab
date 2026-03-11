@@ -205,4 +205,21 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
-/.vs
+# Visual Studio build folders
+**/bin/
+**/obj/
+
+# User-specific files
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Node modules (UI)
+node_modules/
+dist/
+
+# Database files (Optional: keep if you want to share the DB file itself)
+*.db-shm
+*.db-wal

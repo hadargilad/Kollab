@@ -1,7 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
 using Microsoft.Data.Sqlite;
-using AudioIntel.Models;
+using AudioIntelDesktop.Models;
+using System.Security.Cryptography;
+using System.Text;
+using System.ComponentModel;
 
 namespace AudioIntelDesktop.Data
 {
@@ -9,7 +12,7 @@ namespace AudioIntelDesktop.Data
     public class DatabaseManager
     {
         // Connection string for the local SQLite database file
-        private string connectionString = "Data Source=AudioIntelDB.db";
+        private readonly string connectionString = "Data Source=AudioIntelDB.db";
 
         // Creates the database and the AudioFiles table if they do not exist
         public void InitializeDatabase()
@@ -48,6 +51,16 @@ namespace AudioIntelDesktop.Data
                 FOREIGN KEY(FileId) REFERENCES AudioFiles(Id),
                 FOREIGN KEY(SpeakerId) REFERENCES Speakers(Id)
             );";
+
+                string userTable = @"
+            CREATE TABLE IF NOT EXISTS Users (
+                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                Username TEXT NOT NULL UNIQUE,
+                PasswordHash TEXT NOT NULL,
+                Role TEXT NOT NULL -- 'Admin' or 'Analyst'
+            )";
+                using var command = new SqliteCommand(userTable, connection);
+                command.ExecuteNonQuery();
 
                 // Execute each command separately to avoid syntax confusion
                 using (var cmd1 = new SqliteCommand(filesTable, connection)) { cmd1.ExecuteNonQuery(); }
@@ -122,6 +135,57 @@ namespace AudioIntelDesktop.Data
                 }
             }
             return count;
+        }
+
+        // Add new user with username, password and role
+        public void RegisterUser(string username, string password, string role)
+        {
+            using var connection = new SqliteConnection(connectionString);
+            connection.Open();
+
+            //hashing the password before saving
+            using var sha256 = SHA256.Create();
+            byte[] bytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(password));
+            string hash = Convert.ToBase64String(bytes);
+
+            string insertQuery = "INSERT INTO Users (Username, PasswordHash, Role) VALUES (@user, @hash, @role)";
+            using var command = new SqliteCommand(insertQuery, connection);
+            command.Parameters.AddWithValue("@user", username);
+            command.Parameters.AddWithValue("@hash", hash);
+            command.Parameters.AddWithValue("@role", role);
+
+            command.ExecuteNonQuery();
+        }
+
+        // Login user
+        public User? ValidateUser(string username, string password)
+        {
+            using var connection = new SqliteConnection(connectionString);
+            connection.Open();
+
+            // Hashing the password to compare
+            using var sha256 = SHA256.Create();
+            byte[] bytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(password));
+            string hashInput = Convert.ToBase64String(bytes);
+
+            string query = "SELECT Id, Username, Role FROM Users WHERE Username = @user AND PasswordHash = @hash";
+            using var command = new SqliteCommand(query, connection);
+            command.Parameters.AddWithValue("@user", username);
+            command.Parameters.AddWithValue("@hash", hashInput);
+
+            using var reader = command.ExecuteReader();
+            if (reader.Read())
+            {
+                // If found, return user
+                return new User
+                {
+                    Id = reader.GetInt32(0),
+                    Username = reader.GetString(1),
+                    Role = reader.GetString(2)
+                };
+            }
+
+            return null; // If not found, return null
         }
     }
 }

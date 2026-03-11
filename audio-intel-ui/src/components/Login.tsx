@@ -1,20 +1,43 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react'; // הוספנו useEffect
 import { Shield, Lock, User } from 'lucide-react';
 
 interface LoginProps {
-  onLogin: () => void;
+  onLogin: (role: string) => void; // עדכנו ש-onLogin יקבל את התפקיד
 }
 
 export default function Login({ onLogin }: LoginProps) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState<'analyst' | 'admin'>('analyst');
+  const [errorMessage, setErrorMessage] = useState(''); // הוספנו הודעת שגיאה למשתמש
+
+  useEffect(() => {
+
+    const handleMessage = (event: any) => {
+      const message = event.data;
+      
+      if (message.type === 'LOGIN_SUCCESS') {
+        onLogin(message.role); // מעבירים לאפליקציה שהצלחנו ואת התפקיד (Admin/Analyst)
+      } else if (message.type === 'LOGIN_ERROR') {
+        setErrorMessage('Invalid username or password');
+      }
+    };
+
+
+    window.chrome.webview.addEventListener('message', handleMessage);
+    
+    return () => window.chrome.webview.removeEventListener('message', handleMessage);
+  }, [onLogin]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (username && password) {
-      onLogin();
-    }
+    setErrorMessage(''); // איפוס שגיאה לפני ניסיון חדש
+    
+    // שליחת הנתונים ל-C#
+    // @ts-ignore
+    window.chrome.webview.postMessage({
+      type: 'LOGIN_ATTEMPT',
+      payload: { username: username, password: password }
+    });
   };
 
   return (
@@ -30,6 +53,13 @@ export default function Login({ onLogin }: LoginProps) {
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-6">
+            {/* הודעת שגיאה אם הפרטים לא נכונים */}
+            {errorMessage && (
+              <div className="bg-red-500/10 border border-red-500 text-red-500 p-3 rounded-lg text-sm text-center">
+                {errorMessage}
+              </div>
+            )}
+
             <div>
               <label className="block text-slate-300 mb-2">Username</label>
               <div className="relative">
@@ -60,37 +90,9 @@ export default function Login({ onLogin }: LoginProps) {
               </div>
             </div>
 
-            <div>
-              <label className="block text-slate-300 mb-2">Access Level</label>
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={() => setRole('analyst')}
-                  className={`py-3 px-4 rounded-lg border transition-colors ${
-                    role === 'analyst'
-                      ? 'bg-blue-600 border-blue-600 text-white'
-                      : 'bg-slate-700 border-slate-600 text-slate-300 hover:border-slate-500'
-                  }`}
-                >
-                  Analyst
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setRole('admin')}
-                  className={`py-3 px-4 rounded-lg border transition-colors ${
-                    role === 'admin'
-                      ? 'bg-blue-600 border-blue-600 text-white'
-                      : 'bg-slate-700 border-slate-600 text-slate-300 hover:border-slate-500'
-                  }`}
-                >
-                  Admin
-                </button>
-              </div>
-            </div>
-
             <button
               type="submit"
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg transition-colors"
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg transition-colors font-bold shadow-lg"
             >
               Secure Login
             </button>
