@@ -1,0 +1,10 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:web="clr-namespace:WebViewControl;assembly=WebViewControl.Avalonia"
+        x:Class="AudioIntel.MainWindow"
+        Title="Audio Intel">
+
+    <Grid>
+        <web:WebView Name="MyWebView" />
+    </Grid>
+</Window>

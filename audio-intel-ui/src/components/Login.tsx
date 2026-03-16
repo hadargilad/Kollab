@@ -1,44 +1,54 @@
-import { useState, useEffect } from 'react'; // הוספנו useEffect
+import { useState, useEffect } from 'react';
 import { Shield, Lock, User } from 'lucide-react';
 
 interface LoginProps {
-  onLogin: (role: string) => void; // עדכנו ש-onLogin יקבל את התפקיד
+  onLogin: (role: string) => void;
+}
+
+// הגדרת טיפוס גלובלי כדי ש-TypeScript לא יצעק על window.Backend
+declare global {
+  interface Window {
+    Backend?: {
+      PostMessage: (message: string) => void;
+    };
+    dispatchWebMessage?: (message: any) => void;
+  }
 }
 
 export default function Login({ onLogin }: LoginProps) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [errorMessage, setErrorMessage] = useState(''); // הוספנו הודעת שגיאה למשתמש
+  const [errorMessage, setErrorMessage] = useState('');
 
   useEffect(() => {
-
-    const handleMessage = (event: any) => {
-      const message = event.data;
+    // יצירת פונקציית מאזין גלובלית שה-C# יוכל להפעיל
+    window.dispatchWebMessage = (message: any) => {
+      console.log("Received from C#:", message);
       
       if (message.type === 'LOGIN_SUCCESS') {
-        onLogin(message.role); // מעבירים לאפליקציה שהצלחנו ואת התפקיד (Admin/Analyst)
+        onLogin(message.role);
       } else if (message.type === 'LOGIN_ERROR') {
         setErrorMessage('Invalid username or password');
       }
     };
 
-
-    window.chrome.webview.addEventListener('message', handleMessage);
-    
-    return () => window.chrome.webview.removeEventListener('message', handleMessage);
+    return () => {
+      delete window.dispatchWebMessage;
+    };
   }, [onLogin]);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setErrorMessage(''); // איפוס שגיאה לפני ניסיון חדש
-    
-    // שליחת הנתונים ל-C#
-    // @ts-ignore
-    window.chrome.webview.postMessage({
-      type: 'LOGIN_ATTEMPT',
-      payload: { username: username, password: password }
-    });
-  };
+const handleSubmit = (e: React.FormEvent) => {
+  e.preventDefault();
+  
+  const loginData = JSON.stringify({
+    type: 'LOGIN_ATTEMPT',
+    payload: { username, password },
+    timestamp: Date.now() // מבטיח שהכותרת תשתנה בכל לחיצה
+  });
+
+  // שליחת הנתונים דרך הכותרת
+  document.title = "JSON:" + loginData;
+};
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center p-4">
@@ -53,7 +63,6 @@ export default function Login({ onLogin }: LoginProps) {
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-6">
-            {/* הודעת שגיאה אם הפרטים לא נכונים */}
             {errorMessage && (
               <div className="bg-red-500/10 border border-red-500 text-red-500 p-3 rounded-lg text-sm text-center">
                 {errorMessage}
