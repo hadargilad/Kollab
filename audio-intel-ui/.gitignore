@@ -12,7 +12,16 @@ dist
 dist-ssr
 *.local
 
-# Editor directories and files
+# .NET / C# Specific (CRITICAL to avoid conflicts)
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Rr]elease/
+*.user
+*.userosscache
+*.sln.docstates
+
+# Visual Studio / VS Code
 .vscode/*
 !.vscode/extensions.json
 .idea
@@ -22,3 +31,16 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+*.userprefs
+.vs/
+
+# Databases (Don't track your local DB file)
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+
+# OS generated files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
