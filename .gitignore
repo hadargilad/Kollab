@@ -208,6 +208,7 @@ __marimo__/
 # Visual Studio build folders
 **/bin/
 **/obj/
+*.db
 
 # User-specific files
 .vs/

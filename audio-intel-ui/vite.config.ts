@@ -11,4 +11,12 @@ export default defineConfig({
     }),
     tailwindcss(),
   ],
+  server: {
+    host: true,         // מאפשר גישה מחוץ לקונטיינר (חובה לדוקר)
+    port: 5173,         // הפורט המוסכם שלנו
+    strictPort: true,   // מבטיח ש-Vite לא ינסה לעבור לפורט אחר אם זה תפוס
+    watch: {
+      usePolling: true, // מבטיח שהשינויים בקוד יזוהו בתוך מערכת הקבצים של דוקר
+    },
+  },
 })
