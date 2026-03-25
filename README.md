@@ -71,7 +71,7 @@ The system automatically seeds the database with the following test users on its
 
 | Role        | Username  | Password |
 | ----------- | --------- | -------- |
-| **Admin** | `admin`   | `1234`   |
+| **Admin** | `admin`   | `Aa!12345`   |
 | **Analyst** | `analyst` | `1234`   |
 
 ---
