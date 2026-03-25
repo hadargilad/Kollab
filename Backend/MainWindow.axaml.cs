@@ -4,6 +4,7 @@ using Avalonia.Markup.Xaml;
 using AudioIntel.Data;
 using System.Text.Json;
 using System;
+using System.Threading.Tasks;
 
 namespace AudioIntel
 {
@@ -18,11 +19,6 @@ namespace AudioIntel
             _dbManager = new DatabaseManager();
             _dbManager.InitializeDatabase();
 
-            if (_webViewControl != null)
-            {
-                _webViewControl.RegisterJavascriptObject("Backend", new WebBridge(this));
-            }
-
             LoadReact();
         }
 
@@ -33,11 +29,7 @@ namespace AudioIntel
 
             if (_webViewControl != null)
             {
-                // רישום האובייקט - זה החלק שיוצר את window.Backend בריאקט
                 _webViewControl.RegisterJavascriptObject("Backend", new WebBridge(this));
-
-                // תיקון השגיאה: גישה סטטית להגדרות (אם זה נחוץ בגרסה שלך)
-                // WebViewControl.WebView.Settings.IsJavaScriptEnabled = true; 
             }
         }
 
@@ -45,7 +37,6 @@ namespace AudioIntel
         {
             if (_webViewControl != null)
             {
-                // תיקון השגיאה: הסרת הפרמטרים מה-Delegate
                 _webViewControl.TitleChanged += () => {
                     string title = _webViewControl.Title;
                     if (!string.IsNullOrEmpty(title) && title.StartsWith("JSON:"))
@@ -58,13 +49,7 @@ namespace AudioIntel
                 _webViewControl.Address = "http://localhost:5173";
             }
         }
-        private void OnJavascriptContextCreated()
-        {
-            // רישום הגשר - ודאי שהשם "Backend" תואם למה שהשותפה משתמשת בריאקט
-            _webViewControl?.RegisterJavascriptObject("Backend", new WebBridge(this));
-        }
 
-        // השארנו כ-public כדי שה-WebBridge יוכל לגשת
         public void OnWebMessageReceived(string message)
         {
             if (string.IsNullOrEmpty(message)) return;
@@ -75,6 +60,7 @@ namespace AudioIntel
                 {
                     string type = doc.RootElement.GetProperty("type").GetString() ?? "";
 
+                    // --- 1. LOGIN LOGIC ---
                     if (type == "LOGIN_ATTEMPT")
                     {
                         var payload = doc.RootElement.GetProperty("payload");
@@ -85,20 +71,68 @@ namespace AudioIntel
 
                         if (validatedUser != null)
                         {
-                            var response = new { type = "LOGIN_SUCCESS", role = validatedUser.Role };
+                            // שים לב: אנחנו שולחים לריאקט את ה-ForceChangePassword כדי שידע אם לחסום את הגישה
+                            var response = new
+                            {
+                                type = "LOGIN_SUCCESS",
+                                role = validatedUser.Role,
+                                username = validatedUser.Username,
+                                forceChangePassword = validatedUser.ForceChangePassword
+                            };
                             SendToReact(response);
                         }
                         else
                         {
-                            var response = new { type = "LOGIN_ERROR" };
-                            SendToReact(response);
+                            SendToReact(new { type = "LOGIN_ERROR" });
+                        }
+                    }
+
+                    // --- 2. FETCH USERS ---
+                    if (type == "GET_USERS_LIST")
+                    {
+                        var allUsers = _dbManager.GetAllUsers();
+                        SendToReact(new { type = "USERS_LIST_DATA", payload = allUsers });
+                    }
+
+                    // --- 3. ADD NEW USER (AUD-12) ---
+                    if (type == "ADD_NEW_USER")
+                    {
+                        var payload = doc.RootElement.GetProperty("payload");
+                        _dbManager.RegisterUserInternal(
+                            payload.GetProperty("username").GetString()!,
+                            payload.GetProperty("password").GetString()!,
+                            payload.GetProperty("role").GetString()!,
+                            payload.GetProperty("firstName").GetString()!,
+                            payload.GetProperty("lastName").GetString()!,
+                            payload.GetProperty("idNumber").GetString()!
+                        );
+                        SendToReact(new { type = "USER_ADDED_SUCCESS" });
+                    }
+
+                    // --- 4. UPDATE PASSWORD (SECURITY FLOW) ---
+                    if (type == "UPDATE_USER_PASSWORD")
+                    {
+                        var payload = doc.RootElement.GetProperty("payload");
+                        string user = payload.GetProperty("username").GetString() ?? "";
+                        string newPass = payload.GetProperty("newPassword").GetString() ?? "";
+
+                        // קריאה לפונקציה שמעדכנת Hash/Salt ומבטלת את דגל ה-ForceChange
+                        bool success = _dbManager.UpdateUserPassword(user, newPass);
+
+                        if (success)
+                        {
+                            SendToReact(new { type = "PASSWORD_UPDATE_SUCCESS" });
+                        }
+                        else
+                        {
+                            SendToReact(new { type = "PASSWORD_UPDATE_ERROR" });
                         }
                     }
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error: {ex.Message}");
+                Console.WriteLine($"Bridge Error: {ex.Message}");
             }
         }
 
@@ -106,7 +140,6 @@ namespace AudioIntel
         {
             if (_webViewControl == null) return;
             string json = JsonSerializer.Serialize(data);
-            // שימוש ב-ExecuteScript כפי שמצאנו ב-Object Browser
             _webViewControl.ExecuteScript($"if(window.dispatchWebMessage) {{ window.dispatchWebMessage({json}); }}");
         }
     }
@@ -115,10 +148,6 @@ namespace AudioIntel
     {
         private readonly MainWindow _window;
         public WebBridge(MainWindow window) => _window = window;
-
-        public void PostMessage(string message)
-        {
-            _window.OnWebMessageReceived(message);
-        }
+        public void PostMessage(string message) => _window.OnWebMessageReceived(message);
     }
 }

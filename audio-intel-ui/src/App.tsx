@@ -1,5 +1,5 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Login from './components/Login';
 import Dashboard from './components/Dashboard';
 import AudioUpload from './components/AudioUpload';
@@ -13,21 +13,51 @@ import Layout from './components/Layout';
 import WaveformAnalysis from './components/WaveformAnalysis';
 import ProfileSearch from './components/ProfileSearch';
 import AllUploads from './components/AllUploads';
+import UserManagement from './components/UserManagement';
+import ForcePasswordChange from './components/ForcePasswordChange';
+
+// Define the User structure
+interface User {
+  username: string;
+  role: string;
+  mustChangePassword: boolean
+}
 
 export default function App() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  // Store the authenticated user's data
+  const [user, setUser] = useState<User | null>(null);
+
+  useEffect(() => {
+    // Communication bridge with C# Backend
+    (window as any).dispatchWebMessage = (message: any) => {
+      console.log('Received from Backend:', message);
+
+      if (message.type === 'LOGIN_SUCCESS') {
+        setUser({
+            username: message.username,
+            role: message.role,
+            mustChangePassword: message.forceChangePassword // נתון חדש מה-C#
+        });
+    }
+    };
+  }, []);
+
+  const isAuthenticated = !!user;
 
   return (
     <Router>
       <Routes>
+        {/* Login Route: If auth, go to dashboard */}
         <Route 
           path="/login" 
           element={
             isAuthenticated ? 
               <Navigate to="/dashboard" replace /> : 
-              <Login onLogin={() => setIsAuthenticated(true)} />
+              <Login onLogin={() => {}} /> 
           } 
         />
+        
+        {/* Root Redirect */}
         <Route
           path="/"
           element={
@@ -36,15 +66,24 @@ export default function App() {
               <Navigate to="/login" replace />
           }
         />
+
+        {/* Protected Routes inside Layout */}
         <Route
           path="/*"
           element={
-            isAuthenticated ? 
-              <Layout onLogout={() => setIsAuthenticated(false)} /> : 
+            isAuthenticated ? (
+              user.mustChangePassword ? (
+                <ForcePasswordChange user={user} onSuccess={() => setUser({...user, mustChangePassword: false})} />
+              ) : (
+                <Layout user={user} onLogout={() => setUser(null)} />
+              )
+            ) : (
               <Navigate to="/login" replace />
+            )
           }
         >
           <Route path="dashboard" element={<Dashboard />} />
+          {user?.role === 'Admin' && <Route path="user-management" element={<UserManagement />} />}
           <Route path="upload" element={<AudioUpload />} />
           <Route path="all-uploads" element={<AllUploads />} />
           <Route path="analysis/:id" element={<AudioAnalysis />} />

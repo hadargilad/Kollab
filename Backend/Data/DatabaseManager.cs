@@ -14,11 +14,8 @@ namespace AudioIntel.Data
 
         public DatabaseManager()
         {
-            // Get the local application data folder path
             var folder = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
             var dbPath = Path.Combine(folder, "AudioIntel", "AudioIntelDB.db");
-
-            // Ensure the directory exists
             Directory.CreateDirectory(Path.GetDirectoryName(dbPath)!);
             connectionString = $"Data Source={dbPath}";
         }
@@ -29,76 +26,66 @@ namespace AudioIntel.Data
             {
                 connection.Open();
 
-                // 1. Audio files metadata table
-                string filesTable = @"
-                CREATE TABLE IF NOT EXISTS AudioFiles (
-                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    FileName TEXT NOT NULL,
-                    FilePath TEXT NOT NULL,
-                    UploadDate DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    Status TEXT DEFAULT 'Uploaded'
-                );";
-
-                // 2. Speakers metadata table
-                string speakersTable = @"
-                CREATE TABLE IF NOT EXISTS Speakers (
-                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    SpeakerTag TEXT NOT NULL,
-                    VoicePrintData BLOB,
-                    TotalSpeakingTime REAL
-                );";
-
-                // 3. Transcriptions mapping table
-                string transcriptionsTable = @"
-                CREATE TABLE IF NOT EXISTS Transcriptions (
-                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    FileId INTEGER,
-                    SpeakerId INTEGER,
-                    TextContent TEXT,
-                    Timestamp REAL,
-                    FOREIGN KEY(FileId) REFERENCES AudioFiles(Id),
-                    FOREIGN KEY(SpeakerId) REFERENCES Speakers(Id)
-                );";
-
-                // 4. Users and authentication table
+                // 1. Users table with SALT column
                 string userTable = @"
                 CREATE TABLE IF NOT EXISTS Users (
                     Id INTEGER PRIMARY KEY AUTOINCREMENT,
                     Username TEXT NOT NULL UNIQUE,
                     PasswordHash TEXT NOT NULL,
-                    Role TEXT NOT NULL
+                    Salt TEXT NOT NULL, 
+                    Role TEXT NOT NULL,
+                    FirstName TEXT,
+                    LastName TEXT,
+                    IDNumber TEXT UNIQUE,
+                    ForceChangePassword INTEGER DEFAULT 1, -- 1 = true, 0 = false
+                    CreatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
                 );";
 
-                // Execute table creation
-                using (var cmd = new SqliteCommand(filesTable, connection)) { cmd.ExecuteNonQuery(); }
-                using (var cmd = new SqliteCommand(speakersTable, connection)) { cmd.ExecuteNonQuery(); }
-                using (var cmd = new SqliteCommand(transcriptionsTable, connection)) { cmd.ExecuteNonQuery(); }
                 using (var cmd = new SqliteCommand(userTable, connection)) { cmd.ExecuteNonQuery(); }
-
-                // Seed the database with default users if they don't exist
                 SeedDefaultUsers(connection);
             }
         }
 
-        private void SeedDefaultUsers(SqliteConnection connection)
+        // Generate a random Salt
+        private string CreateSalt()
         {
-            // Register default Admin and Analyst users
-            RegisterUserInternal("admin", "1234", "Admin", connection);
-            RegisterUserInternal("analyst", "1234", "Analyst", connection);
+            byte[] saltBytes = new byte[32];
+            using (var provider = RandomNumberGenerator.Create())
+            {
+                provider.GetBytes(saltBytes);
+            }
+            return Convert.ToBase64String(saltBytes);
         }
 
-        private void RegisterUserInternal(string username, string password, string role, SqliteConnection connection)
+        // Hash password with salt
+        private string HashPassword(string password, string salt)
         {
             using var sha256 = SHA256.Create();
-            byte[] bytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(password));
-            string hash = Convert.ToBase64String(bytes);
+            byte[] combinedBytes = Encoding.UTF8.GetBytes(password + salt);
+            byte[] hashBytes = sha256.ComputeHash(combinedBytes);
+            return Convert.ToBase64String(hashBytes);
+        }
 
-            // Use INSERT OR IGNORE to prevent errors if users already exist
-            string insertQuery = "INSERT OR IGNORE INTO Users (Username, PasswordHash, Role) VALUES (@user, @hash, @role)";
+        public void RegisterUserInternal(string username, string password, string role, string firstName, string lastName, string idNumber, SqliteConnection? existingConnection = null)
+        {
+            string salt = CreateSalt();
+            string hash = HashPassword(password, salt);
+
+            string insertQuery = @"
+                INSERT OR IGNORE INTO Users (Username, PasswordHash, Salt, Role, FirstName, LastName, IDNumber, ForceChangePassword) 
+                VALUES (@user, @hash, @salt, @role, @fname, @lname, @idnum, 1)";
+
+            using var connection = existingConnection ?? new SqliteConnection(connectionString);
+            if (connection.State != System.Data.ConnectionState.Open) connection.Open();
+
             using var command = new SqliteCommand(insertQuery, connection);
             command.Parameters.AddWithValue("@user", username);
             command.Parameters.AddWithValue("@hash", hash);
+            command.Parameters.AddWithValue("@salt", salt);
             command.Parameters.AddWithValue("@role", role);
+            command.Parameters.AddWithValue("@fname", firstName);
+            command.Parameters.AddWithValue("@lname", lastName);
+            command.Parameters.AddWithValue("@idnum", idNumber);
             command.ExecuteNonQuery();
         }
 
@@ -107,56 +94,105 @@ namespace AudioIntel.Data
             using var connection = new SqliteConnection(connectionString);
             connection.Open();
 
-            using var sha256 = SHA256.Create();
-            byte[] bytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(password));
-            string hashInput = Convert.ToBase64String(bytes);
-
-            string query = "SELECT Id, Username, Role FROM Users WHERE Username = @user AND PasswordHash = @hash";
-            using var command = new SqliteCommand(query, connection);
+            string getSaltQuery = "SELECT PasswordHash, Salt, Role, Id, ForceChangePassword FROM Users WHERE Username = @user";
+            using var command = new SqliteCommand(getSaltQuery, connection);
             command.Parameters.AddWithValue("@user", username);
-            command.Parameters.AddWithValue("@hash", hashInput);
 
             using var reader = command.ExecuteReader();
             if (reader.Read())
             {
-                return new User
+                string storedHash = reader.GetString(0);
+                string salt = reader.GetString(1);
+                string role = reader.GetString(2);
+                int id = reader.GetInt32(3);
+
+                bool forceChange = reader.GetInt32(4) == 1;
+
+                string computedHash = HashPassword(password, salt);
+
+                if (computedHash == storedHash)
                 {
-                    Id = reader.GetInt32(0),
-                    Username = reader.GetString(1),
-                    Role = reader.GetString(2)
-                };
+                    return new User
+                    {
+                        Id = id,
+                        Username = username,
+                        Role = role,
+                        ForceChangePassword = forceChange
+                    };
+                }
             }
             return null;
         }
 
-        public int GetTotalFilesCount()
+        public bool UpdateUserPassword(string username, string newPassword)
         {
-            using var connection = new SqliteConnection(connectionString);
-            connection.Open();
-            string query = "SELECT COUNT(*) FROM AudioFiles;";
-            using var command = new SqliteCommand(query, connection);
-            return Convert.ToInt32(command.ExecuteScalar());
+            try
+            {
+                using var connection = new SqliteConnection(connectionString);
+                connection.Open();
+
+                string newSalt = CreateSalt();
+                string newHash = HashPassword(newPassword, newSalt);
+
+                string query = @"
+                    UPDATE Users 
+                    SET PasswordHash = @hash, 
+                        Salt = @salt, 
+                        ForceChangePassword = 0 
+                    WHERE Username = @user";
+
+                using var command = new SqliteCommand(query, connection);
+                command.Parameters.AddWithValue("@hash", newHash);
+                command.Parameters.AddWithValue("@salt", newSalt);
+                command.Parameters.AddWithValue("@user", username);
+
+                int rowsAffected = command.ExecuteNonQuery();
+                return rowsAffected > 0;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error updating password: {ex.Message}");
+                return false;
+            }
         }
 
-        public List<UploadedFile> GetRecentFiles()
+        private void SeedDefaultUsers(SqliteConnection connection)
         {
-            List<UploadedFile> files = new List<UploadedFile>();
-            using var connection = new SqliteConnection(connectionString);
-            connection.Open();
-            string query = "SELECT Id, FileName, UploadDate, Status FROM AudioFiles ORDER BY Id DESC LIMIT 50;";
-            using var command = new SqliteCommand(query, connection);
-            using var reader = command.ExecuteReader();
-            while (reader.Read())
+            RegisterUserInternal("admin", "1234", "Admin", "System", "Administrator", "000000000", connection);
+            RegisterUserInternal("analyst", "1234", "Analyst", "Israel", "Israeli", "123456789", connection);
+        }
+
+        public List<object> GetAllUsers()
+        {
+            var users = new List<object>();
+            try
             {
-                files.Add(new UploadedFile
+                using (var connection = new SqliteConnection(connectionString))
                 {
-                    Id = reader.GetInt32(0),
-                    FileName = reader.GetString(1),
-                    UploadDate = reader.IsDBNull(2) ? "" : reader.GetDateTime(2).ToString("dd/MM/yyyy HH:mm"),
-                    Status = reader.IsDBNull(3) ? "Unknown" : reader.GetString(3)
-                });
+                    connection.Open();
+                    var command = connection.CreateCommand();
+                    command.CommandText = "SELECT Id, Username, Role, FirstName, LastName, IDNumber, CreatedAt FROM Users";
+
+                    using (var reader = command.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            users.Add(new
+                            {
+                                id = reader.GetInt32(0),
+                                username = reader.GetString(1),
+                                role = reader.GetString(2),
+                                firstName = reader.IsDBNull(3) ? "" : reader.GetString(3),
+                                lastName = reader.IsDBNull(4) ? "" : reader.GetString(4),
+                                idNumber = reader.IsDBNull(5) ? "" : reader.GetString(5),
+                                createdAt = reader.IsDBNull(6) ? "" : reader.GetDateTime(6).ToString("yyyy-MM-dd HH:mm:ss")
+                            });
+                        }
+                    }
+                }
             }
-            return files;
+            catch (Exception ex) { Console.WriteLine($"DB Error: {ex.Message}"); }
+            return users;
         }
     }
 }

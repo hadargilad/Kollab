@@ -2,9 +2,13 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:web="clr-namespace:WebViewControl;assembly=WebViewControl.Avalonia"
         x:Class="AudioIntel.MainWindow"
-        Title="Audio Intel">
+        Title="Audio Intel"
+        WindowState="Maximized"
+        WindowStartupLocation="CenterScreen">
 
     <Grid>
-        <web:WebView Name="MyWebView" />
+        <web:WebView Name="MyWebView" 
+                     HorizontalAlignment="Stretch" 
+                     VerticalAlignment="Stretch" />
     </Grid>
 </Window>
