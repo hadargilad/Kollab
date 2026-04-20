@@ -83,7 +83,7 @@ export default function App() {
           }
         >
           <Route path="dashboard" element={<Dashboard />} />
-          {user?.role === 'Admin' && <Route path="user-management" element={<UserManagement />} />}
+          {user?.role === 'Admin' && <Route path="user-management" element={<UserManagement currentUser={user} />} />}
           <Route path="upload" element={<AudioUpload />} />
           <Route path="all-uploads" element={<AllUploads />} />
           <Route path="analysis/:id" element={<AudioAnalysis />} />

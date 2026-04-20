@@ -1,10 +1,11 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using AudioIntel.Models;
 using Microsoft.Data.Sqlite;
-using AudioIntel.Models;
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
-using System.IO;
 
 namespace AudioIntel.Data
 {
@@ -42,7 +43,15 @@ namespace AudioIntel.Data
                 );";
 
                 using (var cmd = new SqliteCommand(userTable, connection)) { cmd.ExecuteNonQuery(); }
-                SeedDefaultUsers(connection);
+                try
+                {
+                    string alterTable = "ALTER TABLE Users ADD COLUMN CreatedAt DATETIME DEFAULT CURRENT_TIMESTAMP;";
+                    using (var cmd = new SqliteCommand(alterTable, connection)) { cmd.ExecuteNonQuery(); }
+                }
+                catch
+                {
+                    /* העמודה כבר קיימת, הכל טוב */
+                }
             }
         }
 
@@ -66,27 +75,51 @@ namespace AudioIntel.Data
             return Convert.ToBase64String(hashBytes);
         }
 
-        public void RegisterUserInternal(string username, string password, string role, string firstName, string lastName, string idNumber, SqliteConnection? existingConnection = null)
+        public (bool success, string message) RegisterUser(string username, string password, string role, string firstName, string lastName, string idNumber)
         {
-            string salt = CreateSalt();
-            string hash = HashPassword(password, salt);
+            if (string.IsNullOrEmpty(idNumber) || idNumber.Length != 9 || !idNumber.All(char.IsDigit))
+            {
+                return (false, "Invalid Identification Number. Must be 9 digits.");
+            }
+            try
+            {
+                using var connection = new SqliteConnection(connectionString);
+                connection.Open();
 
-            string insertQuery = @"
-                INSERT OR IGNORE INTO Users (Username, PasswordHash, Salt, Role, FirstName, LastName, IDNumber, ForceChangePassword) 
-                VALUES (@user, @hash, @salt, @role, @fname, @lname, @idnum, 1)";
+                // CHecking if id exists
+                string checkQuery = "SELECT COUNT(*) FROM Users WHERE Username = @un OR IDNumber = @id";
+                using (var checkCmd = new SqliteCommand(checkQuery, connection))
+                {
+                    checkCmd.Parameters.AddWithValue("@un", username);
+                    checkCmd.Parameters.AddWithValue("@id", idNumber);
+                    if ((long)checkCmd.ExecuteScalar() > 0)
+                        return (false, "Identification Number or Username already exists.");
+                }
 
-            using var connection = existingConnection ?? new SqliteConnection(connectionString);
-            if (connection.State != System.Data.ConnectionState.Open) connection.Open();
+                string salt = CreateSalt();
+                string hash = HashPassword(password, salt);
 
-            using var command = new SqliteCommand(insertQuery, connection);
-            command.Parameters.AddWithValue("@user", username);
-            command.Parameters.AddWithValue("@hash", hash);
-            command.Parameters.AddWithValue("@salt", salt);
-            command.Parameters.AddWithValue("@role", role);
-            command.Parameters.AddWithValue("@fname", firstName);
-            command.Parameters.AddWithValue("@lname", lastName);
-            command.Parameters.AddWithValue("@idnum", idNumber);
-            command.ExecuteNonQuery();
+                string insertQuery = @"
+                    INSERT INTO Users (Username, PasswordHash, Salt, Role, FirstName, LastName, IDNumber, ForceChangePassword, CreatedAt) 
+                    VALUES (@user, @hash, @salt, @role, @fname, @lname, @idnum, 1, DATETIME('now'))";
+
+                using var command = new SqliteCommand(insertQuery, connection);
+                command.Parameters.AddWithValue("@user", username);
+                command.Parameters.AddWithValue("@hash", hash);
+                command.Parameters.AddWithValue("@salt", salt);
+                command.Parameters.AddWithValue("@role", role);
+                command.Parameters.AddWithValue("@fname", firstName);
+                command.Parameters.AddWithValue("@lname", lastName);
+                command.Parameters.AddWithValue("@idnum", idNumber);
+
+                command.ExecuteNonQuery();
+                return (true, "Success");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Register Error: {ex.Message}");
+                return (false, "An internal error occurred.");
+            }
         }
 
         public User? ValidateUser(string username, string password)
@@ -115,7 +148,7 @@ namespace AudioIntel.Data
                     return new User
                     {
                         Id = id,
-                        Username = username,
+                        UserName = username,
                         Role = role,
                         ForceChangePassword = forceChange
                     };
@@ -156,11 +189,6 @@ namespace AudioIntel.Data
             }
         }
 
-        private void SeedDefaultUsers(SqliteConnection connection)
-        {
-            RegisterUserInternal("admin", "1234", "Admin", "System", "Administrator", "000000000", connection);
-            RegisterUserInternal("analyst", "1234", "Analyst", "Israel", "Israeli", "123456789", connection);
-        }
 
         public List<object> GetAllUsers()
         {
@@ -193,6 +221,88 @@ namespace AudioIntel.Data
             }
             catch (Exception ex) { Console.WriteLine($"DB Error: {ex.Message}"); }
             return users;
+        }
+
+        public bool DeleteUser(int targetID)
+        {
+            try
+            {
+                using var connection = new SqliteConnection(connectionString);
+                connection.Open();
+
+                string query = @"
+                    DELETE FROM Users
+                    WHERE Id = @targetID";
+
+                using var command = new SqliteCommand(query, connection);
+                command.Parameters.AddWithValue("@targetID", targetID);
+
+                int rowsAffected = command.ExecuteNonQuery();
+                return rowsAffected > 0;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error deleting user: {ex.Message}");
+                return false;
+            }
+        }
+
+        public (bool success, string message) UpdateUser(int id, string firstName, string lastName, string idNumber, string role, string password = "")
+        {
+            try
+            {
+                using var connection = new SqliteConnection(connectionString);
+                connection.Open();
+
+                // 1. בדיקת כפילות ת"ז (מלבד המשתמש הנוכחי)
+                string checkQuery = "SELECT COUNT(*) FROM Users WHERE IDNumber = @id AND Id != @userId";
+                using (var checkCmd = new SqliteCommand(checkQuery, connection))
+                {
+                    checkCmd.Parameters.AddWithValue("@id", idNumber);
+                    checkCmd.Parameters.AddWithValue("@userId", id);
+                    if (Convert.ToInt64(checkCmd.ExecuteScalar()) > 0)
+                        return (false, "Identification Number already exists for another user.");
+                }
+
+                // 2. בניית השאילתה
+                string updateQuery;
+                bool isChangingPassword = !string.IsNullOrEmpty(password);
+
+                if (isChangingPassword)
+                {
+                    updateQuery = @"UPDATE Users SET FirstName=@fname, LastName=@lname, IDNumber=@idnum, Role=@role, 
+                            PasswordHash=@hash, Salt=@salt WHERE Id=@userId";
+                }
+                else
+                {
+                    updateQuery = @"UPDATE Users SET FirstName=@fname, LastName=@lname, IDNumber=@idnum, Role=@role 
+                            WHERE Id=@userId";
+                }
+
+                using var command = new SqliteCommand(updateQuery, connection);
+                command.Parameters.AddWithValue("@fname", firstName);
+                command.Parameters.AddWithValue("@lname", lastName);
+                command.Parameters.AddWithValue("@idnum", idNumber);
+                command.Parameters.AddWithValue("@role", role);
+                command.Parameters.AddWithValue("@userId", id);
+
+                if (isChangingPassword)
+                {
+                    string salt = CreateSalt();
+                    string hash = HashPassword(password, salt);
+                    command.Parameters.AddWithValue("@hash", hash);
+                    command.Parameters.AddWithValue("@salt", salt);
+                }
+
+                command.ExecuteNonQuery();
+                return (true, "Update successful");
+            }
+            catch (Exception ex)
+            {
+
+                Console.WriteLine($"Update Error: {ex.Message}");
+                return (false, $"Internal error: {ex.Message}");
+            }
         }
     }
 }
