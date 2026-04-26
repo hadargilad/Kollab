@@ -1,0 +1,24 @@
+# Transcription
+openai-whisper
+
+# Speaker diarization
+pyannote.audio==3.3.2
+
+# Speaker embeddings — WavLM via HuggingFace Transformers [improvement #1]
+speechbrain
+transformers
+
+# Noise reduction
+noisereduce
+
+# API server
+fastapi
+uvicorn[standard]
+python-multipart
+
+# Utilities
+numpy
+torch
+torchaudio
+python-dotenv
+huggingface_hub==0.23.4
