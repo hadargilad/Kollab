@@ -71,13 +71,20 @@ namespace AudioIntel
 
                         if (validatedUser != null)
                         {
-                            // שים לב: אנחנו שולחים לריאקט את ה-ForceChangePassword כדי שידע אם לחסום את הגישה
                             var response = new
                             {
                                 type = "LOGIN_SUCCESS",
                                 role = validatedUser.Role,
-                                username = validatedUser.Username,
-                                forceChangePassword = validatedUser.ForceChangePassword
+                                username = validatedUser.UserName,
+                                forceChangePassword = validatedUser.ForceChangePassword,
+                                payload = new
+                                {
+                                    id = validatedUser.Id,
+                                    firstName = validatedUser.FirstName,
+                                    lastName = validatedUser.LastName,
+                                    idNumber = validatedUser.IDNumber,
+                                    createdAt = validatedUser.CreatedAt
+                                }
                             };
                             SendToReact(response);
                         }
@@ -98,7 +105,7 @@ namespace AudioIntel
                     if (type == "ADD_NEW_USER")
                     {
                         var payload = doc.RootElement.GetProperty("payload");
-                        _dbManager.RegisterUserInternal(
+                        var result = _dbManager.RegisterUser(
                             payload.GetProperty("username").GetString()!,
                             payload.GetProperty("password").GetString()!,
                             payload.GetProperty("role").GetString()!,
@@ -106,7 +113,64 @@ namespace AudioIntel
                             payload.GetProperty("lastName").GetString()!,
                             payload.GetProperty("idNumber").GetString()!
                         );
-                        SendToReact(new { type = "USER_ADDED_SUCCESS" });
+
+                        if (result.success)
+                        {
+                            SendToReact(new { type = "USER_ADDED_SUCCESS" });
+                        }
+                        else
+                        {
+                            SendToReact(new
+                            {
+                                type = "FORM_ERROR",
+                                message = result.message
+                            });
+                        }
+                    }
+
+                    if (type == "VERIFY_AND_EXECUTE")
+                    {
+                        var payload = doc.RootElement.GetProperty("payload");
+                        string action = payload.GetProperty("actionType").GetString();
+                        string adminPass = payload.GetProperty("adminPassword").GetString();
+                        string adminUser = payload.GetProperty("adminUsername").GetString();
+
+                        var admin = _dbManager.ValidateUser(adminUser, adminPass);
+                        if (admin != null && admin.Role == "Admin")
+                        {
+                            if (action == "DELETE")
+                            {
+                                int targetId = payload.GetProperty("targetUserId").GetInt32();
+                                _dbManager.DeleteUser(targetId);
+                                SendToReact(new { type = "USER_DELETED_SUCCESS" });
+                            }
+                            else if (action == "EDIT")
+                            {
+                                SendToReact(new { type = "SECURITY_VERIFIED_FOR_EDIT" });
+                            }
+                        }
+                        else
+                        {
+                            SendToReact(new { type = "SECURITY_ALERT", message = "Wrong Admin Password!" });
+                        }
+                    }
+
+                    if (type == "UPDATE_USER")
+                    {
+                        var payload = doc.RootElement.GetProperty("payload");
+                        var result = _dbManager.UpdateUser(
+                            payload.GetProperty("id").GetInt32(),
+                            payload.GetProperty("firstName").GetString(),
+                            payload.GetProperty("lastName").GetString(),
+                            payload.GetProperty("idNumber").GetString(),
+                            payload.GetProperty("role").GetString(),
+                            payload.TryGetProperty("password", out var p) ? p.GetString() : ""
+                        );
+
+                        if (result.success)
+                            SendToReact(new { type = "USER_UPDATED_SUCCESS" });
+                        else
+                            SendToReact(new { type = "FORM_ERROR", message = result.message });
                     }
 
                     // --- 4. UPDATE PASSWORD (SECURITY FLOW) ---
@@ -116,7 +180,6 @@ namespace AudioIntel
                         string user = payload.GetProperty("username").GetString() ?? "";
                         string newPass = payload.GetProperty("newPassword").GetString() ?? "";
 
-                        // קריאה לפונקציה שמעדכנת Hash/Salt ומבטלת את דגל ה-ForceChange
                         bool success = _dbManager.UpdateUserPassword(user, newPass);
 
                         if (success)
@@ -126,6 +189,33 @@ namespace AudioIntel
                         else
                         {
                             SendToReact(new { type = "PASSWORD_UPDATE_ERROR" });
+                        }
+                    }
+
+                    if (type == "UPDATE_SELF_PROFILE")
+                    {
+                        var payload = doc.RootElement.GetProperty("payload");
+
+                        int userId = payload.GetProperty("userId").GetInt32();
+                        string firstName = payload.GetProperty("firstName").GetString();
+                        string lastName = payload.GetProperty("lastName").GetString();
+
+                        string newPassword = payload.TryGetProperty("password", out var p) ? p.GetString() : "";
+
+                        var result = _dbManager.UpdateSelfProfile(userId, firstName, lastName, newPassword);
+
+                        if (result.success)
+                        {
+                            SendToReact(new
+                            {
+                                type = "SELF_UPDATE_SUCCESS",
+                                message = result.message,
+                                payload = new { firstName, lastName } 
+                            });
+                        }
+                        else
+                        {
+                            SendToReact(new { type = "SELF_UPDATE_ERROR", message = result.message });
                         }
                     }
                 }

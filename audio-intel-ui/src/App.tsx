@@ -15,17 +15,33 @@ import ProfileSearch from './components/ProfileSearch';
 import AllUploads from './components/AllUploads';
 import UserManagement from './components/UserManagement';
 import ForcePasswordChange from './components/ForcePasswordChange';
+import Profile from './components/Profile';
+
 
 // Define the User structure
 interface User {
+  id: number; 
   username: string;
   role: string;
-  mustChangePassword: boolean
+  firstName: string;   
+  lastName: string;    
+  idNumber: string;    
+  createdAt: string;  
+  mustChangePassword: boolean;
 }
 
 export default function App() {
   // Store the authenticated user's data
   const [user, setUser] = useState<User | null>(null);
+
+  const handleUpdate = (updatedData: any) => {
+    if (user) {
+      setUser({
+        ...user,
+        ...updatedData
+      });
+    }
+  };
 
   useEffect(() => {
     // Communication bridge with C# Backend
@@ -34,13 +50,19 @@ export default function App() {
 
       if (message.type === 'LOGIN_SUCCESS') {
         setUser({
+            ...message.payload, 
             username: message.username,
             role: message.role,
-            mustChangePassword: message.forceChangePassword // נתון חדש מה-C#
+            mustChangePassword: message.forceChangePassword
         });
-    }
+      }
+
+      if (message.type === 'SELF_UPDATE_SUCCESS') {
+        handleUpdate(message.payload);
+        window.dispatchEvent(new CustomEvent('profileUpdated'));
+      }
     };
-  }, []);
+  }, [user]); 
 
   const isAuthenticated = !!user;
 
@@ -83,7 +105,7 @@ export default function App() {
           }
         >
           <Route path="dashboard" element={<Dashboard />} />
-          {user?.role === 'Admin' && <Route path="user-management" element={<UserManagement />} />}
+          {user?.role === 'Admin' && <Route path="user-management" element={<UserManagement currentUser={user} />} />}
           <Route path="upload" element={<AudioUpload />} />
           <Route path="all-uploads" element={<AllUploads />} />
           <Route path="analysis/:id" element={<AudioAnalysis />} />
@@ -94,6 +116,7 @@ export default function App() {
           <Route path="identity" element={<IdentityMatching />} />
           <Route path="settings" element={<Settings />} />
           <Route path="profile-search" element={<ProfileSearch />} />
+          <Route path="profile" element={<Profile currentUser={user} onUpdateSuccess={handleUpdate} />} />
         </Route>
       </Routes>
     </Router>
