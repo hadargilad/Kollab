@@ -76,7 +76,15 @@ namespace AudioIntel
                                 type = "LOGIN_SUCCESS",
                                 role = validatedUser.Role,
                                 username = validatedUser.UserName,
-                                forceChangePassword = validatedUser.ForceChangePassword
+                                forceChangePassword = validatedUser.ForceChangePassword,
+                                payload = new
+                                {
+                                    id = validatedUser.Id,
+                                    firstName = validatedUser.FirstName,
+                                    lastName = validatedUser.LastName,
+                                    idNumber = validatedUser.IDNumber,
+                                    createdAt = validatedUser.CreatedAt
+                                }
                             };
                             SendToReact(response);
                         }
@@ -181,6 +189,33 @@ namespace AudioIntel
                         else
                         {
                             SendToReact(new { type = "PASSWORD_UPDATE_ERROR" });
+                        }
+                    }
+
+                    if (type == "UPDATE_SELF_PROFILE")
+                    {
+                        var payload = doc.RootElement.GetProperty("payload");
+
+                        int userId = payload.GetProperty("userId").GetInt32();
+                        string firstName = payload.GetProperty("firstName").GetString();
+                        string lastName = payload.GetProperty("lastName").GetString();
+
+                        string newPassword = payload.TryGetProperty("password", out var p) ? p.GetString() : "";
+
+                        var result = _dbManager.UpdateSelfProfile(userId, firstName, lastName, newPassword);
+
+                        if (result.success)
+                        {
+                            SendToReact(new
+                            {
+                                type = "SELF_UPDATE_SUCCESS",
+                                message = result.message,
+                                payload = new { firstName, lastName } 
+                            });
+                        }
+                        else
+                        {
+                            SendToReact(new { type = "SELF_UPDATE_ERROR", message = result.message });
                         }
                     }
                 }

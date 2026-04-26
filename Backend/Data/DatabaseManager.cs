@@ -127,7 +127,10 @@ namespace AudioIntel.Data
             using var connection = new SqliteConnection(connectionString);
             connection.Open();
 
-            string getSaltQuery = "SELECT PasswordHash, Salt, Role, Id, ForceChangePassword FROM Users WHERE Username = @user";
+            string getSaltQuery = @"SELECT PasswordHash, Salt, Role, Id, ForceChangePassword, 
+                                   FirstName, LastName, IDNumber, CreatedAt 
+                            FROM Users WHERE Username = @user";
+
             using var command = new SqliteCommand(getSaltQuery, connection);
             command.Parameters.AddWithValue("@user", username);
 
@@ -138,7 +141,6 @@ namespace AudioIntel.Data
                 string salt = reader.GetString(1);
                 string role = reader.GetString(2);
                 int id = reader.GetInt32(3);
-
                 bool forceChange = reader.GetInt32(4) == 1;
 
                 string computedHash = HashPassword(password, salt);
@@ -150,7 +152,12 @@ namespace AudioIntel.Data
                         Id = id,
                         UserName = username,
                         Role = role,
-                        ForceChangePassword = forceChange
+                        ForceChangePassword = forceChange,
+
+                        FirstName = reader.IsDBNull(5) ? "" : reader.GetString(5),
+                        LastName = reader.IsDBNull(6) ? "" : reader.GetString(6),
+                        IDNumber = reader.IsDBNull(7) ? "" : reader.GetString(7),
+                        CreatedAt = reader.IsDBNull(8) ? "" : reader.GetString(8)
                     };
                 }
             }
@@ -304,5 +311,53 @@ namespace AudioIntel.Data
                 return (false, $"Internal error: {ex.Message}");
             }
         }
+
+        public (bool success, string message) UpdateSelfProfile(int userId, string firstName, string lastName, string newPassword = "")
+        {
+            try
+            {
+                using var connection = new SqliteConnection(connectionString);
+                connection.Open();
+
+                // בניית השאילתה - רק שמות וסיסמה (בלי Role ובלי IDNumber)
+                string query;
+                bool isChangingPassword = !string.IsNullOrEmpty(newPassword);
+
+                if (isChangingPassword)
+                {
+                    string salt = CreateSalt();
+                    string hash = HashPassword(newPassword, salt);
+                    query = "UPDATE Users SET FirstName=@fn, LastName=@ln, PasswordHash=@h, Salt=@s WHERE Id=@id";
+                }
+                else
+                {
+                    query = "UPDATE Users SET FirstName=@fn, LastName=@ln WHERE Id=@id";
+                }
+
+                using var cmd = new SqliteCommand(query, connection);
+                cmd.Parameters.AddWithValue("@fn", firstName);
+                cmd.Parameters.AddWithValue("@ln", lastName);
+                cmd.Parameters.AddWithValue("@id", userId);
+
+                if (isChangingPassword)
+                {
+                    // שליפת המלח וההאש שנוצרו למעלה
+                    string salt = CreateSalt(); // רצוי להשתמש במשתנים שכבר נוצרו
+                    string hash = HashPassword(newPassword, salt);
+                    cmd.Parameters.AddWithValue("@h", hash);
+                    cmd.Parameters.AddWithValue("@s", salt);
+                }
+
+                cmd.ExecuteNonQuery();
+                return (true, "Profile updated successfully");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"UpdateSelf Error: {ex.Message}");
+                return (false, "Internal error during profile update.");
+            }
+        }
+
+
     }
 }
