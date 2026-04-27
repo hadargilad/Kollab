@@ -8,8 +8,11 @@ Runs on port 8001. The ML service runs separately on port 8000.
 import asyncio
 import os
 import shutil
+import time as _time
 import uuid
 from pathlib import Path
+
+_start_time = _time.time()
 
 import httpx
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form, BackgroundTasks
@@ -93,6 +96,18 @@ class UpdateProfileRequest(BaseModel):
 @app.get("/")
 def health():
     return {"status": "AudioIntel backend running", "version": "1.0.0"}
+
+
+# ─── System Stats ─────────────────────────────────────────────────────────────
+
+@app.get("/stats")
+def get_stats():
+    stats = database.get_system_stats()
+    secs = int(_time.time() - _start_time)
+    h, rem = divmod(secs, 3600)
+    m = rem // 60
+    stats["uptime"] = f"{h // 24}d {h % 24}h" if h >= 24 else f"{h}h {m}m"
+    return stats
 
 
 # ─── Processing progress ──────────────────────────────────────────────────────

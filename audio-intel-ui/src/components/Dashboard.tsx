@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { FileAudio, Users, AlertTriangle, TrendingUp, Clock, ArrowRight, Loader2 } from 'lucide-react';
+import { FileAudio, Users, AlertTriangle, TrendingUp, Clock, ArrowRight, Loader2, HardDrive, Database, Activity } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { audios, speakers, alerts, type AudioRecord, type SpeakerRecord, type AlertRecord } from '../lib/api';
+import { audios, speakers, alerts, stats, type AudioRecord, type SpeakerRecord, type AlertRecord, type SystemStats } from '../lib/api';
 
 function getDayLabel(date: Date) {
   return date.toLocaleDateString('en-GB', { weekday: 'short' });
@@ -40,14 +40,16 @@ export default function Dashboard() {
   const [uploadList, setUploadList] = useState<AudioRecord[]>([]);
   const [speakerList, setSpeakerList] = useState<SpeakerRecord[]>([]);
   const [alertList, setAlertList] = useState<AlertRecord[]>([]);
+  const [systemStats, setSystemStats] = useState<SystemStats | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    Promise.all([audios.list(), speakers.list(), alerts.list()])
-      .then(([a, s, al]) => {
+    Promise.all([audios.list(), speakers.list(), alerts.list(), stats.get()])
+      .then(([a, s, al, st]) => {
         setUploadList(a);
         setSpeakerList(s);
         setAlertList(al);
+        setSystemStats(st);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -57,6 +59,13 @@ export default function Dashboard() {
   const recentUploads = uploadList.slice(0, 4);
   const weeklyData = buildWeeklyActivity(uploadList);
   const statusData = buildStatusDistribution(uploadList);
+
+  const formatBytes = (bytes: number) => {
+    if (bytes >= 1_073_741_824) return `${(bytes / 1_073_741_824).toFixed(1)} GB`;
+    if (bytes >= 1_048_576)     return `${(bytes / 1_048_576).toFixed(1)} MB`;
+    if (bytes >= 1_024)         return `${(bytes / 1_024).toFixed(0)} KB`;
+    return `${bytes} B`;
+  };
 
   const formatDuration = (seconds: number) => {
     if (!seconds) return '—';
@@ -164,6 +173,53 @@ export default function Dashboard() {
           </ResponsiveContainer>
         </div>
       </div>
+
+      {/* System Health */}
+      {systemStats && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+          <div className="bg-slate-900 border border-slate-800 rounded-lg px-5 py-4 flex items-center gap-4">
+            <div className="bg-blue-600/10 p-2.5 rounded-lg shrink-0">
+              <Users className="w-5 h-5 text-blue-400" />
+            </div>
+            <div>
+              <div className="text-white text-xl font-semibold">{systemStats.totalUsers}</div>
+              <div className="text-slate-400 text-xs">Registered Users</div>
+            </div>
+          </div>
+
+          <div className="bg-slate-900 border border-slate-800 rounded-lg px-5 py-4 flex items-center gap-4">
+            <div className="bg-purple-600/10 p-2.5 rounded-lg shrink-0">
+              <HardDrive className="w-5 h-5 text-purple-400" />
+            </div>
+            <div>
+              <div className="text-white text-xl font-semibold">{formatBytes(systemStats.storageUsedBytes)}</div>
+              <div className="text-slate-400 text-xs">Storage Used</div>
+            </div>
+          </div>
+
+          <div className="bg-slate-900 border border-slate-800 rounded-lg px-5 py-4 flex items-center gap-4">
+            <div className={`p-2.5 rounded-lg shrink-0 ${systemStats.dbStatus ? 'bg-green-600/10' : 'bg-red-600/10'}`}>
+              <Database className={`w-5 h-5 ${systemStats.dbStatus ? 'text-green-400' : 'text-red-400'}`} />
+            </div>
+            <div>
+              <div className={`text-xl font-semibold ${systemStats.dbStatus ? 'text-green-400' : 'text-red-400'}`}>
+                {systemStats.dbStatus ? 'Online' : 'Error'}
+              </div>
+              <div className="text-slate-400 text-xs">Database Status</div>
+            </div>
+          </div>
+
+          <div className="bg-slate-900 border border-slate-800 rounded-lg px-5 py-4 flex items-center gap-4">
+            <div className="bg-cyan-600/10 p-2.5 rounded-lg shrink-0">
+              <Activity className="w-5 h-5 text-cyan-400" />
+            </div>
+            <div>
+              <div className="text-white text-xl font-semibold">{systemStats.uptime}</div>
+              <div className="text-slate-400 text-xs">Server Uptime</div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Recent Uploads and Alerts */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

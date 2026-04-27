@@ -554,6 +554,26 @@ def get_all_relations() -> list[dict]:
     ]
 
 
+# ─── System Stats ─────────────────────────────────────────────────────────────
+
+def get_system_stats() -> dict:
+    try:
+        with _get_conn() as conn:
+            total_users    = conn.execute("SELECT COUNT(*) FROM Users").fetchone()[0]
+            total_files    = conn.execute("SELECT COUNT(*) FROM Audios").fetchone()[0]
+            storage_bytes  = conn.execute("SELECT COALESCE(SUM(FileSize), 0) FROM Audios").fetchone()[0]
+        db_status = True
+    except Exception:
+        total_users = total_files = storage_bytes = 0
+        db_status = False
+    return {
+        "totalUsers":       total_users,
+        "totalFiles":       total_files,
+        "storageUsedBytes": storage_bytes,
+        "dbStatus":         db_status,
+    }
+
+
 # ─── Alerts ───────────────────────────────────────────────────────────────────
 
 def create_alert(alert_type: str, message: str,
