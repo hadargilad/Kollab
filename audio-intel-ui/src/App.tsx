@@ -1,5 +1,5 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import Login from './components/Login';
 import Dashboard from './components/Dashboard';
 import AudioUpload from './components/AudioUpload';
@@ -16,86 +16,51 @@ import AllUploads from './components/AllUploads';
 import UserManagement from './components/UserManagement';
 import ForcePasswordChange from './components/ForcePasswordChange';
 import Profile from './components/Profile';
-
-
-// Define the User structure
-interface User {
-  id: number; 
-  username: string;
-  role: string;
-  firstName: string;   
-  lastName: string;    
-  idNumber: string;    
-  createdAt: string;  
-  mustChangePassword: boolean;
-}
+import StartupScreen from './components/StartupScreen';
+import type { AuthUser } from './lib/api';
 
 export default function App() {
-  // Store the authenticated user's data
-  const [user, setUser] = useState<User | null>(null);
+  const [ready, setReady] = useState(false);
+  const [user, setUser] = useState<AuthUser | null>(null);
 
-  const handleUpdate = (updatedData: any) => {
-    if (user) {
-      setUser({
-        ...user,
-        ...updatedData
-      });
-    }
+  if (!ready) return <StartupScreen onReady={() => setReady(true)} />;
+
+  const handleUpdate = (updatedData: Partial<AuthUser>) => {
+    if (user) setUser({ ...user, ...updatedData });
   };
-
-  useEffect(() => {
-    // Communication bridge with C# Backend
-    (window as any).dispatchWebMessage = (message: any) => {
-      console.log('Received from Backend:', message);
-
-      if (message.type === 'LOGIN_SUCCESS') {
-        setUser({
-            ...message.payload, 
-            username: message.username,
-            role: message.role,
-            mustChangePassword: message.forceChangePassword
-        });
-      }
-
-      if (message.type === 'SELF_UPDATE_SUCCESS') {
-        handleUpdate(message.payload);
-        window.dispatchEvent(new CustomEvent('profileUpdated'));
-      }
-    };
-  }, [user]); 
 
   const isAuthenticated = !!user;
 
   return (
     <Router>
       <Routes>
-        {/* Login Route: If auth, go to dashboard */}
-        <Route 
-          path="/login" 
-          element={
-            isAuthenticated ? 
-              <Navigate to="/dashboard" replace /> : 
-              <Login onLogin={() => {}} /> 
-          } 
-        />
-        
-        {/* Root Redirect */}
         <Route
-          path="/"
+          path="/login"
           element={
-            isAuthenticated ? 
-              <Navigate to="/dashboard" replace /> : 
-              <Navigate to="/login" replace />
+            isAuthenticated
+              ? <Navigate to="/dashboard" replace />
+              : <Login onLogin={setUser} />
           }
         />
 
-        {/* Protected Routes inside Layout */}
+        <Route
+          path="/"
+          element={
+            isAuthenticated
+              ? <Navigate to="/dashboard" replace />
+              : <Navigate to="/login" replace />
+          }
+        />
+
         <Route
           path="/*"
           element={
             isAuthenticated ? (
               user.mustChangePassword ? (
-                <ForcePasswordChange user={user} onSuccess={() => setUser({...user, mustChangePassword: false})} />
+                <ForcePasswordChange
+                  user={user}
+                  onSuccess={() => setUser({ ...user, mustChangePassword: false })}
+                />
               ) : (
                 <Layout user={user} onLogout={() => setUser(null)} />
               )
@@ -105,8 +70,10 @@ export default function App() {
           }
         >
           <Route path="dashboard" element={<Dashboard />} />
-          {user?.role === 'Admin' && <Route path="user-management" element={<UserManagement currentUser={user} />} />}
-          <Route path="upload" element={<AudioUpload />} />
+          {user?.role === 'Admin' && (
+            <Route path="user-management" element={<UserManagement currentUser={user} />} />
+          )}
+          <Route path="upload" element={<AudioUpload userId={user?.id ?? 0} />} />
           <Route path="all-uploads" element={<AllUploads />} />
           <Route path="analysis/:id" element={<AudioAnalysis />} />
           <Route path="waveform/:id" element={<WaveformAnalysis />} />

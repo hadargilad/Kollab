@@ -1,90 +1,46 @@
-# 🎙️ Audio-Intel | Secure Intelligence Platform
-
-An advanced intelligence platform for audio analysis, transcription, and speaker identification. This system integrates a **React-based Frontend** with a **.NET/Avalonia Backend**, using **SQLite** for secure data management.
+# AudioIntel — Secure Intelligence Platform
 
 ---
 
-## 🛠️ System Architecture
+## Prerequisites
 
-The project is divided into two main components:
-* **Frontend:** React + Vite + Tailwind CSS (Running in Docker).
-* **Backend:** .NET 8 + Avalonia UI + WebViewControl (Desktop Application).
+Install these before starting:
 
----
-
-## 🚀 Getting Started
-
-Follow these steps to get the development environment up and running.
-
-### 📋 Prerequisites
-* **Docker Desktop** (Make sure it's running)
-* **dotnet SDK 8.0**
-* **Visual Studio 2022** (Windows) OR **VS Code** (Mac/Linux)
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) — must be **running**
+- [Node.js 20+](https://nodejs.org/)
+- [Rust](https://rustup.rs/)
 
 ---
 
-### 1️⃣ Step 1: Launch the UI (Docker)
-The frontend must be running for the desktop application to display the interface.
+## One-time setup
 
-1.  Open a terminal in the project root.
-2.  Navigate to the UI directory:
-    ```bash
-    cd audio-intel-ui
-    ```
-3.  Start the container:
-    ```bash
-    docker-compose up --build
-    ```
-4.  Once ready, the UI will be accessible at `http://localhost:5173`.
+Run from the **project root**:
+
+```bash
+cd audio-intel-ui
+npm install
+cd ..
+```
 
 ---
 
-### 2️⃣ Step 2: Launch the Desktop App (C#)
+## Run
 
-#### 🍎 For Mac/Linux (Using VS Code):
-1.  Open the root folder in **VS Code**.
-2.  Install the **C# Dev Kit** extension.
-3.  Open the **Terminal** in VS Code and run:
-    ```bash
-    dotnet run --project Backend/AudioIntel.csproj
-    ```
-    *Note: If you are on an Intel Mac and encounter issues, try `dotnet run --project Backend/AudioIntel.csproj --arch x64`.*
+Make sure **Docker Desktop is open and running**, then from the **project root**:
 
-#### 🪟 For Windows:
-**Option A: Using Visual Studio 2022 (Recommended)**
-1. Open `AudioIntel.sln`.
-2. Set Solution Platform to **x64**.
-3. Press **F5**.
+```bash
+npm run dev:ml
+```
 
-**Option B: Using VS Code**
-1. Open the folder in VS Code.
-2. Open the Terminal and run:
-   ```bash
-   dotnet run --project Backend/AudioIntel.csproj --arch x64  
-   ```
+This starts the backend + ML service in Docker and opens the desktop app.
+
+> First run downloads ~4 GB of ML models and compiles Rust (~2 min). Subsequent runs are fast.
 
 ---
 
-## 🔐 Access Credentials
+## Default credentials
 
-The system automatically seeds the database with the following test users on its first run:
-
-| Role        | Username  | Password |
-| ----------- | --------- | -------- |
-| **Admin** | `admin`   | `Aa!12345`   |
-| **Analyst** | `analyst` | `1234`   |
-
----
-
-## 📁 Project Structure
-
-```text
-AudioIntel/
-├── AudioIntel/             # C# Backend (Avalonia UI)
-│   ├── Data/               # Database management (SQLite)
-│   ├── Models/             # Data models
-│   └── MainWindow.axaml    # Desktop Window & WebView
-├── audio-intel-ui/         # React Frontend
-│   ├── src/                # UI Components & Logic
-│   └── docker-compose.yml  # Docker configuration
-└── README.md               # You are here!
+| Role    | Username   | Password  | Notes                              |
+|---------|------------|-----------|------------------------------------|
+| Admin   | `admin`    | `Aa!12345`| Full access                        |
+| Analyst | `analyst`  | `1234`    | Must change password on first login|

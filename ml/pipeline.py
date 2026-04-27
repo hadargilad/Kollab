@@ -5,7 +5,7 @@ Given an audio file, this module:
   1. Transcribes the audio using Whisper
   2. Separates speakers using pyannote diarization
   3. Aligns transcript segments with speaker labels
-  4. Extracts voice embeddings using ECAPA-TDNN (SpeechBrain) with sliding windows
+  4. Extracts voice embeddings using ECAPA-TDNN (SpeechBrain/spkrec-ecapa-voxceleb) with sliding windows
   5. Cross-matches each speaker against the known-voices database
   6. Returns structured JSON with transcript + speaker identities
 
@@ -19,6 +19,7 @@ Improvements over v1:
 import os
 import json
 import pickle
+import subprocess
 import tempfile
 import uuid
 import numpy as np
@@ -28,7 +29,18 @@ import torchaudio
 import torchaudio.functional as F
 import noisereduce as nr
 
-from transformers import AutoFeatureExtractor, WavLMForXVector
+# SpeechBrain ≥1.0 uses torch.amp.custom_fwd which was added in PyTorch 2.4.
+# Patch it as a no-op so it works with torch 2.3 (CPU inference only — AMP is irrelevant).
+import torch as _torch
+if not hasattr(_torch.amp, 'custom_fwd'):
+    def _noop_custom_fwd(fwd=None, **_kw):
+        return fwd if fwd is not None else (lambda f: f)
+    def _noop_custom_bwd(bwd):
+        return bwd
+    _torch.amp.custom_fwd = _noop_custom_fwd
+    _torch.amp.custom_bwd = _noop_custom_bwd
+
+from speechbrain.inference.speaker import EncoderClassifier
 from pyannote.audio import Pipeline as DiarizationPipeline
 from pathlib import Path
 from dotenv import load_dotenv
@@ -39,18 +51,18 @@ load_dotenv()
 VOICES_DB_PATH = Path(__file__).parent / "voices_db" / "embeddings.pkl"
 VOICES_DB_PATH.parent.mkdir(exist_ok=True)
 
-HF_TOKEN = os.getenv("HF_TOKEN", "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")
+HF_TOKEN = os.getenv("HF_TOKEN") or "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"
 
 # ─── Tuning constants ─────────────────────────────────────────────────────────
-MIN_SEGMENT_DURATION = 2.0   # minimum segment length to use (seconds)
+MIN_SEGMENT_DURATION = 0.2   # minimum segment length — lowered to handle short utterances (one word ~0.3s)
 TOP_N_SEGMENTS       = 5     # [3] use only the N longest segments per speaker
 WINDOW_SIZE          = 5.0   # [2] sliding window size (seconds)
 WINDOW_HOP           = 2.5   # [2] sliding window hop — 50% overlap
-MATCH_THRESHOLD      = 0.76  # raw cosine similarity threshold (single-speaker DB fallback)
-NORMALIZED_THRESHOLD = 1.0   # [4] z-score threshold when ≥2 speakers in DB
-MIN_SCORE_GAP        = 0.10  # minimum gap between best and second-best score (prevents weak matches)
-LEARN_MIN_GAP        = 0.15  # minimum gap required to add a matched embedding to the DB (learning)
-LEARN_MIN_Z          = 1.20  # minimum z-score required to learn from a match
+MATCH_THRESHOLD      = 0.83  # raw cosine similarity threshold (single-speaker DB fallback)
+NORMALIZED_THRESHOLD = 1.2   # [4] z-score threshold when ≥2 speakers in DB
+MIN_SCORE_GAP        = 0.18  # minimum gap between best and second-best score (prevents ambiguous matches)
+LEARN_MIN_GAP        = 0.22  # minimum gap required to add a matched embedding to the DB (learning)
+LEARN_MIN_Z          = 2.0   # minimum z-score required to learn from a match — very conservative to avoid DB pollution
 MERGE_THRESHOLD      = 0.95  # [5] clusters with cosine similarity above this are the same person
 
 # ─── Load models once at startup ─────────────────────────────────────────────
@@ -73,26 +85,20 @@ try:
             "min_duration_off": 0.0,
         },
         "clustering": {
-            "threshold":        0.60,   # balanced — lower than default to catch more speaker changes
-            "min_cluster_size": 15,
+            "threshold":        0.45,   # lower = harder to merge → better separation of similar/sibling voices
+            "min_cluster_size": 1,      # allow single-segment speakers (one-word utterances in short recordings)
         },
     })
     print("✅ Diarization hyperparameters tuned.")
 except Exception as e:
     print(f"⚠️  Could not tune diarization params: {e}")
 
-# [1] WavLM — Microsoft's speaker verification model, more discriminative than ECAPA-TDNN
-print("⏳ Loading WavLM speaker embedding model (microsoft/wavlm-base-plus-sv)...")
-_wavlm_extractor = AutoFeatureExtractor.from_pretrained(
-    "microsoft/wavlm-base-plus-sv",
-    cache_dir=str(Path(__file__).parent / "pretrained_models" / "wavlm")
+print("⏳ Loading ECAPA-TDNN speaker embedding model (speechbrain/spkrec-ecapa-voxceleb)...")
+embedding_model = EncoderClassifier.from_hparams(
+    source="speechbrain/spkrec-ecapa-voxceleb",
+    savedir=str(Path(__file__).parent / "pretrained_models" / "ecapa-tdnn"),
+    run_opts={"device": "cpu"},
 )
-embedding_model = WavLMForXVector.from_pretrained(
-    "microsoft/wavlm-base-plus-sv",
-    cache_dir=str(Path(__file__).parent / "pretrained_models" / "wavlm"),
-    use_safetensors=True
-)
-embedding_model.eval()
 
 print("✅ All models loaded.")
 
@@ -101,7 +107,24 @@ print("✅ All models loaded.")
 
 def load_audio_16k(audio_path: str) -> tuple[torch.Tensor, int]:
     """Load any audio file, resample to 16kHz mono, apply loudness normalization + noise reduction."""
-    waveform, sample_rate = torchaudio.load(audio_path)
+    # soundfile backend doesn't support m4a/mp3/aac — convert via ffmpeg first
+    tmp_wav = None
+    if not audio_path.lower().endswith('.wav'):
+        tmp_wav = tempfile.NamedTemporaryFile(delete=False, suffix='.wav').name
+        subprocess.run(
+            ['ffmpeg', '-y', '-i', audio_path, tmp_wav],
+            check=True, capture_output=True
+        )
+        audio_path = tmp_wav
+
+    try:
+        waveform, sample_rate = torchaudio.load(audio_path)
+    finally:
+        if tmp_wav:
+            try:
+                os.unlink(tmp_wav)
+            except Exception:
+                pass
 
     if waveform.shape[0] > 1:
         waveform = waveform.mean(dim=0, keepdim=True)
@@ -149,6 +172,10 @@ def extract_speaker_audio(waveform_np: np.ndarray, sr: int, windows: list[tuple]
     # [3] Sort by duration descending, take top N
     valid = sorted(valid, key=lambda x: x[1] - x[0], reverse=True)[:TOP_N_SEGMENTS]
 
+    # Fallback: if all segments are below MIN_SEGMENT_DURATION, concatenate everything — better
+    # to get a noisy embedding than to drop the speaker entirely (critical for short recordings)
+    if not valid:
+        valid = sorted(windows, key=lambda x: x[1] - x[0], reverse=True)[:TOP_N_SEGMENTS]
     if not valid:
         return None
 
@@ -165,23 +192,21 @@ def extract_speaker_audio(waveform_np: np.ndarray, sr: int, windows: list[tuple]
 
 def get_window_embeddings(audio_np: np.ndarray, sr: int) -> list[np.ndarray]:
     """
-    [1][2] Extract one embedding per sliding window using WavLM.
+    [1][2] Extract one embedding per sliding window using ECAPA-TDNN.
     Returns a list of individual embeddings (one per window).
     """
     window_samples = int(WINDOW_SIZE * sr)
     hop_samples    = int(WINDOW_HOP * sr)
-    min_samples    = int(sr)  # at least 1 second
+    min_samples    = int(0.1 * sr)  # at least 0.1 s — allows single-word utterances to get embedded
 
     if len(audio_np) < min_samples:
         return []
 
     def _embed(chunk: np.ndarray) -> np.ndarray:
-        inputs = _wavlm_extractor(
-            chunk, sampling_rate=16000, return_tensors="pt", padding=True
-        )
+        wav = torch.tensor(chunk).unsqueeze(0).float()  # (1, time)
         with torch.no_grad():
-            emb = embedding_model(**inputs).embeddings
-            emb = torch.nn.functional.normalize(emb, dim=-1)
+            emb = embedding_model.encode_batch(wav)      # (1, 192)
+            emb = torch.nn.functional.normalize(emb.squeeze(0), dim=-1)
         return emb.squeeze().numpy()
 
     embeddings = []
@@ -197,7 +222,7 @@ def get_window_embeddings(audio_np: np.ndarray, sr: int) -> list[np.ndarray]:
 
 def get_embedding(audio_np: np.ndarray, sr: int) -> np.ndarray | None:
     """
-    [1][2] Extract a single averaged embedding for matching.
+    [1][2] Extract a single averaged ECAPA-TDNN embedding for matching.
     Averages all window embeddings into one stable representation.
     """
     embeddings = get_window_embeddings(audio_np, sr)
@@ -208,7 +233,7 @@ def get_embedding(audio_np: np.ndarray, sr: int) -> np.ndarray | None:
 
 # ─── Voice Embeddings Database ────────────────────────────────────────────────
 
-EMBEDDING_DIM = 512  # WavLM produces 512-dim embeddings
+EMBEDDING_DIM = 192  # ECAPA-TDNN produces 192-dim embeddings
 
 def load_voices_db() -> dict:
     """Load the known-voices database. Returns {name: list_of_embeddings}.
@@ -355,6 +380,15 @@ def match_or_register_speaker(embedding: np.ndarray) -> tuple[str, float, str]:
     return "Unknown", 0.0, new_key
 
 
+# ─── Progress tracking (read by GET /status) ──────────────────────────────────
+
+_progress: dict = {"pct": 0, "label": "idle"}
+
+def _set_progress(pct: int, label: str):
+    _progress["pct"] = pct
+    _progress["label"] = label
+
+
 # ─── Main Pipeline ────────────────────────────────────────────────────────────
 
 def process_audio(audio_path: str) -> dict:
@@ -368,15 +402,18 @@ def process_audio(audio_path: str) -> dict:
     print(f"\n🎙️  Processing: {audio_path}")
 
     # ── Step 0: Noise reduction + normalization ────────────────────────────────
+    _set_progress(5, "Applying noise reduction…")
     print("🔇 Step 0: Applying noise reduction & loudness normalization...")
     clean_path = save_clean_temp(audio_path)
 
     # ── Step 1: Transcription ──────────────────────────────────────────────────
+    _set_progress(15, "Transcribing with Whisper…")
     print("📝 Step 1: Transcribing with Whisper...")
     transcript = whisper_model.transcribe(clean_path, fp16=False)
     whisper_segments = transcript["segments"]
 
     # ── Step 2: Diarization ────────────────────────────────────────────────────
+    _set_progress(50, "Running speaker diarization…")
     print("🗣️  Step 2: Running speaker diarization...")
     waveform, sr = load_audio_16k(audio_path)
     waveform_np = waveform.squeeze().numpy()
@@ -396,6 +433,7 @@ def process_audio(audio_path: str) -> dict:
     print(f"  Speakers found by pyannote: {final_labels}")
 
     # ── Step 3: Align transcript with speakers ─────────────────────────────────
+    _set_progress(72, "Aligning transcript with speakers…")
     print("🔗 Step 3: Aligning transcript with speakers...")
 
     def get_speaker_at(time: float) -> str:
@@ -417,6 +455,7 @@ def process_audio(audio_path: str) -> dict:
         })
 
     # ── Step 4: Extract voice embeddings per (merged) speaker ─────────────────
+    _set_progress(82, "Extracting voice fingerprints…")
     print("🔬 Step 4: Extracting voice fingerprints (ECAPA-TDNN + sliding windows)...")
     speaker_embeddings: dict[str, np.ndarray] = {}
 
@@ -425,7 +464,7 @@ def process_audio(audio_path: str) -> dict:
 
         combined = extract_speaker_audio(waveform_np, sr, windows)
         if combined is None:
-            print(f"  ⚠️  {label}: no segments ≥{MIN_SEGMENT_DURATION}s, skipping")
+            print(f"  ⚠️  {label}: no usable audio found, skipping")
             continue
 
         try:
@@ -439,6 +478,7 @@ def process_audio(audio_path: str) -> dict:
             print(f"  ⚠️  {label}: embedding failed — {e}")
 
     # ── Step 5: Cross-match against known speakers (and save unknowns) ─────────
+    _set_progress(93, "Matching speaker identities…")
     print("🔍 Step 5: Cross-matching with score normalization...")
     results = []
     for label in speaker_segments:
@@ -469,6 +509,7 @@ def process_audio(audio_path: str) -> dict:
         "speakers":     results
     }
 
+    _set_progress(100, "Done")
     print(f"✅ Done. Detected {len(results)} speaker(s).")
     return output
 

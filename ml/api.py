@@ -38,6 +38,13 @@ def health_check():
     return {"status": "AudioIntel ML service is running", "version": "2.0.0"}
 
 
+@app.get("/status")
+def ml_status():
+    """Returns current processing step so the backend can relay it to the UI."""
+    import pipeline as p
+    return {"pct": p._progress["pct"], "label": p._progress["label"]}
+
+
 # ─── Audio Analysis ───────────────────────────────────────────────────────────
 
 @app.post("/analyze")
@@ -165,6 +172,13 @@ def delete_speaker(name: str):
     del db[name]
     save_voices_db(db)
     return {"status": "ok", "message": f"Speaker '{name}' removed."}
+
+
+@app.delete("/speakers")
+def clear_all_speakers():
+    """Wipe the entire voice database. Use when embeddings are polluted."""
+    save_voices_db({})
+    return {"status": "ok", "message": "Voice database cleared."}
 
 
 if __name__ == "__main__":

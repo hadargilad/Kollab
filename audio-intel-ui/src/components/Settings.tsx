@@ -1,5 +1,11 @@
-import { useState } from 'react';
-import { Settings as SettingsIcon, Globe, Cpu, Sliders, Bell, Shield, Save } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Globe, Cpu, Sliders, Bell, Shield, Save, UserCheck, Upload, Trash2, Plus, Loader2 } from 'lucide-react';
+import { ml } from '../lib/api';
+
+interface KnownSpeaker {
+  name: string;
+  sample_count: number;
+}
 
 export default function Settings() {
   const [settings, setSettings] = useState({
@@ -11,6 +17,60 @@ export default function Settings() {
     notifications: true,
     encryption: true,
   });
+
+  const [knownSpeakers, setKnownSpeakers] = useState<KnownSpeaker[]>([]);
+  const [speakersLoading, setSpeakersLoading] = useState(true);
+  const [addName, setAddName] = useState('');
+  const [addFile, setAddFile] = useState<File | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [addError, setAddError] = useState('');
+  const [addSuccess, setAddSuccess] = useState('');
+  const [deletingNames, setDeletingNames] = useState<Set<string>>(new Set());
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const loadSpeakers = async () => {
+    try {
+      const res = await ml.listSpeakers();
+      setKnownSpeakers(res.speakers);
+    } catch {
+      // ignore
+    } finally {
+      setSpeakersLoading(false);
+    }
+  };
+
+  useEffect(() => { loadSpeakers(); }, []);
+
+  const handleAddSpeaker = async () => {
+    if (!addName.trim() || !addFile) return;
+    setAdding(true);
+    setAddError('');
+    setAddSuccess('');
+    try {
+      await ml.addSpeaker(addName.trim(), addFile);
+      setAddSuccess(`"${addName.trim()}" registered successfully.`);
+      setAddName('');
+      setAddFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      await loadSpeakers();
+    } catch (e: any) {
+      setAddError(e.message ?? 'Failed to register speaker.');
+    } finally {
+      setAdding(false);
+    }
+  };
+
+  const handleDeleteSpeaker = async (name: string) => {
+    setDeletingNames(prev => new Set(prev).add(name));
+    try {
+      await ml.deleteSpeaker(name);
+      await loadSpeakers();
+    } catch {
+      // ignore
+    } finally {
+      setDeletingNames(prev => { const s = new Set(prev); s.delete(name); return s; });
+    }
+  };
 
   const handleSave = () => {
     // Mock save
@@ -219,6 +279,86 @@ export default function Settings() {
               </p>
             </div>
           </div>
+        </div>
+
+        {/* Known Speakers */}
+        <div className="bg-slate-900 border border-slate-800 rounded-lg p-6">
+          <div className="flex items-center gap-3 mb-2">
+            <UserCheck className="w-6 h-6 text-emerald-500" />
+            <h2 className="text-white text-xl">Known Speakers</h2>
+          </div>
+          <p className="text-slate-400 text-sm mb-6">
+            Register voice profiles so the system can identify specific people across recordings.
+            Use a clean 10–30 second recording with only that person speaking.
+          </p>
+
+          {/* Add form */}
+          <div className="flex flex-col sm:flex-row gap-3 mb-6">
+            <input
+              type="text"
+              placeholder="Full name (e.g. Ofir)"
+              value={addName}
+              onChange={e => setAddName(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleAddSpeaker()}
+              className="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            />
+            <label className="flex items-center gap-2 px-4 py-2.5 bg-slate-800 border border-slate-700 hover:border-slate-500 rounded-lg text-slate-300 cursor-pointer transition-colors">
+              <Upload className="w-4 h-4" />
+              {addFile ? addFile.name : 'Choose audio file'}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="audio/*"
+                className="hidden"
+                onChange={e => setAddFile(e.target.files?.[0] ?? null)}
+              />
+            </label>
+            <button
+              onClick={handleAddSpeaker}
+              disabled={adding || !addName.trim() || !addFile}
+              className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
+            >
+              {adding ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+              Register
+            </button>
+          </div>
+
+          {addSuccess && (
+            <div className="mb-4 px-4 py-2 bg-emerald-600/20 border border-emerald-600/40 rounded-lg text-emerald-300 text-sm">{addSuccess}</div>
+          )}
+          {addError && (
+            <div className="mb-4 px-4 py-2 bg-red-600/20 border border-red-600/40 rounded-lg text-red-300 text-sm">{addError}</div>
+          )}
+
+          {/* Speaker list */}
+          {speakersLoading ? (
+            <div className="flex items-center gap-2 text-slate-400 text-sm"><Loader2 className="w-4 h-4 animate-spin" /> Loading voice profiles…</div>
+          ) : knownSpeakers.length === 0 ? (
+            <div className="text-slate-500 text-sm py-4 text-center border border-dashed border-slate-700 rounded-lg">
+              No voice profiles registered yet. Add one above.
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {knownSpeakers.map(spk => (
+                <div key={spk.name} className="flex items-center justify-between px-4 py-3 bg-slate-800 rounded-lg">
+                  <div>
+                    <span className={`font-medium ${spk.name.startsWith('speaker_') ? 'text-slate-400 font-mono text-sm' : 'text-white'}`}>
+                      {spk.name}
+                    </span>
+                    <span className="ml-3 text-slate-500 text-xs">{spk.sample_count} sample{spk.sample_count !== 1 ? 's' : ''}</span>
+                  </div>
+                  <button
+                    onClick={() => handleDeleteSpeaker(spk.name)}
+                    disabled={deletingNames.has(spk.name)}
+                    className="p-1.5 text-slate-500 hover:text-red-400 disabled:opacity-40 transition-colors"
+                    title="Remove voice profile"
+                  >
+                    {deletingNames.has(spk.name) ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Save Button */}
