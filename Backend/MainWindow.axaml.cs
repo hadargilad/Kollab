@@ -218,6 +218,17 @@ namespace AudioIntel
                             SendToReact(new { type = "SELF_UPDATE_ERROR", message = result.message });
                         }
                     }
+
+                    if (type == "GET_ADMIN_STATS")
+                    {
+                        var stats = _dbManager.GetAdminDashboardStats();
+
+                        SendToReact(new
+                        {
+                            type = "ADMIN_STATS_DATA",
+                            payload = stats
+                        });
+                    }
                 }
             }
             catch (Exception ex)

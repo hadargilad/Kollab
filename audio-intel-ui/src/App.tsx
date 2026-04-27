@@ -61,6 +61,10 @@ export default function App() {
         handleUpdate(message.payload);
         window.dispatchEvent(new CustomEvent('profileUpdated'));
       }
+
+      if (message.type === 'ADMIN_STATS_DATA') {
+        window.dispatchEvent(new CustomEvent('adminStatsReceived', { detail: message }));
+      }
     };
   }, [user]); 
 
