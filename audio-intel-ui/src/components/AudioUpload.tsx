@@ -1,19 +1,27 @@
 import { useState } from 'react';
-import { Upload, FileAudio, X, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
+import { Upload, FileAudio, X, CheckCircle, AlertCircle, Loader2, ArrowRight } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { audios } from '../lib/api';
 
 interface UploadedFile {
   id: string;
+  audioId?: number;
   name: string;
   filename: string;
   description: string;
   size: number;
-  duration?: string;
   source?: string;
   status: 'uploading' | 'processing' | 'completed' | 'error';
   progress: number;
+  progressLabel?: string;
+  errorMessage?: string;
 }
 
-export default function AudioUpload() {
+interface Props {
+  userId: number;
+}
+
+export default function AudioUpload({ userId }: Props) {
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [dragActive, setDragActive] = useState(false);
   const [showFileDetailsModal, setShowFileDetailsModal] = useState(false);
@@ -68,9 +76,10 @@ export default function AudioUpload() {
       return;
     }
 
-    const newFiles: UploadedFile[] = pendingFiles.map((file, index) => ({
+    const filesToUpload = [...pendingFiles];
+    const newFiles: UploadedFile[] = filesToUpload.map((file, index) => ({
       id: `file-${Date.now()}-${index}`,
-      name: fileDetails.name + (pendingFiles.length > 1 ? ` (${index + 1})` : ''),
+      name: fileDetails.name + (filesToUpload.length > 1 ? ` (${index + 1})` : ''),
       filename: file.name,
       description: fileDetails.description,
       source: fileDetails.source,
@@ -83,33 +92,60 @@ export default function AudioUpload() {
     setShowFileDetailsModal(false);
     setPendingFiles([]);
 
-    // Simulate upload and processing
-    newFiles.forEach(file => {
-      simulateUpload(file.id);
+    filesToUpload.forEach((file, index) => {
+      doUpload(newFiles[index].id, file, newFiles[index].name, fileDetails.description);
     });
   };
 
-  const simulateUpload = (fileId: string) => {
-    let progress = 0;
-    const interval = setInterval(() => {
-      progress += Math.random() * 30;
-      if (progress >= 100) {
-        progress = 100;
-        clearInterval(interval);
-        setFiles(prev => prev.map(f => 
-          f.id === fileId ? { ...f, status: 'processing', progress: 100 } : f
+  const doUpload = async (fileId: string, file: File, name: string, description: string) => {
+    // Step 1: send file — backend saves it and returns immediately
+    let audioId: number;
+    try {
+      const result = await audios.upload(file, name, description, userId);
+      audioId = result.id;
+      setFiles(prev => prev.map(f =>
+        f.id === fileId ? { ...f, audioId, status: 'processing', progress: 20 } : f
+      ));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Upload failed';
+      setFiles(prev => prev.map(f =>
+        f.id === fileId ? { ...f, status: 'error', progress: 0, errorMessage: msg } : f
+      ));
+      return;
+    }
+
+    // Step 2: poll until ML finishes
+    try {
+      while (true) {
+        await new Promise(r => setTimeout(r, 3000));
+
+        const [audio, prog] = await Promise.all([
+          audios.get(audioId),
+          audios.getProgress(audioId).catch(() => ({ pct: 0, label: '' })),
+        ]);
+
+        setFiles(prev => prev.map(f =>
+          f.id === fileId
+            ? { ...f, progress: prog.pct > 0 ? Math.max(20, prog.pct) : f.progress, progressLabel: prog.label || f.progressLabel }
+            : f
         ));
-        setTimeout(() => {
-          setFiles(prev => prev.map(f => 
-            f.id === fileId ? { ...f, status: 'completed' } : f
+
+        if (audio.status === 'processed') {
+          setFiles(prev => prev.map(f =>
+            f.id === fileId ? { ...f, status: 'completed', progress: 100, progressLabel: undefined } : f
           ));
-        }, 2000);
-      } else {
-        setFiles(prev => prev.map(f => 
-          f.id === fileId ? { ...f, progress: Math.min(progress, 100) } : f
-        ));
+          return;
+        }
+        if (audio.status === 'failed') {
+          setFiles(prev => prev.map(f =>
+            f.id === fileId ? { ...f, status: 'error', progress: 0, progressLabel: undefined, errorMessage: 'ML processing failed' } : f
+          ));
+          return;
+        }
       }
-    }, 500);
+    } catch {
+      // ignore polling errors
+    }
   };
 
   const removeFile = (fileId: string) => {
@@ -260,7 +296,39 @@ export default function AudioUpload() {
       {/* File List */}
       {files.length > 0 && (
         <div className="bg-slate-900 border border-slate-800 rounded-lg p-6">
-          <h2 className="text-white mb-4">Uploads ({files.length})</h2>
+          {(() => {
+            const completed = files.filter(f => f.status === 'completed').length;
+            const failed    = files.filter(f => f.status === 'error').length;
+            const active    = files.filter(f => f.status === 'uploading' || f.status === 'processing').length;
+            const total     = files.length;
+            return (
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-white">Uploads ({total})</h2>
+                {total > 0 && (
+                  <div className="flex items-center gap-3 text-sm">
+                    {active > 0 && (
+                      <span className="flex items-center gap-1.5 text-yellow-400">
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        {active} in progress
+                      </span>
+                    )}
+                    {completed > 0 && (
+                      <span className="flex items-center gap-1.5 text-green-400">
+                        <CheckCircle className="w-3.5 h-3.5" />
+                        {completed}/{total} done
+                      </span>
+                    )}
+                    {failed > 0 && (
+                      <span className="flex items-center gap-1.5 text-red-400">
+                        <AlertCircle className="w-3.5 h-3.5" />
+                        {failed} failed
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
           <div className="space-y-3">
             {files.map((file) => (
               <div
@@ -291,29 +359,42 @@ export default function AudioUpload() {
                     </div>
 
                     {/* Status */}
-                    <div className="flex items-center gap-2 mb-2">
+                    <div className="flex items-center gap-3 mb-2">
                       {file.status === 'uploading' && (
                         <>
                           <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
-                          <span className="text-blue-500 text-sm">Uploading...</span>
+                          <span className="text-blue-500 text-sm">Uploading…</span>
                         </>
                       )}
                       {file.status === 'processing' && (
                         <>
                           <Loader2 className="w-4 h-4 text-yellow-500 animate-spin" />
-                          <span className="text-yellow-500 text-sm">Processing audio...</span>
+                          <span className="text-yellow-500 text-sm">
+                            {file.progressLabel || 'Analysing…'}
+                          </span>
+                          {file.progress > 0 && (
+                            <span className="text-yellow-600 text-xs ml-1">{file.progress}%</span>
+                          )}
                         </>
                       )}
                       {file.status === 'completed' && (
                         <>
                           <CheckCircle className="w-4 h-4 text-green-500" />
                           <span className="text-green-500 text-sm">Analysis complete</span>
+                          {file.audioId && (
+                            <Link
+                              to={`/analysis/${file.audioId}`}
+                              className="ml-auto flex items-center gap-1.5 px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded-lg transition-colors"
+                            >
+                              View Analysis <ArrowRight className="w-3 h-3" />
+                            </Link>
+                          )}
                         </>
                       )}
                       {file.status === 'error' && (
                         <>
                           <AlertCircle className="w-4 h-4 text-red-500" />
-                          <span className="text-red-500 text-sm">Processing failed</span>
+                          <span className="text-red-500 text-sm">{file.errorMessage ?? 'Processing failed'}</span>
                         </>
                       )}
                     </div>

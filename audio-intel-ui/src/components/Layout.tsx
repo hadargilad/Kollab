@@ -1,5 +1,6 @@
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
-import { Shield, LayoutDashboard, Upload, Network, Search, Settings, LogOut, User, UserSearch, Users, UserCircle } from 'lucide-react';
+import { LayoutDashboard, Upload, Network, Search, Settings, LogOut, User, UserSearch, Users, UserCircle, FileAudio } from 'lucide-react';
+import KolLabLogo from './KolLabLogo';
 import { useState } from 'react';
 
 interface LayoutProps {
@@ -21,6 +22,7 @@ export default function Layout({ user, onLogout }: LayoutProps) {
     { path: '/profile', icon: UserCircle, label: 'My Profile' },
     { path: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
     { path: '/upload', icon: Upload, label: 'Upload' },
+    { path: '/all-uploads', icon: FileAudio, label: 'All Uploads' },
     { path: '/network', icon: Network, label: 'Network' },
     { path: '/identity', icon: Search, label: 'Identity' },
     { path: '/profile-search', icon: UserSearch, label: 'Profile Search' },
@@ -38,12 +40,12 @@ export default function Layout({ user, onLogout }: LayoutProps) {
       <aside className="w-64 bg-slate-900 border-r border-slate-800 flex flex-col">
         <div className="p-6 border-b border-slate-800">
           <div className="flex items-center gap-3">
-            <div className="bg-blue-600 p-2 rounded-lg">
-              <Shield className="w-6 h-6 text-white" />
-            </div>
+            <KolLabLogo size={42} />
             <div>
-              <h1 className="text-white text-lg font-bold">Audio-Intel</h1>
-              <p className="text-slate-400 text-sm">Intelligence Platform</p>
+              <h1 className="text-white text-xl font-bold tracking-wide">
+                Kol<span className="text-blue-400">L</span>ab
+              </h1>
+              <p className="text-slate-400 text-xs">Intelligence Platform</p>
             </div>
           </div>
         </div>

@@ -1,13 +1,47 @@
 services:
+
   frontend:
-    build: 
+    build:
       context: ./audio-intel-ui
       dockerfile: Dockerfile
     ports:
       - "5173:5173"
-
     volumes:
       - ./audio-intel-ui:/app
       - /app/node_modules
     environment:
       - NODE_ENV=development
+
+  backend:
+    build:
+      context: ./Backend
+      dockerfile: Dockerfile
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./Backend:/app
+      - audio_intel_data:/data
+    environment:
+      - AUDIO_INTEL_DB=/data/AudioIntelDB.db
+      - AUDIO_STORAGE_DIR=/data/uploads
+      - ML_API_URL=http://ml:8000
+
+  ml:
+    build:
+      context: ./ml
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./ml:/app
+      - ml_models:/app/pretrained_models
+      - ml_voices:/app/voices_db
+    environment:
+      - HF_TOKEN=${HF_TOKEN:-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}
+    profiles:
+      - ml
+
+volumes:
+  audio_intel_data:
+  ml_models:
+  ml_voices:

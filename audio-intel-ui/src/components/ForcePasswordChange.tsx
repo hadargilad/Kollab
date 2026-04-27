@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Lock, ShieldCheck, AlertCircle } from 'lucide-react';
+import { auth } from '../lib/api';
 
 interface Props {
   user: { username: string };
@@ -10,40 +11,36 @@ export default function ForcePasswordChange({ user, onSuccess }: Props) {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
   const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
     if (!passwordRegex.test(newPassword)) {
-      setError("Password does not meet security requirements.");
+      setError('Password does not meet security requirements.');
       return;
     }
-
     if (newPassword !== confirmPassword) {
-      setError("Passwords do not match.");
+      setError('Passwords do not match.');
       return;
     }
 
-    // Send to C# to update the password and flip the ForceChange flag
-    const request = {
-      type: 'UPDATE_USER_PASSWORD',
-      payload: {
-        username: user.username,
-        newPassword: newPassword
-      }
-    };
-    document.title = "JSON:" + JSON.stringify(request);
-
-    // We'll listen for a success message from C# to call onSuccess()
-    // For now, let's assume success for the UI flow
-    onSuccess();
+    setIsLoading(true);
+    try {
+      await auth.changePassword(user.username, newPassword);
+      onSuccess();
+    } catch (err: any) {
+      setError(err.message ?? 'Failed to update password. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
-    <div className="fixed inset-0 z-[100] bg-slate-950 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-100 bg-slate-950 flex items-center justify-center p-4">
       <div className="bg-slate-900 border border-slate-800 p-8 rounded-2xl max-w-md w-full shadow-2xl">
         <div className="flex flex-col items-center text-center mb-8">
           <div className="w-16 h-16 bg-blue-600/10 rounded-full flex items-center justify-center mb-4">
@@ -89,17 +86,18 @@ export default function ForcePasswordChange({ user, onSuccess }: Props) {
           )}
 
           <ul className="text-[10px] text-slate-500 space-y-1 px-1">
-            <li className={newPassword.length >= 8 ? "text-green-500" : ""}>• At least 8 characters</li>
-            <li className={/[A-Z]/.test(newPassword) ? "text-green-500" : ""}>• Uppercase & lowercase letters</li>
-            <li className={/\d/.test(newPassword) ? "text-green-500" : ""}>• At least one number</li>
-            <li className={/[@$!%*?&]/.test(newPassword) ? "text-green-500" : ""}>• Special character (@$!%*?&)</li>
+            <li className={newPassword.length >= 8 ? 'text-green-500' : ''}>• At least 8 characters</li>
+            <li className={/[A-Z]/.test(newPassword) ? 'text-green-500' : ''}>• Uppercase &amp; lowercase letters</li>
+            <li className={/\d/.test(newPassword) ? 'text-green-500' : ''}>• At least one number</li>
+            <li className={/[@$!%*?&]/.test(newPassword) ? 'text-green-500' : ''}>• Special character (@$!%*?&amp;)</li>
           </ul>
 
           <button
             type="submit"
-            className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-xl mt-4 transition-all active:scale-[0.98] shadow-lg shadow-blue-600/20"
+            disabled={isLoading}
+            className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-bold py-3 rounded-xl mt-4 transition-all active:scale-[0.98] shadow-lg shadow-blue-600/20"
           >
-            Update Password & Continue
+            {isLoading ? 'Updating...' : 'Update Password & Continue'}
           </button>
         </form>
       </div>

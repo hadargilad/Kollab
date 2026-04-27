@@ -1,0 +1,15 @@
+__pycache__
+*.pyc
+*.pyo
+.env
+voices_db
+pretrained_models
+# C# project files — not needed in the Python Docker image
+*.cs
+*.axaml
+*.axaml.cs
+*.csproj
+*.sln
+Data/
+Models/
+AudioIntelDesktop/
