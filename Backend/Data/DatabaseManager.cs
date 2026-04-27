@@ -358,6 +358,39 @@ namespace AudioIntel.Data
             }
         }
 
+        public SystemStats GetAdminDashboardStats()
+        {
+            var stats = new SystemStats();
+            try
+            {
+                using var connection = new SqliteConnection(connectionString);
+                connection.Open();
+                stats.DbStatus = true;
+
+                //User count
+                var userCmd = new SqliteCommand("SELECT COUNT(*) FROM Users", connection);
+                stats.TotalUsers = Convert.ToInt32(userCmd.ExecuteScalar());
+
+                //File count
+                var fileCmd = new SqliteCommand("SELECT COUNT(*) FROM UploadedFiles", connection);
+                stats.TotalFiles = Convert.ToInt32(fileCmd.ExecuteScalar());
+
+                //Calc storage
+                var fileInfo = new System.IO.FileInfo("AudioIntel.db");
+                stats.StorageUsedBytes = fileInfo.Exists ? fileInfo.Length : 0;
+
+                //Update uptime
+                var uptime = DateTime.Now - System.Diagnostics.Process.GetCurrentProcess().StartTime;
+                stats.Uptime = $"{(int)uptime.TotalDays}d {uptime.Hours}h {uptime.Minutes}m";
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Dashboard Stats Error: {ex.Message}");
+                stats.DbStatus = false;
+            }
+            return stats;
+        }
+
 
     }
 }
