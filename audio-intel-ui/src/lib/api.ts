@@ -165,13 +165,38 @@ export const audios = {
 
 // ─── Speakers ─────────────────────────────────────────────────────────────────
 
+export interface UpdateSpeakerResult {
+  success: boolean;
+  merged: boolean;
+  mergedIntoId?: number;
+  mergedIntoName?: string;
+}
+
+export interface SpeakerAudioRecord {
+  id: number;
+  name: string;
+  description: string;
+  duration: number;
+  fileSize: number;
+  status: 'processing' | 'processed' | 'failed';
+  uploadedAt: string;
+  uploadedBy: string;
+  segmentCount: number;
+  speakingTime: number;
+}
+
 export const speakers = {
   list: () => request<SpeakerRecord[]>("GET", "/speakers"),
   get: (id: number) => request<SpeakerRecord>("GET", `/speakers/${id}`),
-  update: (id: number, name: string, riskLevel: string) =>
-    request<{ success: boolean }>("PUT", `/speakers/${id}`, { name, riskLevel }),
-  reassign: (audioId: number, speakerId: number, newName: string) =>
-    request<SpeakerRecord>("POST", `/audios/${audioId}/speakers/${speakerId}/reassign`, { new_name: newName }),
+  audios: (id: number) => request<SpeakerAudioRecord[]>("GET", `/speakers/${id}/audios`),
+  update: (id: number, name: string, riskLevel: string, forceSeparate = false) =>
+    request<UpdateSpeakerResult>("PUT", `/speakers/${id}`, { name, riskLevel, forceSeparate }),
+  remove: (id: number) => request<{ success: boolean }>("DELETE", `/speakers/${id}`),
+  reassign: (audioId: number, speakerId: number, newName: string, forceSeparate = false) =>
+    request<SpeakerRecord>("POST", `/audios/${audioId}/speakers/${speakerId}/reassign`, {
+      new_name: newName,
+      force_separate: forceSeparate,
+    }),
 };
 
 // ─── Alerts ───────────────────────────────────────────────────────────────────

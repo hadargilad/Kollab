@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Upload, FileAudio, X, CheckCircle, AlertCircle, Loader2, ArrowRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { audios } from '../lib/api';
+import { useMlStatus } from '../hooks/useMlStatus';
 
 interface UploadedFile {
   id: string;
@@ -24,6 +25,7 @@ interface Props {
 export default function AudioUpload({ userId }: Props) {
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [dragActive, setDragActive] = useState(false);
+  const { ready: mlReady } = useMlStatus();
   const [showFileDetailsModal, setShowFileDetailsModal] = useState(false);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [fileDetails, setFileDetails] = useState({
@@ -259,13 +261,23 @@ export default function AudioUpload({ userId }: Props) {
 
       {/* Upload Area */}
       <div className="bg-slate-900 border border-slate-800 rounded-lg p-8 mb-8">
+        {!mlReady && (
+          <div className="mb-4 flex items-center gap-3 px-4 py-3 rounded-lg bg-yellow-500/10 border border-yellow-500/30 text-yellow-200 text-sm">
+            <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+            <span>
+              ML models are still loading — uploads will be enabled in a moment.
+            </span>
+          </div>
+        )}
         <div
-          onDragEnter={handleDrag}
-          onDragLeave={handleDrag}
-          onDragOver={handleDrag}
-          onDrop={handleDrop}
+          onDragEnter={mlReady ? handleDrag : undefined}
+          onDragLeave={mlReady ? handleDrag : undefined}
+          onDragOver={mlReady ? handleDrag : undefined}
+          onDrop={mlReady ? handleDrop : undefined}
           className={`border-2 border-dashed rounded-lg p-12 text-center transition-colors ${
-            dragActive
+            !mlReady
+              ? 'border-slate-800 opacity-50 pointer-events-none'
+              : dragActive
               ? 'border-blue-500 bg-blue-500/5'
               : 'border-slate-700 hover:border-slate-600'
           }`}
@@ -276,13 +288,18 @@ export default function AudioUpload({ userId }: Props) {
             </div>
             <h3 className="text-white text-xl mb-2">Drop audio files here</h3>
             <p className="text-slate-400 mb-4">or click to browse</p>
-            <label className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg cursor-pointer transition-colors">
+            <label className={`text-white px-6 py-3 rounded-lg transition-colors ${
+              mlReady
+                ? 'bg-blue-600 hover:bg-blue-700 cursor-pointer'
+                : 'bg-slate-700 cursor-not-allowed'
+            }`}>
               Select Files
               <input
                 type="file"
                 multiple
                 accept="audio/*,.mp3,.wav,.m4a,.ogg"
                 onChange={handleFileInput}
+                disabled={!mlReady}
                 className="hidden"
               />
             </label>

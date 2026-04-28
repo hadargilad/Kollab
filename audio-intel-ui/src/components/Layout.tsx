@@ -1,7 +1,8 @@
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Upload, Network, Search, Settings, LogOut, User, UserSearch, Users, UserCircle, FileAudio } from 'lucide-react';
+import { LayoutDashboard, Upload, Network, Search, Settings, LogOut, User, UserSearch, Users, UserCircle, FileAudio, Loader2, CheckCircle2 } from 'lucide-react';
 import KolLabLogo from './KolLabLogo';
 import { useState } from 'react';
+import { useMlStatus } from '../hooks/useMlStatus';
 
 interface LayoutProps {
   user: { username: string; role: string } | null;
@@ -12,6 +13,7 @@ export default function Layout({ user, onLogout }: LayoutProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const { ready: mlReady } = useMlStatus();
 
   const isActive = (path: string) => {
     return location.pathname === path || location.pathname.startsWith(path);
@@ -119,8 +121,30 @@ export default function Layout({ user, onLogout }: LayoutProps) {
             <div className="text-slate-400 text-sm font-medium">
               Secure Intelligence System | <span className="text-blue-400 font-bold">{user?.role} Access</span>
             </div>
-            
-            <div className="relative">
+
+            <div className="flex items-center gap-3">
+              <div
+                title={mlReady ? 'ML models loaded' : 'ML models still loading — uploads will be available shortly'}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium border ${
+                  mlReady
+                    ? 'bg-green-500/10 border-green-500/30 text-green-300'
+                    : 'bg-yellow-500/10 border-yellow-500/30 text-yellow-300'
+                }`}
+              >
+                {mlReady ? (
+                  <>
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>ML ready</span>
+                  </>
+                ) : (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Loading ML…</span>
+                  </>
+                )}
+              </div>
+
+              <div className="relative">
               <button
                 onClick={() => setShowUserMenu(!showUserMenu)}
                 className="flex items-center gap-3 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 transition-all border border-slate-700 hover:border-slate-500 shadow-sm"
@@ -168,6 +192,7 @@ export default function Layout({ user, onLogout }: LayoutProps) {
                   </div>
                 </>
               )}
+            </div>
             </div>
           </div>
         </header>

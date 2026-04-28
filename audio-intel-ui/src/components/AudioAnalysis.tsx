@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { Play, Pause, Volume2, FileText, Network, Clock, Waves, Loader2, AlertCircle, RefreshCw, UserX } from 'lucide-react';
-import { audios, speakers as speakersApi, type AudioRecord, type SegmentRecord } from '../lib/api';
+import { Play, Pause, Volume2, FileText, Network, Clock, Waves, Loader2, AlertCircle, RefreshCw, UserX, Merge } from 'lucide-react';
+import { audios, speakers as speakersApi, type AudioRecord, type SegmentRecord, type SpeakerRecord } from '../lib/api';
 
 
 interface Speaker {
@@ -25,6 +25,8 @@ export default function AudioAnalysis() {
   const [reassignTarget, setReassignTarget] = useState<Speaker | null>(null);
   const [reassignName, setReassignName] = useState('');
   const [reassigning, setReassigning] = useState(false);
+  const [knownSpeakers, setKnownSpeakers] = useState<SpeakerRecord[]>([]);
+  const [mergeNotice, setMergeNotice] = useState<string | null>(null);
 
   useEffect(() => {
     if (!audioId) return;
@@ -53,6 +55,7 @@ export default function AudioAnalysis() {
     };
 
     fetchAll();
+    speakersApi.list().then(s => { if (!cancelled) setKnownSpeakers(s); }).catch(() => {});
     return () => { cancelled = true; };
   }, [audioId]);
 
@@ -77,15 +80,39 @@ export default function AudioAnalysis() {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const handleReassign = async () => {
+  // Detect a name collision against the known speaker list so we can label the
+  // confirmation button as "Merge" rather than "Save as new person".
+  const reassignTrimmed = reassignName.trim();
+  const reassignMatch = reassignTrimmed
+    ? knownSpeakers.find(
+        s =>
+          s.id !== reassignTarget?.id &&
+          s.name.trim().toLowerCase() === reassignTrimmed.toLowerCase(),
+      )
+    : undefined;
+
+  const handleReassign = async (forceSeparate = false) => {
     if (!reassignTarget || !audio) return;
     setReassigning(true);
     try {
-      await speakersApi.reassign(audioId, reassignTarget.id, reassignName.trim() || 'Unknown');
-      // Reload segments to reflect new speaker
-      const [newAudio, newSegs] = await Promise.all([audios.get(audioId), audios.getSegments(audioId)]);
+      await speakersApi.reassign(
+        audioId,
+        reassignTarget.id,
+        reassignTrimmed || 'Unknown',
+        forceSeparate,
+      );
+      const [newAudio, newSegs, newKnown] = await Promise.all([
+        audios.get(audioId),
+        audios.getSegments(audioId),
+        speakersApi.list(),
+      ]);
       setAudio(newAudio);
       setSegments(newSegs);
+      setKnownSpeakers(newKnown);
+      if (reassignMatch && !forceSeparate) {
+        setMergeNotice(`Folded into existing profile "${reassignMatch.name}". Voice samples were combined.`);
+        setTimeout(() => setMergeNotice(null), 6000);
+      }
       setReassignTarget(null);
       setReassignName('');
     } finally {
@@ -138,6 +165,13 @@ export default function AudioAnalysis() {
             <p className="text-yellow-300 text-sm font-medium">ML pipeline is running</p>
             <p className="text-slate-400 text-xs">Transcription and speaker segments will appear automatically when done.</p>
           </div>
+        </div>
+      )}
+
+      {mergeNotice && (
+        <div className="mb-6 flex items-center gap-3 bg-blue-500/10 border border-blue-500/30 rounded-lg px-5 py-4">
+          <Merge className="w-5 h-5 text-blue-400 shrink-0" />
+          <p className="text-blue-200 text-sm">{mergeNotice}</p>
         </div>
       )}
 
@@ -306,37 +340,63 @@ export default function AudioAnalysis() {
                 <h2 className="text-white text-lg">Not the right person?</h2>
                 <p className="text-slate-400 text-sm mt-1">
                   The system identified this speaker as <span className="text-white font-medium">{reassignTarget.name}</span>.
-                  Give them a new name and they'll be saved as a separate person in this recording.
+                  Type a name — if a profile with that name already exists, this voice will be merged into it
+                  and the voice print will improve.
                 </p>
               </div>
               <div className="p-6 space-y-4">
                 <div>
-                  <label className="text-slate-400 text-sm mb-2 block">New name</label>
+                  <label className="text-slate-400 text-sm mb-2 block">Name</label>
                   <input
                     type="text"
                     value={reassignName}
                     onChange={e => setReassignName(e.target.value)}
-                    placeholder="e.g. Sister, Unknown Person…"
+                    placeholder="e.g. Ofir, Sister, Unknown Person…"
                     className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
                     autoFocus
-                    onKeyDown={e => e.key === 'Enter' && handleReassign()}
+                    onKeyDown={e => e.key === 'Enter' && handleReassign(false)}
+                    list="known-speaker-names"
                   />
+                  <datalist id="known-speaker-names">
+                    {knownSpeakers
+                      .filter(s => s.id !== reassignTarget.id)
+                      .map(s => <option key={s.id} value={s.name} />)}
+                  </datalist>
+                  {reassignMatch && (
+                    <div className="mt-3 flex items-start gap-2 bg-blue-500/10 border border-blue-500/30 rounded-lg px-3 py-2 text-sm text-blue-200">
+                      <Merge className="w-4 h-4 mt-0.5 shrink-0" />
+                      <span>
+                        Will merge into existing profile <span className="font-medium">{reassignMatch.name}</span>
+                        {reassignMatch.recordingCount > 0 && ` (${reassignMatch.recordingCount} recording${reassignMatch.recordingCount !== 1 ? 's' : ''})`}.
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
-              <div className="p-6 border-t border-slate-800 flex gap-3 justify-end">
+              <div className="p-6 border-t border-slate-800 flex flex-col-reverse sm:flex-row gap-3 sm:justify-end">
                 <button
                   onClick={() => { setReassignTarget(null); setReassignName(''); }}
                   className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg transition-colors"
                 >
                   Cancel
                 </button>
+                {reassignMatch && (
+                  <button
+                    onClick={() => handleReassign(true)}
+                    disabled={reassigning}
+                    title={`Save as a different person who happens to share the name "${reassignMatch.name}"`}
+                    className="px-4 py-2 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-white rounded-lg transition-colors"
+                  >
+                    No, different person
+                  </button>
+                )}
                 <button
-                  onClick={handleReassign}
+                  onClick={() => handleReassign(false)}
                   disabled={reassigning}
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg transition-colors flex items-center gap-2"
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg transition-colors flex items-center gap-2 justify-center"
                 >
                   {reassigning && <Loader2 className="w-4 h-4 animate-spin" />}
-                  Save as new person
+                  {reassignMatch ? 'Merge into existing' : 'Save as new person'}
                 </button>
               </div>
             </div>

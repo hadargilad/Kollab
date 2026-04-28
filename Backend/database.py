@@ -20,6 +20,7 @@ def _get_conn() -> sqlite3.Connection:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(DB_PATH))
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
     return conn
 
 
@@ -370,6 +371,18 @@ def get_or_create_speaker(voice_identifier: str, name: str) -> tuple[int, bool]:
         ).fetchone()
         if row:
             return row["Id"], False
+
+        # Fall back to a name match — catches the case where the user previously
+        # renamed a speaker to "Ofir" so a backend record already exists, even
+        # though the ML voice DB may have just registered a fresh "Ofir" key.
+        if name and name != voice_identifier:
+            name_match = conn.execute(
+                "SELECT Id FROM Speakers WHERE LOWER(TRIM(Name)) = LOWER(?)",
+                (name.strip(),),
+            ).fetchone()
+            if name_match:
+                return name_match["Id"], False
+
         count = conn.execute("SELECT COUNT(*) FROM Speakers").fetchone()[0]
         color = _SPEAKER_COLORS[count % len(_SPEAKER_COLORS)]
         cursor = conn.execute(
@@ -383,7 +396,12 @@ def get_or_create_speaker(voice_identifier: str, name: str) -> tuple[int, bool]:
 def get_speaker(speaker_id: int) -> Optional[dict]:
     with _get_conn() as conn:
         row = conn.execute(
-            "SELECT Id, VoiceIdentifier, Name, Color, RiskLevel, FirstDetected FROM Speakers WHERE Id = ?",
+            """SELECT s.Id, s.VoiceIdentifier, s.Name, s.Color, s.RiskLevel, s.FirstDetected,
+                      COUNT(DISTINCT sg.AudioId) AS RecordingCount
+               FROM Speakers s
+               LEFT JOIN Segments sg ON sg.SpeakerId = s.Id
+               WHERE s.Id = ?
+               GROUP BY s.Id""",
             (speaker_id,),
         ).fetchone()
     if not row:
@@ -395,7 +413,42 @@ def get_speaker(speaker_id: int) -> Optional[dict]:
         "color": row["Color"],
         "riskLevel": row["RiskLevel"],
         "firstDetected": row["FirstDetected"],
+        "recordingCount": row["RecordingCount"],
     }
+
+
+def get_audios_for_speaker(speaker_id: int) -> list[dict]:
+    """Audios this speaker appears in, plus per-audio speaking time and segment count."""
+    with _get_conn() as conn:
+        rows = conn.execute(
+            """SELECT a.Id, a.Name, a.Description, a.Duration, a.FileSize,
+                      a.Status, a.UploadedAt,
+                      u.Username AS UploadedBy,
+                      COUNT(sg.Id) AS SegmentCount,
+                      COALESCE(SUM(sg.EndTime - sg.StartTime), 0) AS SpeakingTime
+               FROM Audios a
+               JOIN Segments sg ON sg.AudioId = a.Id
+               LEFT JOIN Users u ON u.Id = a.UploadedBy
+               WHERE sg.SpeakerId = ?
+               GROUP BY a.Id
+               ORDER BY a.UploadedAt DESC""",
+            (speaker_id,),
+        ).fetchall()
+    return [
+        {
+            "id": r["Id"],
+            "name": r["Name"],
+            "description": r["Description"],
+            "duration": r["Duration"],
+            "fileSize": r["FileSize"],
+            "status": r["Status"],
+            "uploadedAt": r["UploadedAt"],
+            "uploadedBy": r["UploadedBy"] or "",
+            "segmentCount": r["SegmentCount"],
+            "speakingTime": r["SpeakingTime"],
+        }
+        for r in rows
+    ]
 
 
 def get_all_speakers() -> list[dict]:
@@ -420,6 +473,77 @@ def get_all_speakers() -> list[dict]:
         }
         for r in rows
     ]
+
+
+def _distinct_audio_speakers(conn: sqlite3.Connection, audio_id: int) -> set[int]:
+    rows = conn.execute(
+        "SELECT DISTINCT SpeakerId FROM Segments WHERE AudioId = ? AND SpeakerId IS NOT NULL",
+        (audio_id,),
+    ).fetchall()
+    return {r["SpeakerId"] for r in rows}
+
+
+def _adjust_relations_for_audio_diff(
+    conn: sqlite3.Connection,
+    before_speakers: set[int],
+    after_speakers: set[int],
+) -> None:
+    """
+    Apply the diff between the two sets to the global Relations table:
+    every pair that disappeared loses 1 interaction (deleted at 0), every new
+    pair gains 1. Pairs unchanged on both sides are left alone.
+    """
+    def pairs(s: set[int]) -> set[tuple[int, int]]:
+        ordered = sorted(s)
+        return {(ordered[i], ordered[j]) for i in range(len(ordered)) for j in range(i + 1, len(ordered))}
+
+    before, after = pairs(before_speakers), pairs(after_speakers)
+    for a, b in (before - after):
+        conn.execute(
+            "UPDATE Relations SET InteractionCount = InteractionCount - 1 WHERE SpeakerAId = ? AND SpeakerBId = ?",
+            (a, b),
+        )
+        conn.execute(
+            "DELETE FROM Relations WHERE SpeakerAId = ? AND SpeakerBId = ? AND InteractionCount <= 0",
+            (a, b),
+        )
+    for a, b in (after - before):
+        conn.execute(
+            """INSERT INTO Relations (SpeakerAId, SpeakerBId, InteractionCount, LastContact)
+               VALUES (?, ?, 1, CURRENT_TIMESTAMP)
+               ON CONFLICT(SpeakerAId, SpeakerBId)
+               DO UPDATE SET InteractionCount = InteractionCount + 1,
+                             LastContact = CURRENT_TIMESTAMP""",
+            (a, b),
+        )
+
+
+def reassign_segments_in_audio_to_existing(audio_id: int, old_speaker_id: int, target_speaker_id: int) -> bool:
+    """
+    Repoint every segment of `audio_id` from old_speaker_id to target_speaker_id and
+    fold the per-audio relations contribution from old_speaker_id into target_speaker_id.
+    Other audios that include old_speaker_id are untouched.
+    """
+    if old_speaker_id == target_speaker_id:
+        return True
+    with _get_conn() as conn:
+        before = _distinct_audio_speakers(conn, audio_id)
+        conn.execute(
+            "UPDATE Segments SET SpeakerId = ? WHERE AudioId = ? AND SpeakerId = ?",
+            (target_speaker_id, audio_id, old_speaker_id),
+        )
+        after = _distinct_audio_speakers(conn, audio_id)
+        _adjust_relations_for_audio_diff(conn, before, after)
+        conn.commit()
+    return True
+
+
+def speaker_has_segments(speaker_id: int) -> bool:
+    with _get_conn() as conn:
+        row = conn.execute(
+            "SELECT 1 FROM Segments WHERE SpeakerId = ? LIMIT 1", (speaker_id,)
+        ).fetchone()
+    return row is not None
 
 
 def reassign_speaker_in_audio(audio_id: int, old_speaker_id: int, new_name: str) -> dict | None:
@@ -466,6 +590,86 @@ def update_speaker(speaker_id: int, name: str, risk_level: str) -> bool:
         )
         conn.commit()
     return result.rowcount > 0
+
+
+def delete_speaker(speaker_id: int) -> bool:
+    """
+    Drop a speaker. Segments and Alerts that referenced them have their FK set
+    to NULL (the audios stay, just labelled "Unknown"); Relations that touched
+    them are cascaded out by the schema's ON DELETE CASCADE.
+    """
+    with _get_conn() as conn:
+        result = conn.execute("DELETE FROM Speakers WHERE Id = ?", (speaker_id,))
+        conn.commit()
+    return result.rowcount > 0
+
+
+def find_speaker_by_name(name: str, exclude_id: Optional[int] = None) -> Optional[dict]:
+    """Case-insensitive, trimmed lookup. Used to detect name collisions before a merge."""
+    needle = name.strip()
+    if not needle:
+        return None
+    with _get_conn() as conn:
+        if exclude_id is not None:
+            row = conn.execute(
+                "SELECT Id, VoiceIdentifier, Name FROM Speakers WHERE LOWER(TRIM(Name)) = LOWER(?) AND Id != ?",
+                (needle, exclude_id),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                "SELECT Id, VoiceIdentifier, Name FROM Speakers WHERE LOWER(TRIM(Name)) = LOWER(?)",
+                (needle,),
+            ).fetchone()
+    if not row:
+        return None
+    return {"id": row["Id"], "voiceIdentifier": row["VoiceIdentifier"], "name": row["Name"]}
+
+
+def merge_speakers(source_id: int, target_id: int) -> bool:
+    """
+    Fold source_id into target_id: move every segment and the relations it
+    implies, then delete source. Relations are recomputed per-audio using a
+    before/after diff so audios that contained BOTH speakers don't end up
+    double-counted.
+    """
+    if source_id == target_id:
+        return False
+    with _get_conn() as conn:
+        a = conn.execute("SELECT Id FROM Speakers WHERE Id = ?", (source_id,)).fetchone()
+        b = conn.execute("SELECT Id FROM Speakers WHERE Id = ?", (target_id,)).fetchone()
+        if not a or not b:
+            return False
+
+        affected_audios = [
+            r["AudioId"] for r in conn.execute(
+                "SELECT DISTINCT AudioId FROM Segments WHERE SpeakerId = ?",
+                (source_id,),
+            ).fetchall()
+        ]
+
+        for audio_id in affected_audios:
+            before = _distinct_audio_speakers(conn, audio_id)
+            conn.execute(
+                "UPDATE Segments SET SpeakerId = ? WHERE AudioId = ? AND SpeakerId = ?",
+                (target_id, audio_id, source_id),
+            )
+            after = _distinct_audio_speakers(conn, audio_id)
+            _adjust_relations_for_audio_diff(conn, before, after)
+
+        # Any leftover relations that still reference the source (e.g. orphan rows
+        # from earlier bugs) — drop them; the per-audio diffs above are the truth.
+        conn.execute(
+            "DELETE FROM Relations WHERE SpeakerAId = ? OR SpeakerBId = ?",
+            (source_id, source_id),
+        )
+
+        conn.execute(
+            "UPDATE Alerts SET RelatedSpeakerId = ? WHERE RelatedSpeakerId = ?",
+            (target_id, source_id),
+        )
+        conn.execute("DELETE FROM Speakers WHERE Id = ?", (source_id,))
+        conn.commit()
+    return True
 
 
 # ─── Segments ─────────────────────────────────────────────────────────────────

@@ -8,7 +8,6 @@ interface Props {
 
 const STEPS = [
   { id: 'backend', label: 'Connecting to backend service...' },
-  { id: 'ml',      label: 'Loading ML models...' },
   { id: 'ready',   label: 'System ready' },
 ];
 
@@ -52,26 +51,9 @@ export default function StartupScreen({ onReady }: Props) {
         return;
       }
 
-      // Backend is up
+      // Backend is up — proceed without waiting for ML (ML readiness is shown in-app)
       setStepIndex(1);
-
-      // Phase 2: ML service — models can take ~2 min to load, poll every 3 s up to 60 times
-      let mlOk = false;
-      for (let i = 0; i < 60; i++) {
-        if (cancelled) return;
-        mlOk = await pingUrl('http://127.0.0.1:8000/');
-        if (mlOk) break;
-        await new Promise(r => setTimeout(r, 3000));
-      }
-      if (cancelled) return;
-
-      if (!mlOk) {
-        setFailed(true);
-        return;
-      }
-
-      setStepIndex(2);
-      await new Promise(r => setTimeout(r, 500));
+      await new Promise(r => setTimeout(r, 300));
       if (!cancelled) onReady();
     };
 
@@ -125,13 +107,6 @@ export default function StartupScreen({ onReady }: Props) {
         {!failed && stepIndex === 0 && (
           <p className="text-slate-500 text-xs text-center">
             Waiting for backend to start…
-          </p>
-        )}
-
-        {/* ML loading hint */}
-        {!failed && stepIndex === 1 && (
-          <p className="text-slate-500 text-xs text-center">
-            Loading Whisper &amp; speaker models — this may take 1–2 minutes on first start.
           </p>
         )}
 
