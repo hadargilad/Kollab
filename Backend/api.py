@@ -376,29 +376,120 @@ def get_speaker(speaker_id: int):
     return spk
 
 
+@app.get("/speakers/{speaker_id}/audios")
+def get_speaker_audios(speaker_id: int):
+    spk = database.get_speaker(speaker_id)
+    if not spk:
+        raise HTTPException(status_code=404, detail="Speaker not found.")
+    return database.get_audios_for_speaker(speaker_id)
+
+
 class UpdateSpeakerRequest(BaseModel):
     name: str
     riskLevel: str = "low"
+    forceSeparate: bool = False  # if True, skip name-collision merge
 
 
 class ReassignSpeakerRequest(BaseModel):
     new_name: str
+    force_separate: bool = False  # if True, always create a new speaker
+
+
+def _merge_voice_db(source_voice_id: str, target_voice_id: str) -> None:
+    """Best-effort: ask the ML service to merge embeddings for the two names.
+    Failures are swallowed — the DB merge is the source of truth."""
+    if not source_voice_id or not target_voice_id or source_voice_id == target_voice_id:
+        return
+    try:
+        with httpx.Client(timeout=5.0) as c:
+            c.patch(
+                f"{ML_URL}/speakers/rename",
+                json={"old_name": source_voice_id, "new_name": target_voice_id},
+            )
+    except Exception:
+        pass
 
 
 @app.post("/audios/{audio_id}/speakers/{speaker_id}/reassign", status_code=201)
 def reassign_speaker(audio_id: int, speaker_id: int, body: ReassignSpeakerRequest):
-    new_speaker = database.reassign_speaker_in_audio(audio_id, speaker_id, body.new_name.strip() or "Unknown")
+    new_name = body.new_name.strip() or "Unknown"
+
+    # If a speaker with that name already exists, repoint segments in this audio
+    # to them rather than creating yet another duplicate — unless the caller
+    # explicitly said this is a different person who happens to share the name.
+    existing = None if body.force_separate else database.find_speaker_by_name(new_name, exclude_id=speaker_id)
+    if existing:
+        ok = database.reassign_segments_in_audio_to_existing(audio_id, speaker_id, existing["id"])
+        if not ok:
+            raise HTTPException(status_code=500, detail="Failed to reassign segments.")
+        result = database.get_speaker(existing["id"])
+        if not result:
+            raise HTTPException(status_code=500, detail="Speaker lookup failed after reassign.")
+        # If the source speaker now has zero segments anywhere, fold them into the target.
+        if database.speaker_has_segments(speaker_id):
+            return result
+        source = database.get_speaker(speaker_id)
+        if database.merge_speakers(speaker_id, existing["id"]) and source:
+            _merge_voice_db(source["voiceIdentifier"], existing["voiceIdentifier"])
+        return result
+
+    new_speaker = database.reassign_speaker_in_audio(audio_id, speaker_id, new_name)
     if not new_speaker:
         raise HTTPException(status_code=500, detail="Failed to create new speaker.")
     return new_speaker
 
 
+def _delete_voice_db_entry(voice_id: str) -> None:
+    """Best-effort: remove the speaker's embedding bucket from the ML voice DB."""
+    if not voice_id:
+        return
+    try:
+        with httpx.Client(timeout=5.0) as c:
+            c.delete(f"{ML_URL}/speakers/{voice_id}")
+    except Exception:
+        pass
+
+
+@app.delete("/speakers/{speaker_id}")
+def delete_speaker_endpoint(speaker_id: int):
+    speaker = database.get_speaker(speaker_id)
+    if not speaker:
+        raise HTTPException(status_code=404, detail="Speaker not found.")
+    ok = database.delete_speaker(speaker_id)
+    if not ok:
+        raise HTTPException(status_code=500, detail="Failed to delete speaker.")
+    _delete_voice_db_entry(speaker["voiceIdentifier"])
+    return {"success": True}
+
+
 @app.put("/speakers/{speaker_id}")
 def update_speaker(speaker_id: int, body: UpdateSpeakerRequest):
-    ok = database.update_speaker(speaker_id, body.name, body.riskLevel)
+    new_name = body.name.strip()
+    if not new_name:
+        raise HTTPException(status_code=400, detail="Name cannot be empty.")
+
+    # If another speaker already has this name, merge this one INTO that one —
+    # unless the caller explicitly said it's a different person who shares the name.
+    existing = None if body.forceSeparate else database.find_speaker_by_name(new_name, exclude_id=speaker_id)
+    if existing:
+        source = database.get_speaker(speaker_id)
+        target = database.get_speaker(existing["id"])
+        if not source or not target:
+            raise HTTPException(status_code=404, detail="Speaker not found.")
+        # Carry over the higher of the two risk levels — only if the user is bumping it up.
+        risk_rank = {"low": 0, "medium": 1, "high": 2}
+        if risk_rank.get(body.riskLevel, 0) > risk_rank.get(target["riskLevel"], 0):
+            database.update_speaker(target["id"], target["name"], body.riskLevel)
+
+        if not database.merge_speakers(speaker_id, target["id"]):
+            raise HTTPException(status_code=500, detail="Speaker merge failed.")
+        _merge_voice_db(source["voiceIdentifier"], target["voiceIdentifier"])
+        return {"success": True, "merged": True, "mergedIntoId": target["id"], "mergedIntoName": target["name"]}
+
+    ok = database.update_speaker(speaker_id, new_name, body.riskLevel)
     if not ok:
         raise HTTPException(status_code=404, detail="Speaker not found.")
-    return {"success": True}
+    return {"success": True, "merged": False}
 
 
 # ─── Relations ────────────────────────────────────────────────────────────────

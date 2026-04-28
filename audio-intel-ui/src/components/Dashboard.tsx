@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { Link } from 'react-router-dom';
 import { FileAudio, Users, AlertTriangle, TrendingUp, Clock, ArrowRight, Loader2, HardDrive, Database, Activity } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { audios, speakers, alerts, stats, type AudioRecord, type SpeakerRecord, type AlertRecord, type SystemStats } from '../lib/api';
+
+const DashboardCharts = lazy(() => import('./DashboardCharts'));
 
 function getDayLabel(date: Date) {
   return date.toLocaleDateString('en-GB', { weekday: 'short' });
@@ -42,6 +43,7 @@ export default function Dashboard() {
   const [alertList, setAlertList] = useState<AlertRecord[]>([]);
   const [systemStats, setSystemStats] = useState<SystemStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const alertsRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     Promise.all([audios.list(), speakers.list(), alerts.list(), stats.get()])
@@ -83,12 +85,6 @@ export default function Dashboard() {
     return `${Math.floor(hrs / 24)} day${Math.floor(hrs / 24) !== 1 ? 's' : ''} ago`;
   };
 
-  if (loading) return (
-    <div className="flex items-center justify-center py-20">
-      <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
-    </div>
-  );
-
   return (
     <div className="p-8">
       <div className="mb-8">
@@ -98,7 +94,10 @@ export default function Dashboard() {
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-        <div className="bg-slate-900 border border-slate-800 rounded-lg p-6">
+        <Link
+          to="/all-uploads"
+          className="bg-slate-900 border border-slate-800 rounded-lg p-6 hover:border-blue-500/50 hover:bg-slate-900/80 transition-colors group"
+        >
           <div className="flex items-center justify-between mb-4">
             <div className="bg-blue-600/10 p-3 rounded-lg">
               <FileAudio className="w-6 h-6 text-blue-500" />
@@ -109,20 +108,34 @@ export default function Dashboard() {
             </span>
           </div>
           <div className="text-white text-2xl mb-1">{uploadList.length}</div>
-          <div className="text-slate-400 text-sm">Audio Files Total</div>
-        </div>
+          <div className="text-slate-400 text-sm flex items-center gap-1">
+            Audio Files Total
+            <ArrowRight className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity" />
+          </div>
+        </Link>
 
-        <div className="bg-slate-900 border border-slate-800 rounded-lg p-6">
+        <Link
+          to="/profile-search"
+          className="bg-slate-900 border border-slate-800 rounded-lg p-6 hover:border-purple-500/50 hover:bg-slate-900/80 transition-colors group"
+        >
           <div className="flex items-center justify-between mb-4">
             <div className="bg-purple-600/10 p-3 rounded-lg">
               <Users className="w-6 h-6 text-purple-500" />
             </div>
           </div>
           <div className="text-white text-2xl mb-1">{speakerList.length}</div>
-          <div className="text-slate-400 text-sm">Identified Speakers</div>
-        </div>
+          <div className="text-slate-400 text-sm flex items-center gap-1">
+            Identified Speakers
+            <ArrowRight className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity" />
+          </div>
+        </Link>
 
-        <div className="bg-slate-900 border border-slate-800 rounded-lg p-6">
+        <button
+          type="button"
+          onClick={() => alertsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+          disabled={alertList.length === 0}
+          className="bg-slate-900 border border-slate-800 rounded-lg p-6 text-left transition-colors enabled:hover:border-red-500/50 enabled:hover:bg-slate-900/80 disabled:cursor-default group"
+        >
           <div className="flex items-center justify-between mb-4">
             <div className="bg-red-600/10 p-3 rounded-lg">
               <AlertTriangle className="w-6 h-6 text-red-500" />
@@ -135,44 +148,30 @@ export default function Dashboard() {
             )}
           </div>
           <div className="text-white text-2xl mb-1">{alertList.length}</div>
-          <div className="text-slate-400 text-sm">Pending Alerts</div>
-        </div>
+          <div className="text-slate-400 text-sm flex items-center gap-1">
+            Pending Alerts
+            {alertList.length > 0 && (
+              <ArrowRight className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity" />
+            )}
+          </div>
+        </button>
       </div>
 
-      {/* Charts Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-        <div className="bg-slate-900 border border-slate-800 rounded-lg p-6">
-          <h2 className="text-white mb-4">Uploads — Last 7 Days</h2>
-          <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={weeklyData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-              <XAxis dataKey="date" stroke="#94a3b8" />
-              <YAxis stroke="#94a3b8" allowDecimals={false} />
-              <Tooltip
-                contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px' }}
-                labelStyle={{ color: '#e2e8f0' }}
-              />
-              <Bar dataKey="files" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-
-        <div className="bg-slate-900 border border-slate-800 rounded-lg p-6">
-          <h2 className="text-white mb-4">Files by Status</h2>
-          <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={statusData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-              <XAxis dataKey="label" stroke="#94a3b8" />
-              <YAxis stroke="#94a3b8" allowDecimals={false} />
-              <Tooltip
-                contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px' }}
-                labelStyle={{ color: '#e2e8f0' }}
-              />
-              <Bar dataKey="count" fill="#a855f7" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
+      {/* Charts Row (lazy-loaded so the rest of the page is interactive immediately) */}
+      <Suspense
+        fallback={
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+            <div className="bg-slate-900 border border-slate-800 rounded-lg p-6 h-65 flex items-center justify-center">
+              <Loader2 className="w-6 h-6 text-blue-500 animate-spin" />
+            </div>
+            <div className="bg-slate-900 border border-slate-800 rounded-lg p-6 h-65 flex items-center justify-center">
+              <Loader2 className="w-6 h-6 text-blue-500 animate-spin" />
+            </div>
+          </div>
+        }
+      >
+        {!loading && <DashboardCharts weeklyData={weeklyData} statusData={statusData} />}
+      </Suspense>
 
       {/* System Health */}
       {systemStats && (
@@ -275,7 +274,7 @@ export default function Dashboard() {
           )}
         </div>
 
-        <div className="bg-slate-900 border border-slate-800 rounded-lg p-6">
+        <div ref={alertsRef} className="bg-slate-900 border border-slate-800 rounded-lg p-6 scroll-mt-6">
           <h2 className="text-white mb-4">Recent Alerts</h2>
           {alertList.length === 0 ? (
             <div className="text-center py-8">

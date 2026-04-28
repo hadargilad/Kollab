@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { FileAudio, Search, Filter, Calendar, CheckCircle, Clock, AlertCircle, PlayCircle, Loader2, RefreshCw } from 'lucide-react';
+import { FileAudio, Search, Filter, Calendar, CheckCircle, Clock, AlertCircle, PlayCircle, Loader2, RefreshCw, Trash2 } from 'lucide-react';
 import { audios, type AudioRecord } from '../lib/api';
 
 export default function AllUploads() {
@@ -11,6 +11,8 @@ export default function AllUploads() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [dateFilter, setDateFilter] = useState<string>('all');
   const [retrying, setRetrying] = useState<Set<number>>(new Set());
+  const [deleting, setDeleting] = useState<Set<number>>(new Set());
+  const [confirmDelete, setConfirmDelete] = useState<AudioRecord | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -90,6 +92,19 @@ export default function AllUploads() {
       // leave as failed
     } finally {
       setRetrying(prev => { const s = new Set(prev); s.delete(id); return s; });
+    }
+  };
+
+  const handleDelete = async (id: number) => {
+    setDeleting(prev => new Set(prev).add(id));
+    try {
+      await audios.remove(id);
+      setUploads(prev => prev.filter(u => u.id !== id));
+      setConfirmDelete(null);
+    } catch {
+      setError('Failed to delete file. Please try again.');
+    } finally {
+      setDeleting(prev => { const s = new Set(prev); s.delete(id); return s; });
     }
   };
 
@@ -241,7 +256,7 @@ export default function AllUploads() {
                     </div>
                   </div>
 
-                  <div className="ml-4 shrink-0">
+                  <div className="ml-4 shrink-0 flex items-center gap-2">
                     {upload.status === 'processed' && (
                       <Link
                         to={`/analysis/${upload.id}`}
@@ -270,11 +285,57 @@ export default function AllUploads() {
                         {retrying.has(upload.id) ? 'Retrying…' : 'Retry'}
                       </button>
                     )}
+                    <button
+                      onClick={() => setConfirmDelete(upload)}
+                      disabled={deleting.has(upload.id)}
+                      title="Delete recording"
+                      className="p-2 bg-slate-800 hover:bg-red-600/20 text-slate-400 hover:text-red-400 disabled:opacity-50 rounded-lg transition-colors"
+                    >
+                      {deleting.has(upload.id)
+                        ? <Loader2 className="w-4 h-4 animate-spin" />
+                        : <Trash2 className="w-4 h-4" />}
+                    </button>
                   </div>
                 </div>
               </div>
             ))
           )}
+        </div>
+      )}
+
+      {confirmDelete && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-lg w-full max-w-md">
+            <div className="p-6 border-b border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="bg-red-600/20 p-2 rounded-lg">
+                  <Trash2 className="w-5 h-5 text-red-400" />
+                </div>
+                <h2 className="text-white text-lg">Delete recording?</h2>
+              </div>
+              <p className="text-slate-400 text-sm mt-3">
+                This will permanently remove <span className="text-white font-medium">{confirmDelete.name}</span>,
+                its audio file, transcript and speaker segments. This action cannot be undone.
+              </p>
+            </div>
+            <div className="p-6 flex gap-3 justify-end">
+              <button
+                onClick={() => setConfirmDelete(null)}
+                disabled={deleting.has(confirmDelete.id)}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleDelete(confirmDelete.id)}
+                disabled={deleting.has(confirmDelete.id)}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white rounded-lg transition-colors flex items-center gap-2"
+              >
+                {deleting.has(confirmDelete.id) && <Loader2 className="w-4 h-4 animate-spin" />}
+                Delete
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
