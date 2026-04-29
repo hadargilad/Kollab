@@ -58,12 +58,9 @@ MIN_SEGMENT_DURATION = 0.2   # minimum segment length — lowered to handle shor
 TOP_N_SEGMENTS       = 5     # [3] use only the N longest segments per speaker
 WINDOW_SIZE          = 5.0   # [2] sliding window size (seconds)
 WINDOW_HOP           = 2.5   # [2] sliding window hop — 50% overlap
-MATCH_THRESHOLD      = 0.83  # raw cosine similarity threshold (single-speaker DB fallback)
-NORMALIZED_THRESHOLD = 1.2   # [4] z-score threshold when ≥2 speakers in DB
-MIN_SCORE_GAP        = 0.18  # minimum gap between best and second-best score (prevents ambiguous matches)
-LEARN_MIN_GAP        = 0.22  # minimum gap required to add a matched embedding to the DB (learning)
-LEARN_MIN_Z          = 2.0   # minimum z-score required to learn from a match — very conservative to avoid DB pollution
-MERGE_THRESHOLD      = 0.95  # [5] clusters with cosine similarity above this are the same person
+MATCH_THRESHOLD      = 0.72  # max-cosine threshold for matching (calibrated for ECAPA-TDNN cross-recording)
+LEARN_THRESHOLD      = 0.85  # only add a new sample to a speaker's bucket when confidence is very high
+MERGE_THRESHOLD      = 0.85  # [5] within-recording: clusters with cosine ≥ this are the same person
 
 # ─── Load models once at startup ─────────────────────────────────────────────
 print("⏳ Loading Whisper model...")
@@ -306,71 +303,58 @@ def _cosine(a: np.ndarray, b: np.ndarray) -> float:
     return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b) + 1e-8))
 
 
-def match_or_register_speaker(embedding: np.ndarray) -> tuple[str, float, str]:
+def match_or_register_speaker(embedding: np.ndarray, taken: set | None = None) -> tuple[str, float, str]:
     """
     Match an embedding against ALL speakers in the DB (known people AND unknown speakers).
 
     If a match is found → return (display_name, confidence, voice_db_key)
     If no match       → register as a new unknown, return ("Unknown", 0.0, "speaker_XXXXXXXX")
 
+    `taken` is a set of voice_db_keys already claimed by other speakers in the SAME recording.
+    Excluding them prevents two distinct speakers in one recording from collapsing onto the same DB
+    entry just because their cosine to the same DB voice happens to clear the threshold.
+
     This ensures every speaker — even unknown ones — gets a stable voice_db_key that links
     the same person across multiple recordings. The user can later rename the key via the UI.
 
     [4] Z-norm is applied when ≥2 speakers exist in the DB.
     """
+    taken = taken or set()
     db = load_voices_db()
     emb = embedding.flatten()
 
-    if db:
-        # Average all stored window embeddings per speaker
-        speaker_means: dict[str, np.ndarray] = {}
-        for name, embs in db.items():
-            arr = np.stack([np.array(e).flatten() for e in embs])
-            speaker_means[name] = np.mean(arr, axis=0)
+    # Only consider DB entries not already claimed by another speaker in this recording
+    available = {name: embs for name, embs in db.items() if name not in taken}
 
-        # Raw cosine similarity scores
-        raw_scores: dict[str, float] = {
-            name: _cosine(emb, mean_emb)
-            for name, mean_emb in speaker_means.items()
-        }
+    if available:
+        # Max-pool: best cosine to ANY stored sample of each speaker.
+        # This is more robust than mean-pool: it captures the closest matching
+        # sample (e.g. same mood, same recording session) instead of diluting
+        # the score across all of a speaker's variations.
+        per_speaker_score: dict[str, float] = {}
+        for name, embs in available.items():
+            sims = [_cosine(emb, np.array(e).flatten()) for e in embs]
+            per_speaker_score[name] = max(sims) if sims else 0.0
 
-        best_key = max(raw_scores, key=raw_scores.get)  # type: ignore
-        best_raw = raw_scores[best_key]
+        best_key = max(per_speaker_score, key=per_speaker_score.get)  # type: ignore
+        best_score = per_speaker_score[best_key]
 
-        # Gap between best and second-best score
-        sorted_scores = sorted(raw_scores.values(), reverse=True)
-        gap = sorted_scores[0] - sorted_scores[1] if len(sorted_scores) > 1 else 1.0
+        # Show top 3 candidates for debuggability when matches go wrong
+        top = sorted(per_speaker_score.items(), key=lambda kv: kv[1], reverse=True)[:3]
+        print("  🔍 Top candidates: " + ", ".join(f"{k}={v:.3f}" for k, v in top))
 
-        # [4] Z-norm when we have ≥2 speakers
-        matched = False
-        if len(raw_scores) >= 2:
-            scores_arr = np.array(list(raw_scores.values()))
-            mu, sigma = np.mean(scores_arr), np.std(scores_arr)
-            if sigma > 1e-6:
-                z = (best_raw - mu) / sigma
-                print(f"  🔍 Best: '{best_key}' raw={best_raw:.3f} z={z:.2f} gap={gap:.3f}")
-                # z-norm + minimum gap: prevents weak matches when scores are too close
-                matched = z >= NORMALIZED_THRESHOLD and gap >= MIN_SCORE_GAP
-            else:
-                matched = best_raw >= MATCH_THRESHOLD
-        else:
-            print(f"  🔍 Best: '{best_key}' raw={best_raw:.3f} (no z-norm)")
-            matched = best_raw >= MATCH_THRESHOLD
-
-        if matched:
-            # Known person (real name) or previously seen unknown (speaker_XXXX)
+        if best_score >= MATCH_THRESHOLD:
             is_real = not best_key.startswith("speaker_")
             display = best_key if is_real else "Unknown"
 
-            # Learning: add this embedding to the DB if confidence is high enough
-            # Only learn when we have multiple speakers (z-norm ran) and the match is strong
-            z_for_learn = (best_raw - np.mean(list(raw_scores.values()))) / (np.std(list(raw_scores.values())) + 1e-8)
-            if len(raw_scores) >= 2 and z_for_learn >= LEARN_MIN_Z and gap >= LEARN_MIN_GAP:
+            # Learning: only append when confidence is very high — prevents DB pollution
+            # from borderline matches that snowball into wrong identities over time.
+            if best_score >= LEARN_THRESHOLD:
                 db[best_key].append(emb)
                 save_voices_db(db)
                 print(f"  📚 Learned: added new sample for '{best_key}' ({len(db[best_key])} total)")
 
-            return display, round(best_raw, 3), best_key
+            return display, round(best_score, 3), best_key
 
     # No match — register as brand-new unknown speaker
     new_key = f"speaker_{uuid.uuid4().hex[:8]}"
@@ -389,6 +373,61 @@ def _set_progress(pct: int, label: str):
     _progress["label"] = label
 
 
+def _merge_similar_clusters(
+    speaker_segments: dict,
+    speaker_embeddings: dict,
+    threshold: float,
+) -> tuple[dict, dict]:
+    """
+    Pyannote often over-splits a single speaker into multiple clusters
+    (e.g. interviewer at start + interviewer at end → SPEAKER_00 + SPEAKER_02).
+    Compute pairwise cosine on the per-cluster ECAPA embeddings and merge any
+    pair whose similarity ≥ threshold. Uses union-find for transitive merges.
+    """
+    labels = list(speaker_embeddings.keys())
+    parent = {l: l for l in labels}
+
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    for i, a in enumerate(labels):
+        for b in labels[i + 1:]:
+            sim = _cosine(speaker_embeddings[a], speaker_embeddings[b])
+            if sim >= threshold:
+                ra, rb = find(a), find(b)
+                if ra != rb:
+                    parent[ra] = rb
+                    print(f"  🔗 Merging {a} ↔ {b} (cosine={sim:.3f})")
+
+    groups: dict[str, list[str]] = {}
+    for l in labels:
+        groups.setdefault(find(l), []).append(l)
+
+    merged_segments: dict = {}
+    merged_embeddings: dict = {}
+    for root, members in groups.items():
+        # Keep the label of the member with the most speaking time as the canonical name
+        canonical = max(members, key=lambda m: sum(s["end"] - s["start"] for s in speaker_segments.get(m, [])))
+        all_segs = []
+        for m in members:
+            all_segs.extend(speaker_segments.get(m, []))
+        all_segs.sort(key=lambda s: s["start"])
+        merged_segments[canonical] = all_segs
+        merged_embeddings[canonical] = np.mean(
+            np.stack([speaker_embeddings[m] for m in members]), axis=0
+        )
+
+    # Also forward any segments from labels that had no embedding (skipped in Step 4)
+    for label, segs in speaker_segments.items():
+        if label not in speaker_embeddings and label not in merged_segments:
+            merged_segments[label] = segs
+
+    return merged_segments, merged_embeddings
+
+
 # ─── Main Pipeline ────────────────────────────────────────────────────────────
 
 def process_audio(audio_path: str) -> dict:
@@ -401,10 +440,13 @@ def process_audio(audio_path: str) -> dict:
     """
     print(f"\n🎙️  Processing: {audio_path}")
 
-    # ── Step 0: Noise reduction + normalization ────────────────────────────────
+    # ── Step 0: Load + denoise once, reuse for both Whisper and diarization ───
     _set_progress(5, "Applying noise reduction…")
     print("🔇 Step 0: Applying noise reduction & loudness normalization...")
-    clean_path = save_clean_temp(audio_path)
+    waveform, sr = load_audio_16k(audio_path)
+    waveform_np = waveform.squeeze().numpy()
+    clean_path = tempfile.NamedTemporaryFile(delete=False, suffix=".wav").name
+    torchaudio.save(clean_path, waveform, sr)
 
     # ── Step 1: Transcription ──────────────────────────────────────────────────
     _set_progress(15, "Transcribing with Whisper…")
@@ -412,18 +454,12 @@ def process_audio(audio_path: str) -> dict:
     transcript = whisper_model.transcribe(clean_path, fp16=False)
     whisper_segments = transcript["segments"]
 
-    # ── Step 2: Diarization ────────────────────────────────────────────────────
+    # ── Step 2: Diarization (no min/max_speakers — they break clustering on
+    #            short single/two-speaker recordings; let pyannote auto-detect) ──
     _set_progress(50, "Running speaker diarization…")
     print("🗣️  Step 2: Running speaker diarization...")
-    waveform, sr = load_audio_16k(audio_path)
-    waveform_np = waveform.squeeze().numpy()
     audio_in_memory = {"waveform": waveform, "sample_rate": sr}
-
-    diarization_result = diarization_pipeline(
-        audio_in_memory,
-        min_speakers=2,
-        max_speakers=10,
-    )
+    diarization_result = diarization_pipeline(audio_in_memory)
 
     diarization_segments = [
         (seg.start, seg.end, label)
@@ -477,14 +513,26 @@ def process_audio(audio_path: str) -> dict:
         except Exception as e:
             print(f"  ⚠️  {label}: embedding failed — {e}")
 
+    # ── Step 4.5: Merge over-split clusters (same speaker → multiple labels) ──
+    if len(speaker_embeddings) > 1:
+        _set_progress(88, "Merging duplicate speakers…")
+        print("🔗 Step 4.5: Merging clusters with high embedding similarity...")
+        speaker_segments, speaker_embeddings = _merge_similar_clusters(
+            speaker_segments, speaker_embeddings, threshold=MERGE_THRESHOLD
+        )
+        print(f"  → {len(speaker_embeddings)} speaker(s) after merge")
+
     # ── Step 5: Cross-match against known speakers (and save unknowns) ─────────
     _set_progress(93, "Matching speaker identities…")
     print("🔍 Step 5: Cross-matching with score normalization...")
     results = []
+    taken_keys: set[str] = set()
     for label in speaker_segments:
         embedding = speaker_embeddings.get(label)
         if embedding is not None:
-            matched_name, confidence, voice_db_key = match_or_register_speaker(embedding)
+            matched_name, confidence, voice_db_key = match_or_register_speaker(embedding, taken=taken_keys)
+            if voice_db_key:
+                taken_keys.add(voice_db_key)
         else:
             matched_name, confidence, voice_db_key = "Unknown", 0.0, ""
         results.append({

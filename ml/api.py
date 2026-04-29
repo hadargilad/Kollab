@@ -48,7 +48,7 @@ def ml_status():
 # ─── Audio Analysis ───────────────────────────────────────────────────────────
 
 @app.post("/analyze")
-async def analyze_audio(file: UploadFile = File(...)):
+def analyze_audio(file: UploadFile = File(...)):
     """
     Analyze an audio file and return the results.
     The file is processed in memory and deleted immediately — nothing is stored here.
@@ -100,7 +100,7 @@ async def analyze_audio(file: UploadFile = File(...)):
 # ─── Speaker Voice DB ─────────────────────────────────────────────────────────
 
 @app.post("/speakers/add")
-async def add_speaker(name: str = Form(...), file: UploadFile = File(...)):
+def add_speaker(name: str = Form(...), file: UploadFile = File(...)):
     """
     Register a known speaker in the voice database from a raw audio sample.
     Best with a clean, single-speaker recording (10–30 seconds).
