@@ -1,27 +1,23 @@
 """
 AudioIntel ML Pipeline
 ======================
-Given an audio file, this module:
-  1. Transcribes the audio using Whisper
+Stateless audio analysis. Given an audio file, this module:
+  1. Transcribes the audio using Whisper (medium)
   2. Separates speakers using pyannote diarization
   3. Aligns transcript segments with speaker labels
-  4. Extracts voice embeddings using ECAPA-TDNN (SpeechBrain/spkrec-ecapa-voxceleb) with sliding windows
-  5. Cross-matches each speaker against the known-voices database
-  6. Returns structured JSON with transcript + speaker identities
+  4. Extracts voice embeddings using ECAPA-TDNN (SpeechBrain/spkrec-ecapa-voxceleb)
+     with sliding windows — returns the FULL list of windows per speaker so the
+     Backend can do symmetric max-pool matching against the corpus.
+  5. Returns structured JSON with transcript + per-speaker window embeddings
 
-Improvements over v1:
-  [1] ECAPA-TDNN (speechbrain/spkrec-ecapa-voxceleb) — stronger model than pyannote/embedding
-  [2] Sliding window embeddings — multiple 3s windows averaged → more robust representation
-  [3] Top-N segment selection — only the longest (cleanest) segments are used
-  [4] Z-score normalization — scores normalized against all known speakers, not a fixed threshold
+Identity matching, learning, and storage live entirely in the Backend
+(Backend/matcher.py + SpeakerEmbeddings table). The ML service has no DB
+of its own.
 """
 
 import os
-import json
-import pickle
 import subprocess
 import tempfile
-import uuid
 import numpy as np
 import whisper
 import torch
@@ -47,24 +43,22 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# ─── Paths ────────────────────────────────────────────────────────────────────
-VOICES_DB_PATH = Path(__file__).parent / "voices_db" / "embeddings.pkl"
-VOICES_DB_PATH.parent.mkdir(exist_ok=True)
-
 HF_TOKEN = os.getenv("HF_TOKEN") or "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"
 
 # ─── Tuning constants ─────────────────────────────────────────────────────────
-MIN_SEGMENT_DURATION = 0.2   # minimum segment length — lowered to handle short utterances (one word ~0.3s)
-TOP_N_SEGMENTS       = 5     # [3] use only the N longest segments per speaker
-WINDOW_SIZE          = 5.0   # [2] sliding window size (seconds)
-WINDOW_HOP           = 2.5   # [2] sliding window hop — 50% overlap
-MATCH_THRESHOLD      = 0.72  # max-cosine threshold for matching (calibrated for ECAPA-TDNN cross-recording)
-LEARN_THRESHOLD      = 0.85  # only add a new sample to a speaker's bucket when confidence is very high
-MERGE_THRESHOLD      = 0.85  # [5] within-recording: clusters with cosine ≥ this are the same person
+MIN_SEGMENT_DURATION   = 1.5   # ECAPA-TDNN was trained on ~3s; below ~1.5s embeddings degrade
+MAX_AUDIO_BUDGET       = 60.0  # cap total seconds of audio per speaker fed to ECAPA
+FALLBACK_MIN_DURATION  = 0.2   # only used when no segment passes MIN_SEGMENT_DURATION (very short clips)
+FALLBACK_TOP_N         = 5     # in that fallback case, take the N longest of whatever's there
+WINDOW_SIZE            = 5.0   # sliding window size (seconds)
+WINDOW_HOP             = 2.5   # sliding window hop — 50% overlap
+MERGE_THRESHOLD        = 0.85  # within-recording: clusters with cosine ≥ this are the same person
+
+EMBEDDING_MODEL_VERSION = "ecapa-tdnn-v1"
 
 # ─── Load models once at startup ─────────────────────────────────────────────
-print("⏳ Loading Whisper model...")
-whisper_model = whisper.load_model("base")
+print("⏳ Loading Whisper model (medium)...")
+whisper_model = whisper.load_model("medium")
 
 print("⏳ Loading diarization pipeline (pyannote)...")
 diarization_pipeline = DiarizationPipeline.from_pretrained(
@@ -82,7 +76,7 @@ try:
             "min_duration_off": 0.0,
         },
         "clustering": {
-            "threshold":        0.45,   # lower = harder to merge → better separation of similar/sibling voices
+            "threshold":        0.35,   # aggressively split — Step 4.5 (MERGE_THRESHOLD=0.85) heals over-splits within recording
             "min_cluster_size": 1,      # allow single-segment speakers (one-word utterances in short recordings)
         },
     })
@@ -161,18 +155,30 @@ def save_clean_temp(audio_path: str) -> str:
 
 def extract_speaker_audio(waveform_np: np.ndarray, sr: int, windows: list[tuple]) -> np.ndarray | None:
     """
-    [3] Select the TOP_N longest segments (≥ MIN_SEGMENT_DURATION) and concatenate them.
-    Using only the longest segments avoids short noisy chunks that hurt embedding quality.
+    Pick the best speech audio for a speaker, capped at MAX_AUDIO_BUDGET seconds.
+    Greedy fill: take segments ≥ MIN_SEGMENT_DURATION sorted longest-first, stopping
+    once the budget is hit. This adapts to the recording — short audios use whatever's
+    available, long audios stop when they have enough.
+
+    Fallback (very short clips where nothing passes MIN_SEGMENT_DURATION):
+    take the N longest segments unconditionally so the speaker still gets an embedding.
     """
-    valid = [(s, e) for s, e in windows if (e - s) >= MIN_SEGMENT_DURATION]
+    sorted_by_len = sorted(windows, key=lambda x: x[1] - x[0], reverse=True)
+    valid: list[tuple] = []
+    total = 0.0
+    for s, e in sorted_by_len:
+        dur = e - s
+        if dur < MIN_SEGMENT_DURATION:
+            break  # remaining are all shorter (sorted desc)
+        valid.append((s, e))
+        total += dur
+        if total >= MAX_AUDIO_BUDGET:
+            break
 
-    # [3] Sort by duration descending, take top N
-    valid = sorted(valid, key=lambda x: x[1] - x[0], reverse=True)[:TOP_N_SEGMENTS]
-
-    # Fallback: if all segments are below MIN_SEGMENT_DURATION, concatenate everything — better
-    # to get a noisy embedding than to drop the speaker entirely (critical for short recordings)
     if not valid:
-        valid = sorted(windows, key=lambda x: x[1] - x[0], reverse=True)[:TOP_N_SEGMENTS]
+        valid = [(s, e) for s, e in sorted_by_len if (e - s) >= FALLBACK_MIN_DURATION][:FALLBACK_TOP_N]
+    if not valid:
+        valid = sorted_by_len[:FALLBACK_TOP_N]
     if not valid:
         return None
 
@@ -218,80 +224,56 @@ def get_window_embeddings(audio_np: np.ndarray, sr: int) -> list[np.ndarray]:
 
 
 def get_embedding(audio_np: np.ndarray, sr: int) -> np.ndarray | None:
-    """
-    [1][2] Extract a single averaged ECAPA-TDNN embedding for matching.
-    Averages all window embeddings into one stable representation.
-    """
+    """Single averaged embedding — used only by within-recording cluster merging
+    in Step 4.5, where mean-pool is fine because the candidates are very similar."""
     embeddings = get_window_embeddings(audio_np, sr)
     if not embeddings:
         return None
     return np.mean(embeddings, axis=0)
 
 
-# ─── Voice Embeddings Database ────────────────────────────────────────────────
-
-EMBEDDING_DIM = 192  # ECAPA-TDNN produces 192-dim embeddings
-
-def load_voices_db() -> dict:
-    """Load the known-voices database. Returns {name: list_of_embeddings}.
-    Auto-clears the DB if embeddings have the wrong dimension (e.g. leftover ECAPA 192-dim)."""
-    if VOICES_DB_PATH.exists():
-        with open(VOICES_DB_PATH, "rb") as f:
-            db = pickle.load(f)
-        # Check dimension of first embedding found
-        for embs in db.values():
-            if embs and np.array(embs[0]).flatten().shape[0] != EMBEDDING_DIM:
-                print(f"⚠️  voices_db has wrong embedding dim — clearing (was {np.array(embs[0]).flatten().shape[0]}, need {EMBEDDING_DIM})")
-                VOICES_DB_PATH.unlink()
-                return {}
-            break
-        return db
-    return {}
+def get_window_embeddings_array(audio_np: np.ndarray, sr: int) -> np.ndarray:
+    """Like get_window_embeddings but returns a stacked (N, 192) array.
+    Empty input → shape (0, 192)."""
+    embeddings = get_window_embeddings(audio_np, sr)
+    if not embeddings:
+        return np.zeros((0, 192), dtype=np.float32)
+    return np.stack(embeddings).astype(np.float32)
 
 
-def save_voices_db(db: dict):
-    """Persist the known-voices database to disk."""
-    with open(VOICES_DB_PATH, "wb") as f:
-        pickle.dump(db, f)
-
-
-def add_known_speaker(name: str, audio_path: str, speaker_label: str | None = None):
-    """
-    Register a known speaker in the database.
-    Each call appends one averaged embedding (from sliding windows) to the speaker's list.
-    """
+def extract_embeddings_only(audio_path: str) -> np.ndarray:
+    """Extract every sliding-window ECAPA-TDNN embedding for the audio.
+    Used by /speakers/embed — pure analysis, no storage. Returns (N, 192)."""
     clean_path = save_clean_temp(audio_path)
     try:
-        if speaker_label:
-            waveform, sr = load_audio_16k(audio_path)
-            audio_in_memory = {"waveform": waveform, "sample_rate": sr}
-            diarization_result = diarization_pipeline(audio_in_memory)
-
-            windows = [
-                (seg.start, seg.end)
-                for seg, _, label in diarization_result.itertracks(yield_label=True)
-                if label == speaker_label
-            ]
-            combined = extract_speaker_audio(waveform.squeeze().numpy(), sr, windows)
-            if combined is None:
-                raise ValueError(f"No usable segments found for label '{speaker_label}'.")
-            audio_np = combined
-            sr_used = sr
-        else:
-            waveform, sr_used = load_audio_16k(clean_path)
-            audio_np = waveform.squeeze().numpy()
-
-        # [1][2] ECAPA-TDNN + sliding window — store each window as a separate sample
-        new_embeddings = get_window_embeddings(audio_np, sr_used)
-        if not new_embeddings:
+        waveform, sr_used = load_audio_16k(clean_path)
+        audio_np = waveform.squeeze().numpy()
+        windows = get_window_embeddings_array(audio_np, sr_used)
+        if windows.shape[0] == 0:
             raise ValueError("Audio too short to extract a usable embedding.")
+        return windows
+    finally:
+        try:
+            os.unlink(clean_path)
+        except Exception:
+            pass
 
-        db = load_voices_db()
-        if name not in db:
-            db[name] = []
-        db[name].extend(new_embeddings)  # store all windows, not just the average
-        save_voices_db(db)
-        print(f"✅ Speaker '{name}' updated — added {len(new_embeddings)} sample(s), {len(db[name])} total.")
+
+def extract_embeddings_for_ranges(audio_path: str, ranges: list[tuple[float, float]]) -> np.ndarray:
+    """Slice the audio to the given (start, end) time ranges, concatenate them,
+    and run ECAPA-TDNN sliding-window embedding. Used by Backend split-speaker
+    flow to get clean embeddings for a subset of segments."""
+    clean_path = save_clean_temp(audio_path)
+    try:
+        waveform, sr_used = load_audio_16k(clean_path)
+        audio_np = waveform.squeeze().numpy()
+        sliced = extract_speaker_audio(audio_np, sr_used, ranges)
+        if sliced is None:
+            raise ValueError("No usable audio in the requested ranges.")
+        windows = get_window_embeddings_array(sliced, sr_used)
+        if windows.shape[0] == 0:
+            raise ValueError("Sliced audio too short to extract a usable embedding.")
+        return windows
     finally:
         try:
             os.unlink(clean_path)
@@ -301,67 +283,6 @@ def add_known_speaker(name: str, audio_path: str, speaker_label: str | None = No
 
 def _cosine(a: np.ndarray, b: np.ndarray) -> float:
     return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b) + 1e-8))
-
-
-def match_or_register_speaker(embedding: np.ndarray, taken: set | None = None) -> tuple[str, float, str]:
-    """
-    Match an embedding against ALL speakers in the DB (known people AND unknown speakers).
-
-    If a match is found → return (display_name, confidence, voice_db_key)
-    If no match       → register as a new unknown, return ("Unknown", 0.0, "speaker_XXXXXXXX")
-
-    `taken` is a set of voice_db_keys already claimed by other speakers in the SAME recording.
-    Excluding them prevents two distinct speakers in one recording from collapsing onto the same DB
-    entry just because their cosine to the same DB voice happens to clear the threshold.
-
-    This ensures every speaker — even unknown ones — gets a stable voice_db_key that links
-    the same person across multiple recordings. The user can later rename the key via the UI.
-
-    [4] Z-norm is applied when ≥2 speakers exist in the DB.
-    """
-    taken = taken or set()
-    db = load_voices_db()
-    emb = embedding.flatten()
-
-    # Only consider DB entries not already claimed by another speaker in this recording
-    available = {name: embs for name, embs in db.items() if name not in taken}
-
-    if available:
-        # Max-pool: best cosine to ANY stored sample of each speaker.
-        # This is more robust than mean-pool: it captures the closest matching
-        # sample (e.g. same mood, same recording session) instead of diluting
-        # the score across all of a speaker's variations.
-        per_speaker_score: dict[str, float] = {}
-        for name, embs in available.items():
-            sims = [_cosine(emb, np.array(e).flatten()) for e in embs]
-            per_speaker_score[name] = max(sims) if sims else 0.0
-
-        best_key = max(per_speaker_score, key=per_speaker_score.get)  # type: ignore
-        best_score = per_speaker_score[best_key]
-
-        # Show top 3 candidates for debuggability when matches go wrong
-        top = sorted(per_speaker_score.items(), key=lambda kv: kv[1], reverse=True)[:3]
-        print("  🔍 Top candidates: " + ", ".join(f"{k}={v:.3f}" for k, v in top))
-
-        if best_score >= MATCH_THRESHOLD:
-            is_real = not best_key.startswith("speaker_")
-            display = best_key if is_real else "Unknown"
-
-            # Learning: only append when confidence is very high — prevents DB pollution
-            # from borderline matches that snowball into wrong identities over time.
-            if best_score >= LEARN_THRESHOLD:
-                db[best_key].append(emb)
-                save_voices_db(db)
-                print(f"  📚 Learned: added new sample for '{best_key}' ({len(db[best_key])} total)")
-
-            return display, round(best_score, 3), best_key
-
-    # No match — register as brand-new unknown speaker
-    new_key = f"speaker_{uuid.uuid4().hex[:8]}"
-    db[new_key] = [emb]
-    save_voices_db(db)
-    print(f"  🆕 New unknown speaker saved as '{new_key}'")
-    return "Unknown", 0.0, new_key
 
 
 # ─── Progress tracking (read by GET /status) ──────────────────────────────────
@@ -376,13 +297,18 @@ def _set_progress(pct: int, label: str):
 def _merge_similar_clusters(
     speaker_segments: dict,
     speaker_embeddings: dict,
+    speaker_window_embeddings: dict,
     threshold: float,
-) -> tuple[dict, dict]:
+) -> tuple[dict, dict, dict]:
     """
     Pyannote often over-splits a single speaker into multiple clusters
     (e.g. interviewer at start + interviewer at end → SPEAKER_00 + SPEAKER_02).
-    Compute pairwise cosine on the per-cluster ECAPA embeddings and merge any
-    pair whose similarity ≥ threshold. Uses union-find for transitive merges.
+    Pairwise cosine on the averaged ECAPA embeddings; merge any pair ≥ threshold.
+    Mean-pool is fine here — within one recording the over-split clusters are
+    very similar voices.
+
+    On merge, both the averaged embedding AND the per-window stack are unioned
+    so cross-recording matching downstream still has every window.
     """
     labels = list(speaker_embeddings.keys())
     parent = {l: l for l in labels}
@@ -408,8 +334,8 @@ def _merge_similar_clusters(
 
     merged_segments: dict = {}
     merged_embeddings: dict = {}
+    merged_windows: dict = {}
     for root, members in groups.items():
-        # Keep the label of the member with the most speaking time as the canonical name
         canonical = max(members, key=lambda m: sum(s["end"] - s["start"] for s in speaker_segments.get(m, [])))
         all_segs = []
         for m in members:
@@ -419,13 +345,15 @@ def _merge_similar_clusters(
         merged_embeddings[canonical] = np.mean(
             np.stack([speaker_embeddings[m] for m in members]), axis=0
         )
+        merged_windows[canonical] = np.concatenate(
+            [speaker_window_embeddings[m] for m in members], axis=0
+        )
 
-    # Also forward any segments from labels that had no embedding (skipped in Step 4)
     for label, segs in speaker_segments.items():
         if label not in speaker_embeddings and label not in merged_segments:
             merged_segments[label] = segs
 
-    return merged_segments, merged_embeddings
+    return merged_segments, merged_embeddings, merged_windows
 
 
 # ─── Main Pipeline ────────────────────────────────────────────────────────────
@@ -490,10 +418,14 @@ def process_audio(audio_path: str) -> dict:
             "text":  seg["text"].strip()
         })
 
-    # ── Step 4: Extract voice embeddings per (merged) speaker ─────────────────
+    # ── Step 4: Extract voice embeddings per speaker ──────────────────────────
+    # We carry BOTH the averaged embedding (used by Step 4.5 cluster merging)
+    # AND the full window stack (returned to Backend for symmetric max-pool
+    # matching against the corpus).
     _set_progress(82, "Extracting voice fingerprints…")
     print("🔬 Step 4: Extracting voice fingerprints (ECAPA-TDNN + sliding windows)...")
     speaker_embeddings: dict[str, np.ndarray] = {}
+    speaker_window_embeddings: dict[str, np.ndarray] = {}
 
     for label in speaker_segments:
         windows = [(s, e) for s, e, l in diarization_segments if l == label]
@@ -504,12 +436,13 @@ def process_audio(audio_path: str) -> dict:
             continue
 
         try:
-            emb = get_embedding(combined, sr)
-            if emb is not None:
-                speaker_embeddings[label] = emb
-                print(f"  ✅ {label}: embedding extracted ({len(combined)/sr:.1f}s of audio)")
-            else:
+            window_arr = get_window_embeddings_array(combined, sr)
+            if window_arr.shape[0] == 0:
                 print(f"  ⚠️  {label}: audio too short for embedding")
+                continue
+            speaker_window_embeddings[label] = window_arr
+            speaker_embeddings[label] = window_arr.mean(axis=0)
+            print(f"  ✅ {label}: {window_arr.shape[0]} window(s) extracted ({len(combined)/sr:.1f}s of audio)")
         except Exception as e:
             print(f"  ⚠️  {label}: embedding failed — {e}")
 
@@ -517,31 +450,21 @@ def process_audio(audio_path: str) -> dict:
     if len(speaker_embeddings) > 1:
         _set_progress(88, "Merging duplicate speakers…")
         print("🔗 Step 4.5: Merging clusters with high embedding similarity...")
-        speaker_segments, speaker_embeddings = _merge_similar_clusters(
-            speaker_segments, speaker_embeddings, threshold=MERGE_THRESHOLD
+        speaker_segments, speaker_embeddings, speaker_window_embeddings = _merge_similar_clusters(
+            speaker_segments, speaker_embeddings, speaker_window_embeddings, threshold=MERGE_THRESHOLD
         )
         print(f"  → {len(speaker_embeddings)} speaker(s) after merge")
 
-    # ── Step 5: Cross-match against known speakers (and save unknowns) ─────────
-    _set_progress(93, "Matching speaker identities…")
-    print("🔍 Step 5: Cross-matching with score normalization...")
+    # ── Step 5: Build the response — Backend does the matching ────────────────
+    _set_progress(93, "Packaging speaker fingerprints…")
+    print("📦 Step 5: Packaging per-speaker window embeddings for Backend matching...")
     results = []
-    taken_keys: set[str] = set()
     for label in speaker_segments:
-        embedding = speaker_embeddings.get(label)
-        if embedding is not None:
-            matched_name, confidence, voice_db_key = match_or_register_speaker(embedding, taken=taken_keys)
-            if voice_db_key:
-                taken_keys.add(voice_db_key)
-        else:
-            matched_name, confidence, voice_db_key = "Unknown", 0.0, ""
+        windows = speaker_window_embeddings.get(label)
         results.append({
-            "speaker_label":    label,
-            "matched_identity": matched_name,
-            "voice_db_key":     voice_db_key,
-            "confidence":       confidence,
-            "is_known":         matched_name != "Unknown",
-            "segments":         speaker_segments[label]
+            "speaker_label": label,
+            "embeddings":    windows.tolist() if windows is not None else [],
+            "segments":      speaker_segments[label],
         })
 
     results.sort(key=lambda s: s["segments"][0]["start"] if s["segments"] else 0)
@@ -552,9 +475,10 @@ def process_audio(audio_path: str) -> dict:
         pass
 
     output = {
-        "file":         os.path.basename(audio_path),
-        "num_speakers": len(results),
-        "speakers":     results
+        "file":          os.path.basename(audio_path),
+        "num_speakers":  len(results),
+        "model_version": EMBEDDING_MODEL_VERSION,
+        "speakers":      results,
     }
 
     _set_progress(100, "Done")
@@ -578,7 +502,7 @@ if __name__ == "__main__":
     # Flatten all segments across speakers and sort by start time
     all_segs = []
     for spk in result["speakers"]:
-        label = spk["matched_identity"] if spk["is_known"] else spk["speaker_label"]
+        label = spk["speaker_label"]
         for seg in spk["segments"]:
             all_segs.append((seg["start"], seg["end"], label, seg["text"]))
     all_segs.sort(key=lambda x: x[0])

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { User, FileAudio, Calendar, Link2, Loader2, AlertCircle, Pencil, Check, X, Merge, Trash2, PlayCircle, Clock } from 'lucide-react';
+import { User, FileAudio, Calendar, Link2, Loader2, AlertCircle, Pencil, Check, X, Merge, Trash2, PlayCircle, Clock, ArrowLeft } from 'lucide-react';
 import { speakers, relations, type SpeakerRecord, type RelationRecord, type SpeakerAudioRecord } from '../lib/api';
 
 const RISK_COLORS = {
@@ -164,6 +164,13 @@ export default function SpeakerProfile() {
 
   return (
     <div className="p-8">
+      <button
+        onClick={() => navigate(-1)}
+        className="inline-flex items-center gap-2 text-slate-400 hover:text-white text-sm mb-4 transition-colors"
+      >
+        <ArrowLeft className="w-4 h-4" />
+        Back
+      </button>
       <div className="mb-8">
         <h1 className="text-white text-3xl mb-2">Speaker Profile</h1>
         <p className="text-slate-400">Voice identity and connection information</p>

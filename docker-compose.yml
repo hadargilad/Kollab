@@ -35,7 +35,6 @@ services:
     volumes:
       - ./ml:/app
       - ml_models:/app/pretrained_models
-      - ml_voices:/app/voices_db
     environment:
       - HF_TOKEN=${HF_TOKEN:-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}
     profiles:
@@ -44,4 +43,3 @@ services:
 volumes:
   audio_intel_data:
   ml_models:
-  ml_voices:

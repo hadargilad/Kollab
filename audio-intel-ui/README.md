@@ -1,75 +1,50 @@
-# React + TypeScript + Vite
+# AudioIntel Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React UI for the AudioIntel platform. Runs as a web app in dev (port 5173)
+and as a Tauri desktop app in production (Rust shell + the same React bundle).
 
-Currently, two official plugins are available:
+For overall project context, prerequisites, and the one-command run, see the
+[root README](../README.md).
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## Stack
 
-## React Compiler
+- **React 19** + **TypeScript** + **Vite** + the React Compiler
+- **Tailwind CSS 4** for styling
+- **shadcn/ui** primitives (Radix under the hood) for accessible dialogs, dropdowns, tabs, tooltips
+- **lucide-react** icons
+- **react-router-dom 7** for routing
+- **recharts** for dashboard charts
+- **Tauri** (Rust) for the desktop shell — see [src-tauri/](src-tauri/)
 
-The React Compiler is enabled on this template. See [this documentation](https://react.dev/learn/react-compiler) for more information.
+## Where things live
 
-Note: This will impact Vite dev & build performances.
+| Folder | What's there |
+|--------|--------------|
+| [src/components/](src/components/) | Page components — one file per route (Dashboard, AudioAnalysis, Settings, UserManagement, etc.) |
+| [src/lib/api.ts](src/lib/api.ts) | All HTTP calls. Backend on `127.0.0.1:8001`, ML on `127.0.0.1:8000`. Grouped namespaces: `auth`, `audios`, `speakers`, `suggestions`, `relations`, `alerts`, `stats`, `users`, `ml`. |
+| [src/App.tsx](src/App.tsx) | Router + auth gate + force-password-change flow |
+| [src-tauri/](src-tauri/) | Rust desktop shell (build with `npm run tauri:build`) |
 
-## Expanding the ESLint configuration
+## Talking to the services
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+The UI talks to the **Backend** for everything stateful — speakers, audios,
+segments, suggestions, auth. The ML service is only hit directly for
+`POST /analyze` from inside the Backend, never from the UI. (The Settings
+"Add voice profile" flow uses Backend's `POST /speakers/enroll`, which
+internally calls ML's `POST /speakers/embed`.)
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+## Scripts
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+| Script | What it does |
+|--------|--------------|
+| `npm run dev` | Vite dev server only (web mode, port 5173) |
+| `npm run tauri:dev` | Vite + Tauri desktop app (used by the root `npm run dev` / `dev:ml`) |
+| `npm run build` | Production web bundle to `dist/` |
+| `npm run tauri:build` | Production desktop binary |
+| `npm run lint` | ESLint over `src/` |
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+For day-to-day work, run from the project root:
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm run dev:ml    # Backend + ML in Docker, then opens the Tauri desktop app
 ```

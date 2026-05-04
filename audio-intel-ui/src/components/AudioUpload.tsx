@@ -32,6 +32,7 @@ export default function AudioUpload({ userId }: Props) {
     name: '',
     description: '',
     source: '',
+    recordedAt: '',  // ISO local datetime, e.g. "2026-05-04T18:30"
   });
 
   const handleDrag = (e: React.DragEvent) => {
@@ -69,6 +70,7 @@ export default function AudioUpload({ userId }: Props) {
       name: fileList.length === 1 ? fileList[0].name.replace(/\.[^/.]+$/, '') : '',
       description: '',
       source: '',
+      recordedAt: '',
     });
   };
 
@@ -77,7 +79,12 @@ export default function AudioUpload({ userId }: Props) {
       alert('Please provide a name for the file(s)');
       return;
     }
+    if (!fileDetails.recordedAt) {
+      alert('Please pick the date and time the audio was recorded.');
+      return;
+    }
 
+    const recordedAt = fileDetails.recordedAt;
     const filesToUpload = [...pendingFiles];
     const newFiles: UploadedFile[] = filesToUpload.map((file, index) => ({
       id: `file-${Date.now()}-${index}`,
@@ -95,15 +102,15 @@ export default function AudioUpload({ userId }: Props) {
     setPendingFiles([]);
 
     filesToUpload.forEach((file, index) => {
-      doUpload(newFiles[index].id, file, newFiles[index].name, fileDetails.description);
+      doUpload(newFiles[index].id, file, newFiles[index].name, fileDetails.description, recordedAt);
     });
   };
 
-  const doUpload = async (fileId: string, file: File, name: string, description: string) => {
+  const doUpload = async (fileId: string, file: File, name: string, description: string, recordedAt: string) => {
     // Step 1: send file — backend saves it and returns immediately
     let audioId: number;
     try {
-      const result = await audios.upload(file, name, description, userId);
+      const result = await audios.upload(file, name, description, userId, recordedAt);
       audioId = result.id;
       setFiles(prev => prev.map(f =>
         f.id === fileId ? { ...f, audioId, status: 'processing', progress: 20 } : f
@@ -207,6 +214,21 @@ export default function AudioUpload({ userId }: Props) {
                   rows={3}
                   className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 resize-none"
                 />
+              </div>
+
+              {/* Recorded At */}
+              <div>
+                <label className="text-slate-400 text-sm mb-2 block">
+                  When was this recorded? <span className="text-red-400">*</span>
+                </label>
+                <input
+                  type="datetime-local"
+                  value={fileDetails.recordedAt}
+                  onChange={(e) => setFileDetails({ ...fileDetails, recordedAt: e.target.value })}
+                  max={new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16)}
+                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-blue-500 scheme-dark"
+                />
+                <p className="text-slate-500 text-xs mt-1">Used for filtering by recording time, separate from when you uploaded.</p>
               </div>
 
               {/* Source */}

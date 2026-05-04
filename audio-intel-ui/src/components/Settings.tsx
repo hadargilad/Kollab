@@ -1,11 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Globe, Cpu, Sliders, Bell, Shield, Save, UserCheck, Upload, Trash2, Plus, Loader2 } from 'lucide-react';
-import { ml } from '../lib/api';
-
-interface KnownSpeaker {
-  name: string;
-  sample_count: number;
-}
+import { speakers, type SpeakerRecord } from '../lib/api';
 
 export default function Settings() {
   const [settings, setSettings] = useState({
@@ -18,20 +13,20 @@ export default function Settings() {
     encryption: true,
   });
 
-  const [knownSpeakers, setKnownSpeakers] = useState<KnownSpeaker[]>([]);
+  const [knownSpeakers, setKnownSpeakers] = useState<SpeakerRecord[]>([]);
   const [speakersLoading, setSpeakersLoading] = useState(true);
   const [addName, setAddName] = useState('');
   const [addFile, setAddFile] = useState<File | null>(null);
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState('');
   const [addSuccess, setAddSuccess] = useState('');
-  const [deletingNames, setDeletingNames] = useState<Set<string>>(new Set());
+  const [deletingIds, setDeletingIds] = useState<Set<number>>(new Set());
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const loadSpeakers = async () => {
     try {
-      const res = await ml.listSpeakers();
-      setKnownSpeakers(res.speakers);
+      const all = await speakers.list();
+      setKnownSpeakers(all.filter(s => s.sampleCount > 0));
     } catch {
       // ignore
     } finally {
@@ -47,7 +42,7 @@ export default function Settings() {
     setAddError('');
     setAddSuccess('');
     try {
-      await ml.addSpeaker(addName.trim(), addFile);
+      await speakers.enroll(addName.trim(), addFile);
       setAddSuccess(`"${addName.trim()}" registered successfully.`);
       setAddName('');
       setAddFile(null);
@@ -60,15 +55,15 @@ export default function Settings() {
     }
   };
 
-  const handleDeleteSpeaker = async (name: string) => {
-    setDeletingNames(prev => new Set(prev).add(name));
+  const handleDeleteSpeaker = async (id: number) => {
+    setDeletingIds(prev => new Set(prev).add(id));
     try {
-      await ml.deleteSpeaker(name);
+      await speakers.remove(id);
       await loadSpeakers();
     } catch {
       // ignore
     } finally {
-      setDeletingNames(prev => { const s = new Set(prev); s.delete(name); return s; });
+      setDeletingIds(prev => { const s = new Set(prev); s.delete(id); return s; });
     }
   };
 
@@ -340,20 +335,20 @@ export default function Settings() {
           ) : (
             <div className="space-y-2">
               {knownSpeakers.map(spk => (
-                <div key={spk.name} className="flex items-center justify-between px-4 py-3 bg-slate-800 rounded-lg">
+                <div key={spk.id} className="flex items-center justify-between px-4 py-3 bg-slate-800 rounded-lg">
                   <div>
                     <span className={`font-medium ${spk.name.startsWith('speaker_') ? 'text-slate-400 font-mono text-sm' : 'text-white'}`}>
                       {spk.name}
                     </span>
-                    <span className="ml-3 text-slate-500 text-xs">{spk.sample_count} sample{spk.sample_count !== 1 ? 's' : ''}</span>
+                    <span className="ml-3 text-slate-500 text-xs">{spk.sampleCount} sample{spk.sampleCount !== 1 ? 's' : ''}</span>
                   </div>
                   <button
-                    onClick={() => handleDeleteSpeaker(spk.name)}
-                    disabled={deletingNames.has(spk.name)}
+                    onClick={() => handleDeleteSpeaker(spk.id)}
+                    disabled={deletingIds.has(spk.id)}
                     className="p-1.5 text-slate-500 hover:text-red-400 disabled:opacity-40 transition-colors"
                     title="Remove voice profile"
                   >
-                    {deletingNames.has(spk.name) ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                    {deletingIds.has(spk.id) ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
                   </button>
                 </div>
               ))}

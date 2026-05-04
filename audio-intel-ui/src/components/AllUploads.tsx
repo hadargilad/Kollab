@@ -10,6 +10,8 @@ export default function AllUploads() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [dateFilter, setDateFilter] = useState<string>('all');
+  const [recordedFrom, setRecordedFrom] = useState('');
+  const [recordedTo, setRecordedTo] = useState('');
   const [retrying, setRetrying] = useState<Set<number>>(new Set());
   const [deleting, setDeleting] = useState<Set<number>>(new Set());
   const [confirmDelete, setConfirmDelete] = useState<AudioRecord | null>(null);
@@ -55,7 +57,20 @@ export default function AllUploads() {
     else if (dateFilter === 'week') matchesDate = daysDiff <= 7;
     else if (dateFilter === 'month') matchesDate = daysDiff <= 30;
 
-    return matchesSearch && matchesStatus && matchesDate;
+    // Recorded-time range — independent of upload date.
+    // Datetime-local strings are local-naive, lexically comparable in YYYY-MM-DDTHH:MM order.
+    let matchesRecorded = true;
+    if (recordedFrom || recordedTo) {
+      if (!upload.recordedAt) {
+        matchesRecorded = false;  // exclude legacy rows that don't have a recorded time
+      } else {
+        const recorded = upload.recordedAt.slice(0, 16);  // strip seconds for comparable form
+        if (recordedFrom && recorded < recordedFrom) matchesRecorded = false;
+        if (recordedTo && recorded > recordedTo) matchesRecorded = false;
+      }
+    }
+
+    return matchesSearch && matchesStatus && matchesDate && matchesRecorded;
   });
 
   const formatDuration = (seconds: number) => {
@@ -168,7 +183,7 @@ export default function AllUploads() {
           </div>
 
           <div>
-            <label className="text-slate-400 text-sm mb-2 block">Date Range</label>
+            <label className="text-slate-400 text-sm mb-2 block">Upload Date</label>
             <div className="relative">
               <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
               <select
@@ -183,6 +198,40 @@ export default function AllUploads() {
               </select>
             </div>
           </div>
+        </div>
+
+        {/* Recorded-date range — separate from upload date */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+          <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="text-slate-400 text-sm mb-2 block">Recorded From</label>
+              <input
+                type="datetime-local"
+                value={recordedFrom}
+                onChange={(e) => setRecordedFrom(e.target.value)}
+                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-blue-500 scheme-dark"
+              />
+            </div>
+            <div>
+              <label className="text-slate-400 text-sm mb-2 block">Recorded To</label>
+              <input
+                type="datetime-local"
+                value={recordedTo}
+                onChange={(e) => setRecordedTo(e.target.value)}
+                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-blue-500 scheme-dark"
+              />
+            </div>
+          </div>
+          {(recordedFrom || recordedTo) && (
+            <div className="flex items-end">
+              <button
+                onClick={() => { setRecordedFrom(''); setRecordedTo(''); }}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-sm transition-colors"
+              >
+                Clear recorded range
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="mt-4 pt-4 border-t border-slate-800">
@@ -241,10 +290,16 @@ export default function AllUploads() {
                       {upload.description && (
                         <p className="text-slate-400 text-sm mb-3">{upload.description}</p>
                       )}
-                      <div className="flex items-center gap-6 text-sm text-slate-500">
+                      <div className="flex items-center gap-x-6 gap-y-1 flex-wrap text-sm text-slate-500">
+                        {upload.recordedAt && (
+                          <span className="flex items-center gap-2 text-slate-400">
+                            <Calendar className="w-4 h-4" />
+                            Recorded: {formatDate(upload.recordedAt)}
+                          </span>
+                        )}
                         <span className="flex items-center gap-2">
-                          <Calendar className="w-4 h-4" />
-                          {formatDate(upload.uploadedAt)}
+                          <Clock className="w-4 h-4" />
+                          Uploaded: {formatDate(upload.uploadedAt)}
                         </span>
                         <span>Duration: {formatDuration(upload.duration)}</span>
                         <span>Size: {formatFileSize(upload.fileSize)}</span>

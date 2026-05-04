@@ -6,6 +6,7 @@ Runs on port 8001. The ML service runs separately on port 8000.
 """
 
 import asyncio
+import json
 import os
 import shutil
 import time as _time
@@ -15,6 +16,7 @@ from pathlib import Path
 _start_time = _time.time()
 
 import httpx
+import numpy as np
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
@@ -22,6 +24,7 @@ from pydantic import BaseModel
 from typing import Optional
 
 import database
+import matcher
 
 ML_URL = os.getenv("ML_API_URL", "http://127.0.0.1:8000")
 
@@ -242,13 +245,34 @@ async def _run_ml_and_save(audio_id: int, save_path: Path, original_name: str) -
     ]
     duration = max(all_ends) if all_ends else 0.0
 
+    model_version = result.get("model_version", "ecapa-tdnn-v1")
+
     speaker_id_map: dict[str, int] = {}
+    pending_suggestions: list[tuple[int, int, float]] = []
+    taken: set[int] = set()
     for spk in result.get("speakers", []):
-        is_known = spk.get("is_known", False)
-        voice_id = spk["matched_identity"] if is_known else (spk.get("voice_db_key") or spk["speaker_label"])
-        spk_display = spk["matched_identity"] if is_known else spk["speaker_label"]
-        db_id, _ = database.get_or_create_speaker(voice_id, spk_display)
-        speaker_id_map[spk["speaker_label"]] = db_id
+        windows_raw = spk.get("embeddings") or []
+        query_windows = np.asarray(windows_raw, dtype=np.float32)
+        if query_windows.size == 0:
+            # Speaker had segments but no embeddable audio (very short fragments).
+            # Attribute segments to a fresh unknown so they're still visible in the UI.
+            sid, _name = database.create_unknown_speaker()
+            speaker_id_map[spk["speaker_label"]] = sid
+            taken.add(sid)
+            continue
+
+        match = matcher.match_or_register(
+            query_windows,
+            taken_speaker_ids=taken,
+            model_version=model_version,
+            source_audio_id=audio_id,
+        )
+        speaker_id_map[spk["speaker_label"]] = match.speaker_id
+        taken.add(match.speaker_id)
+        if match.status == "suggested" and match.suggested_speaker_id is not None:
+            pending_suggestions.append(
+                (match.speaker_id, match.suggested_speaker_id, match.confidence)
+            )
 
     segments_to_insert = [
         {
@@ -265,6 +289,9 @@ async def _run_ml_and_save(audio_id: int, save_path: Path, original_name: str) -
     if segments_to_insert:
         database.insert_segments(segments_to_insert)
 
+    for unknown_id, suggested_id, conf in pending_suggestions:
+        database.insert_speaker_suggestion(audio_id, unknown_id, suggested_id, conf)
+
     speaker_db_ids = list(speaker_id_map.values())
     for i in range(len(speaker_db_ids)):
         for j in range(i + 1, len(speaker_db_ids)):
@@ -280,7 +307,11 @@ async def upload_audio(
     name: str = Form(""),
     description: str = Form(""),
     uploaded_by: int = Form(...),
+    recorded_at: str = Form(...),
 ):
+    if not recorded_at.strip():
+        raise HTTPException(status_code=400, detail="recorded_at is required (when the audio was recorded).")
+
     original_name = file.filename or "audio"
     display_name = name.strip() or Path(original_name).stem
     suffix = Path(original_name).suffix or ".wav"
@@ -291,7 +322,9 @@ async def upload_audio(
         shutil.copyfileobj(file.file, out)
 
     file_size = save_path.stat().st_size
-    audio_id = database.create_audio(display_name, description, str(save_path), file_size, uploaded_by)
+    audio_id = database.create_audio(
+        display_name, description, str(save_path), file_size, uploaded_by, recorded_at.strip()
+    )
 
     background_tasks.add_task(_run_ml_and_save, audio_id, save_path, original_name)
 
@@ -395,19 +428,9 @@ class ReassignSpeakerRequest(BaseModel):
     force_separate: bool = False  # if True, always create a new speaker
 
 
-def _merge_voice_db(source_voice_id: str, target_voice_id: str) -> None:
-    """Best-effort: ask the ML service to merge embeddings for the two names.
-    Failures are swallowed — the DB merge is the source of truth."""
-    if not source_voice_id or not target_voice_id or source_voice_id == target_voice_id:
-        return
-    try:
-        with httpx.Client(timeout=5.0) as c:
-            c.patch(
-                f"{ML_URL}/speakers/rename",
-                json={"old_name": source_voice_id, "new_name": target_voice_id},
-            )
-    except Exception:
-        pass
+class SplitSpeakerRequest(BaseModel):
+    segment_ids: list[int]
+    new_name: str = ""  # empty → auto-generate "Speaker N"
 
 
 @app.post("/audios/{audio_id}/speakers/{speaker_id}/reassign", status_code=201)
@@ -428,9 +451,10 @@ def reassign_speaker(audio_id: int, speaker_id: int, body: ReassignSpeakerReques
         # If the source speaker now has zero segments anywhere, fold them into the target.
         if database.speaker_has_segments(speaker_id):
             return result
-        source = database.get_speaker(speaker_id)
-        if database.merge_speakers(speaker_id, existing["id"]) and source:
-            _merge_voice_db(source["voiceIdentifier"], existing["voiceIdentifier"])
+        # move_embeddings before merge — merge deletes the source which would
+        # otherwise cascade-delete its SpeakerEmbeddings rows.
+        database.move_embeddings(speaker_id, existing["id"])
+        database.merge_speakers(speaker_id, existing["id"])
         return result
 
     new_speaker = database.reassign_speaker_in_audio(audio_id, speaker_id, new_name)
@@ -439,15 +463,101 @@ def reassign_speaker(audio_id: int, speaker_id: int, body: ReassignSpeakerReques
     return new_speaker
 
 
-def _delete_voice_db_entry(voice_id: str) -> None:
-    """Best-effort: remove the speaker's embedding bucket from the ML voice DB."""
-    if not voice_id:
-        return
-    try:
-        with httpx.Client(timeout=5.0) as c:
-            c.delete(f"{ML_URL}/speakers/{voice_id}")
-    except Exception:
-        pass
+async def _embeddings_for_ranges(audio_path: Path, ranges: list[tuple[float, float]]) -> tuple[np.ndarray, str]:
+    """POST the audio + ranges to ML's /speakers/embed-from-ranges and return
+    (embeddings, model_version). Raises HTTPException on ML failure."""
+    if not ranges:
+        return np.zeros((0, 192), dtype=np.float32), "ecapa-tdnn-v1"
+    ranges_json = json.dumps([[float(s), float(e)] for s, e in ranges])
+    with audio_path.open("rb") as f:
+        async with httpx.AsyncClient(timeout=300.0) as client:
+            ml_response = await client.post(
+                f"{ML_URL}/speakers/embed-from-ranges",
+                files={"file": (audio_path.name, f, "audio/mpeg")},
+                data={"ranges": ranges_json},
+            )
+    if ml_response.status_code != 200:
+        raise HTTPException(status_code=502, detail=f"ML re-extract failed: {ml_response.text[:200]}")
+    payload = ml_response.json()
+    arr = np.asarray(payload.get("embeddings") or [], dtype=np.float32)
+    return arr, payload.get("model_version", "ecapa-tdnn-v1")
+
+
+@app.post("/audios/{audio_id}/speakers/{speaker_id}/split", status_code=201)
+async def split_speaker(audio_id: int, speaker_id: int, body: SplitSpeakerRequest):
+    """Split selected segments off the source speaker into a new speaker.
+    Re-extracts embeddings for both sides from the on-disk audio so the new
+    speaker gets clean fingerprints and the source loses the misattributed ones.
+    """
+    if not body.segment_ids:
+        raise HTTPException(status_code=400, detail="segment_ids cannot be empty.")
+
+    audio = database.get_audio(audio_id)
+    if not audio:
+        raise HTTPException(status_code=404, detail="Audio not found.")
+    audio_path = Path(audio["filePath"])
+    if not audio_path.exists():
+        raise HTTPException(status_code=404, detail="Audio file no longer on disk.")
+
+    source = database.get_speaker(speaker_id)
+    if not source:
+        raise HTTPException(status_code=404, detail="Source speaker not found.")
+
+    # Validate every requested segment belongs to this audio + this speaker
+    moved_segs = database.get_segments_by_ids(body.segment_ids)
+    bad = [s for s in moved_segs if s["audioId"] != audio_id or s["speakerId"] != speaker_id]
+    if bad or len(moved_segs) != len(body.segment_ids):
+        raise HTTPException(
+            status_code=400,
+            detail="All segment_ids must belong to this audio AND the given source speaker.",
+        )
+
+    moved_ranges = [(s["startTime"], s["endTime"]) for s in moved_segs]
+
+    # Compute remaining segments (this audio's segments for the source, minus the moved ones)
+    all_for_source = [
+        s for s in database.get_segments_by_audio(audio_id)
+        if s["speakerId"] == speaker_id
+    ]
+    moved_id_set = set(body.segment_ids)
+    remaining = [s for s in all_for_source if s["id"] not in moved_id_set]
+    remaining_ranges = [(s["startTime"], s["endTime"]) for s in remaining]
+
+    # Re-extract embeddings via ML — does the heavy lifting (load audio, slice, ECAPA windows)
+    new_embeddings, model_version = await _embeddings_for_ranges(audio_path, moved_ranges)
+    if new_embeddings.size == 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Selected segments produced no usable embeddings (probably too short).",
+        )
+    remaining_embeddings, _ = await _embeddings_for_ranges(audio_path, remaining_ranges) if remaining_ranges else (np.zeros((0, 192), dtype=np.float32), model_version)
+
+    # Create the new speaker (auto-named "Speaker N" unless caller gave a name)
+    if body.new_name.strip():
+        # Honour user-supplied name. Reuse get_or_create_speaker so it picks a fresh VoiceIdentifier.
+        import uuid as _uuid
+        new_voice_id = f"speaker_{_uuid.uuid4().hex[:8]}"
+        new_id, _ = database.get_or_create_speaker(new_voice_id, body.new_name.strip())
+    else:
+        new_id, _ = database.create_unknown_speaker()
+
+    # Repoint the chosen segments
+    database.repoint_segments(body.segment_ids, new_id)
+
+    # Replace this audio's contribution to the source's bucket with the cleaner remaining-only one,
+    # and seed the new speaker with embeddings from just the moved segments.
+    database.delete_embeddings_for_speaker_and_audio(speaker_id, audio_id)
+    if remaining_embeddings.size > 0:
+        database.insert_embeddings(speaker_id, remaining_embeddings, model_version, audio_id)
+    database.insert_embeddings(new_id, new_embeddings, model_version, audio_id)
+
+    # If after the split the source has no segments anywhere, fold it in (it's empty).
+    if not database.speaker_has_segments(speaker_id):
+        database.move_embeddings(speaker_id, new_id)
+        database.merge_speakers(speaker_id, new_id)
+        return database.get_speaker(new_id)
+
+    return database.get_speaker(new_id)
 
 
 @app.delete("/speakers/{speaker_id}")
@@ -458,7 +568,6 @@ def delete_speaker_endpoint(speaker_id: int):
     ok = database.delete_speaker(speaker_id)
     if not ok:
         raise HTTPException(status_code=500, detail="Failed to delete speaker.")
-    _delete_voice_db_entry(speaker["voiceIdentifier"])
     return {"success": True}
 
 
@@ -481,15 +590,94 @@ def update_speaker(speaker_id: int, body: UpdateSpeakerRequest):
         if risk_rank.get(body.riskLevel, 0) > risk_rank.get(target["riskLevel"], 0):
             database.update_speaker(target["id"], target["name"], body.riskLevel)
 
+        # move_embeddings before merge — see reassign_speaker.
+        database.move_embeddings(speaker_id, target["id"])
         if not database.merge_speakers(speaker_id, target["id"]):
             raise HTTPException(status_code=500, detail="Speaker merge failed.")
-        _merge_voice_db(source["voiceIdentifier"], target["voiceIdentifier"])
         return {"success": True, "merged": True, "mergedIntoId": target["id"], "mergedIntoName": target["name"]}
 
     ok = database.update_speaker(speaker_id, new_name, body.riskLevel)
     if not ok:
         raise HTTPException(status_code=404, detail="Speaker not found.")
     return {"success": True, "merged": False}
+
+
+# ─── Speaker Enrollment + Suggestions ─────────────────────────────────────────
+
+@app.post("/speakers/enroll", status_code=201)
+async def enroll_speaker(name: str = Form(...), file: UploadFile = File(...)):
+    """Register a known speaker in the voice database from a clean audio sample.
+    Calls ML's stateless /speakers/embed and persists the returned vectors."""
+    clean_name = name.strip()
+    if not clean_name:
+        raise HTTPException(status_code=400, detail="Name cannot be empty.")
+
+    original_name = file.filename or "audio"
+    file_bytes = await file.read()
+
+    try:
+        async with httpx.AsyncClient(timeout=300.0) as client:
+            ml_response = await client.post(
+                f"{ML_URL}/speakers/embed",
+                files={"file": (original_name, file_bytes, file.content_type or "audio/mpeg")},
+            )
+        ml_response.raise_for_status()
+        payload = ml_response.json()
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"ML service unavailable: {e}")
+
+    embeddings = np.asarray(payload.get("embeddings") or [], dtype=np.float32)
+    if embeddings.size == 0:
+        raise HTTPException(status_code=400, detail="No usable embedding could be extracted from this audio.")
+
+    speaker_id, _created = database.get_or_create_speaker(clean_name, clean_name)
+    inserted = database.insert_embeddings(
+        speaker_id,
+        embeddings,
+        model_version=payload.get("model_version", "ecapa-tdnn-v1"),
+    )
+    return {
+        "status": "ok",
+        "message": f"Speaker '{clean_name}' enrolled successfully.",
+        "speakerId": speaker_id,
+        "sampleCount": database.count_embeddings(speaker_id),
+        "addedThisCall": inserted,
+    }
+
+
+@app.get("/audios/{audio_id}/suggestions")
+def list_audio_suggestions(audio_id: int):
+    if not database.get_audio(audio_id):
+        raise HTTPException(status_code=404, detail="Audio not found.")
+    return database.get_suggestions_for_audio(audio_id)
+
+
+@app.post("/audios/{audio_id}/suggestions/{suggestion_id}/accept", status_code=200)
+def accept_suggestion(audio_id: int, suggestion_id: int):
+    suggestion = database.get_suggestion(suggestion_id)
+    if not suggestion or suggestion["audioId"] != audio_id:
+        raise HTTPException(status_code=404, detail="Suggestion not found.")
+
+    unknown_id = suggestion["unknownSpeakerId"]
+    target_id = suggestion["suggestedSpeakerId"]
+
+    # "Speaker N is Ofir" is a statement about identity, not just this recording —
+    # it should hold globally. Move embeddings, then merge the unknown into the
+    # target (segments from every audio repoint, source row is deleted).
+    database.move_embeddings(unknown_id, target_id)
+    if not database.merge_speakers(unknown_id, target_id):
+        raise HTTPException(status_code=500, detail="Failed to merge speakers.")
+    database.delete_suggestion(suggestion_id)
+    return {"success": True, "mergedIntoId": target_id}
+
+
+@app.delete("/audios/{audio_id}/suggestions/{suggestion_id}", status_code=200)
+def reject_suggestion(audio_id: int, suggestion_id: int):
+    suggestion = database.get_suggestion(suggestion_id)
+    if not suggestion or suggestion["audioId"] != audio_id:
+        raise HTTPException(status_code=404, detail="Suggestion not found.")
+    database.delete_suggestion(suggestion_id)
+    return {"success": True}
 
 
 # ─── Relations ────────────────────────────────────────────────────────────────

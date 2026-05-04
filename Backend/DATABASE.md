@@ -36,16 +36,59 @@ Default seed users (created on first run):
 ### `Speakers`
 
 One row per unique voice identity, whether a known person or an auto-registered unknown.
-Unknown speakers get `VoiceIdentifier = "speaker_<8-hex-chars>"` assigned by the ML pipeline.
+Unknown speakers get `VoiceIdentifier = "speaker_<8-hex-chars>"` assigned by the matcher
+when no candidate clears the auto-match threshold.
 
 | Column            | Type     | Notes                                                          |
 |-------------------|----------|----------------------------------------------------------------|
 | `Id`              | INTEGER  | Primary key, auto-increment                                    |
-| `VoiceIdentifier` | TEXT     | Unique key matching the ML voices DB (`speaker_XXXXXXXX` or a real name) |
+| `VoiceIdentifier` | TEXT     | Unique key (`speaker_XXXXXXXX` for unknowns, the user-given name for enrolled speakers) |
 | `Name`            | TEXT     | Display name shown in the UI (editable by analysts)            |
 | `Color`           | TEXT     | Hex colour assigned from a rotating palette for the timeline   |
 | `RiskLevel`       | TEXT     | `"low"` / `"medium"` / `"high"` (default `"low"`)             |
 | `FirstDetected`   | DATETIME | Auto-set on insert                                             |
+
+---
+
+### `SpeakerEmbeddings`
+
+Voice fingerprints. One row per ECAPA-TDNN sliding-window embedding (5s window, 2.5s hop).
+Each speaker accumulates rows over time; a per-speaker cap keeps the most recent
+50 windows so storage and matching cost stay bounded.
+
+| Column          | Type     | Notes                                                          |
+|-----------------|----------|----------------------------------------------------------------|
+| `Id`            | INTEGER  | Primary key, auto-increment                                    |
+| `SpeakerId`     | INTEGER  | FK → `Speakers(Id)`, **`CASCADE DELETE`** — vectors die with the speaker |
+| `Vector`        | BLOB     | `np.float32` array, `Dim` floats serialized via `.tobytes()`   |
+| `Dim`           | INTEGER  | Vector dimension (currently 192). Mismatched rows are skipped at load time, defending against future model swaps. |
+| `ModelVersion`  | TEXT     | e.g. `"ecapa-tdnn-v1"` — lets you flush vectors from an old model later |
+| `SourceAudioId` | INTEGER  | FK → `Audios(Id)`, `SET NULL`. Provenance only — which recording the vector came from |
+| `EnrolledAt`    | DATETIME | Auto-set on insert; used by the cap-eviction sort              |
+
+Indexed by `SpeakerId` for fast per-speaker lookups during the cap-trim step
+and during matcher corpus loads.
+
+---
+
+### `SpeakerSuggestions`
+
+Pending "you might want to confirm this" hints surfaced in the UI. Created by the
+matcher when a query speaker scored 0.40–0.60 against an existing speaker — high
+enough to suggest, not high enough to auto-attribute. Resolved via the
+`POST /audios/{id}/suggestions/{sid}/accept` or `DELETE` endpoints.
+
+| Column                | Type     | Notes                                                |
+|-----------------------|----------|------------------------------------------------------|
+| `Id`                  | INTEGER  | Primary key, auto-increment                          |
+| `AudioId`             | INTEGER  | FK → `Audios(Id)`, `CASCADE DELETE`                  |
+| `UnknownSpeakerId`    | INTEGER  | FK → `Speakers(Id)`, `CASCADE DELETE`. The fresh unknown holding the segments |
+| `SuggestedSpeakerId`  | INTEGER  | FK → `Speakers(Id)`, `CASCADE DELETE`. The known speaker the system thinks it might be |
+| `Confidence`          | REAL     | The cosine score that triggered the suggestion (0.40 ≤ x < 0.60) |
+| `CreatedAt`           | DATETIME | Auto-set on insert                                   |
+
+CASCADE on all three FKs means the row evaporates cleanly if any of the
+referenced rows go away — no orphan suggestions.
 
 ---
 
@@ -118,30 +161,54 @@ Currently populated manually or by future pipeline extensions.
 ## Key Relationships
 
 ```
-Users ──< Audios          (one user uploads many audios)
-Audios ──< Segments       (one audio has many segments)
-Speakers ──< Segments     (one speaker has many segments)
-Speakers ──< Relations    (many-to-many, stored as ordered pairs)
+Users ──< Audios                 (one user uploads many audios)
+Audios ──< Segments              (one audio has many segments)
+Audios ──< SpeakerSuggestions    (per-audio confirmation prompts)
+Speakers ──< Segments            (one speaker has many segments)
+Speakers ──< SpeakerEmbeddings   (one speaker has many voice fingerprints)
+Speakers ──< SpeakerSuggestions  (referenced as both unknown AND suggested target)
+Speakers ──< Relations           (many-to-many, stored as ordered pairs)
 Speakers ──< Alerts
 Audios ──< Alerts
 ```
 
 ## Speaker Identity Flow
 
+The ML service is stateless — it only extracts vectors. All identity decisions
+and storage live in the Backend (`Backend/matcher.py` + `SpeakerEmbeddings`).
+
 ```
 Upload audio
     │
     ▼
-ML pipeline (pyannote + WavLM)
-    │  matches embedding against voices_db/embeddings.pkl
-    │
-    ├─ Match found  → voice_db_key = existing key  → is_known = true/false
-    └─ No match     → new key "speaker_XXXXXXXX" saved to voices DB
+ML /analyze        (Whisper-medium + pyannote + ECAPA-TDNN)
+    │  returns per-speaker N×192 sliding-window embeddings (no matching, no storage)
     │
     ▼
-Backend (api.py)
-    │  uses voice_db_key as VoiceIdentifier
+Backend matcher    (per detected speaker, symmetric max-pool against the corpus)
     │
-    ├─ VoiceIdentifier exists in Speakers table → reuse row (same person across recordings)
-    └─ Not found → INSERT new Speakers row
+    │  best_score = max cosine across every (query_window × stored_sample) pair,
+    │  excluding speakers already claimed by another diarized speaker in this recording
+    │
+    ├─ ≥ 0.60 (AUTO_MATCH)  → attribute segments to that speaker
+    │                         if also ≥ 0.85 (LEARN) → append windows + trim to 50
+    │
+    ├─ 0.40 – 0.60 (SUGGEST) → create fresh "speaker_XXXXXXXX" to hold segments
+    │                         + insert all windows for it
+    │                         + write a SpeakerSuggestions row pointing the unknown
+    │                           at the suggested known speaker (UI confirms / rejects)
+    │
+    └─ < 0.40 (NEW)         → create fresh "speaker_XXXXXXXX" + insert all windows
 ```
+
+### Lifecycle helpers worth noting
+
+- **Speaker delete** — `SpeakerEmbeddings` and `SpeakerSuggestions` rows
+  cascade out automatically. No ML round-trip needed.
+- **Speaker merge / rename collision** — `move_embeddings(source, target)` is
+  called *before* `merge_speakers(source, target)` so the FK cascade on the
+  source delete doesn't take the vectors with it.
+- **Suggestion accept** — segments in this audio repoint from unknown → suggested
+  speaker; the unknown's embeddings move to the suggested speaker (so it
+  auto-matches next time); if the unknown has no segments left anywhere, the
+  unknown row is folded into the suggested speaker.

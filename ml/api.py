@@ -1,27 +1,28 @@
 """
 AudioIntel ML API
 =================
-Pure analysis service — does NOT store any files or data.
-The C# Backend is responsible for all storage.
+Pure stateless analysis service. Holds no DB and persists nothing.
 
 Endpoints:
-  POST /analyze           — analyze audio → transcript + speaker IDs (temp file, deleted after)
-  POST /speakers/add      — add a known speaker from a raw audio sample
-  PATCH /speakers/rename  — rename a speaker in the voice DB
-  GET  /speakers          — list all known speakers
-  DELETE /speakers/{name} — remove a speaker from the voice DB
+  POST /analyze         — analyze audio → transcript + per-speaker window embeddings
+  POST /speakers/embed  — extract per-window embeddings for an enrollment clip
 """
 
+import json
 import os
 import shutil
 import tempfile
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
 
-from pipeline import process_audio, add_known_speaker, load_voices_db, save_voices_db
+from pipeline import (
+    process_audio,
+    extract_embeddings_only,
+    extract_embeddings_for_ranges,
+    EMBEDDING_MODEL_VERSION,
+)
 
-app = FastAPI(title="AudioIntel ML API", version="2.0.0")
+app = FastAPI(title="AudioIntel ML API", version="3.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -35,7 +36,7 @@ app.add_middleware(
 
 @app.get("/")
 def health_check():
-    return {"status": "AudioIntel ML service is running", "version": "2.0.0"}
+    return {"status": "AudioIntel ML service is running", "version": "3.0.0"}
 
 
 @app.get("/status")
@@ -50,20 +51,20 @@ def ml_status():
 @app.post("/analyze")
 def analyze_audio(file: UploadFile = File(...)):
     """
-    Analyze an audio file and return the results.
+    Analyze an audio file and return per-speaker window embeddings + segments.
     The file is processed in memory and deleted immediately — nothing is stored here.
-    The C# Backend is responsible for saving the file and the results.
+    The Backend is responsible for matching, persistence, and identity decisions.
 
-    Returns:
+    Response shape:
     {
+      "file": "rec.mp3",
       "original_filename": "rec.mp3",
       "num_speakers": 2,
+      "model_version": "ecapa-tdnn-v1",
       "speakers": [
         {
           "speaker_label": "SPEAKER_00",
-          "matched_identity": "Lewis Hamilton",
-          "confidence": 0.87,
-          "is_known": true,
+          "embeddings":    [[...192 floats...], [...192 floats...], ...],
           "total_duration": 45.3,
           "segments": [
             {"start": 0.0, "end": 4.5, "text": "We need to discuss..."}
@@ -80,7 +81,6 @@ def analyze_audio(file: UploadFile = File(...)):
     try:
         result = process_audio(tmp_path)
 
-        # Add total speaking duration per speaker
         for speaker in result.get("speakers", []):
             total = sum(s["end"] - s["start"] for s in speaker.get("segments", []))
             speaker["total_duration"] = round(total, 2)
@@ -97,13 +97,15 @@ def analyze_audio(file: UploadFile = File(...)):
             pass
 
 
-# ─── Speaker Voice DB ─────────────────────────────────────────────────────────
+# ─── Speaker Enrollment (stateless) ───────────────────────────────────────────
 
-@app.post("/speakers/add")
-def add_speaker(name: str = Form(...), file: UploadFile = File(...)):
-    """
-    Register a known speaker in the voice database from a raw audio sample.
+@app.post("/speakers/embed")
+def embed_speaker(file: UploadFile = File(...)):
+    """Stateless: returns ECAPA-TDNN sliding-window embeddings for the audio.
     Best with a clean, single-speaker recording (10–30 seconds).
+    The Backend stores the result in SpeakerEmbeddings — no persistence here.
+
+    Response: {"embeddings": [[...192...], ...], "model_version": "ecapa-tdnn-v1"}
     """
     suffix = os.path.splitext(file.filename or "audio")[1] or ".wav"
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
@@ -111,74 +113,61 @@ def add_speaker(name: str = Form(...), file: UploadFile = File(...)):
         tmp_path = tmp.name
 
     try:
-        add_known_speaker(name, tmp_path)
-        db = load_voices_db()
+        windows = extract_embeddings_only(tmp_path)
         return {
-            "status": "ok",
-            "message": f"Speaker '{name}' added successfully.",
-            "sample_count": len(db.get(name, []))
+            "embeddings":    windows.tolist(),
+            "model_version": EMBEDDING_MODEL_VERSION,
+            "sample_count":  int(windows.shape[0]),
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     finally:
-        os.unlink(tmp_path)
+        try:
+            os.unlink(tmp_path)
+        except Exception:
+            pass
 
 
-class RenameRequest(BaseModel):
-    old_name: str
-    new_name: str
+@app.post("/speakers/embed-from-ranges")
+def embed_from_ranges(
+    file: UploadFile = File(...),
+    ranges: str = Form(...),
+):
+    """Extract embeddings for the audio sliced to the given time ranges.
 
-
-@app.patch("/speakers/rename")
-def rename_speaker(body: RenameRequest):
+    `ranges` is a JSON array like `[[0.5, 4.2], [10.0, 13.7]]` (seconds).
+    Used by Backend's split-speaker flow to re-extract clean embeddings
+    after a manual segment reassignment.
     """
-    Rename a speaker in the voice database.
-    Called by the Backend when a user manually corrects a name in the UI.
-    """
-    db = load_voices_db()
-    if body.old_name not in db:
-        raise HTTPException(status_code=404, detail=f"Speaker '{body.old_name}' not found.")
+    try:
+        parsed = json.loads(ranges)
+        windows: list[tuple[float, float]] = [(float(s), float(e)) for s, e in parsed]
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="`ranges` must be JSON like [[start, end], ...]")
+    if not windows:
+        raise HTTPException(status_code=400, detail="`ranges` cannot be empty")
 
-    if body.new_name in db:
-        # Merge embeddings if the new name already exists
-        db[body.new_name] = db[body.new_name] + db[body.old_name]
-    else:
-        db[body.new_name] = db[body.old_name]
+    suffix = os.path.splitext(file.filename or "audio")[1] or ".wav"
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        shutil.copyfileobj(file.file, tmp)
+        tmp_path = tmp.name
 
-    del db[body.old_name]
-    save_voices_db(db)
-    return {"status": "ok", "message": f"Renamed '{body.old_name}' → '{body.new_name}'."}
-
-
-@app.get("/speakers")
-def list_speakers():
-    """List all known speakers in the voice database."""
-    db = load_voices_db()
-    return {
-        "count": len(db),
-        "speakers": [
-            {"name": name, "sample_count": len(embeddings)}
-            for name, embeddings in db.items()
-        ]
-    }
-
-
-@app.delete("/speakers/{name}")
-def delete_speaker(name: str):
-    """Remove a speaker from the voice database."""
-    db = load_voices_db()
-    if name not in db:
-        raise HTTPException(status_code=404, detail=f"Speaker '{name}' not found.")
-    del db[name]
-    save_voices_db(db)
-    return {"status": "ok", "message": f"Speaker '{name}' removed."}
-
-
-@app.delete("/speakers")
-def clear_all_speakers():
-    """Wipe the entire voice database. Use when embeddings are polluted."""
-    save_voices_db({})
-    return {"status": "ok", "message": "Voice database cleared."}
+    try:
+        embeddings = extract_embeddings_for_ranges(tmp_path, windows)
+        return {
+            "embeddings":    embeddings.tolist(),
+            "model_version": EMBEDDING_MODEL_VERSION,
+            "sample_count":  int(embeddings.shape[0]),
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":

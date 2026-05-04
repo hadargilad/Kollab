@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { Play, Pause, Volume2, FileText, Network, Clock, Waves, Loader2, AlertCircle, RefreshCw, UserX, Merge } from 'lucide-react';
-import { audios, speakers as speakersApi, type AudioRecord, type SegmentRecord, type SpeakerRecord } from '../lib/api';
+import { Play, Pause, Volume2, FileText, Network, Clock, Waves, Loader2, AlertCircle, RefreshCw, UserX, Merge, UserCheck, X, Scissors } from 'lucide-react';
+import { audios, speakers as speakersApi, suggestions as suggestionsApi, type AudioRecord, type SegmentRecord, type SpeakerRecord, type SpeakerSuggestion } from '../lib/api';
 
 
 interface Speaker {
@@ -27,6 +27,24 @@ export default function AudioAnalysis() {
   const [reassigning, setReassigning] = useState(false);
   const [knownSpeakers, setKnownSpeakers] = useState<SpeakerRecord[]>([]);
   const [mergeNotice, setMergeNotice] = useState<string | null>(null);
+  const [pendingSuggestions, setPendingSuggestions] = useState<SpeakerSuggestion[]>([]);
+  const [resolvingSuggestionIds, setResolvingSuggestionIds] = useState<Set<number>>(new Set());
+  const [splitMode, setSplitMode] = useState(false);
+  const [selectedSegmentIds, setSelectedSegmentIds] = useState<Set<number>>(new Set());
+  const [splitSourceSpeakerId, setSplitSourceSpeakerId] = useState<number | null>(null);
+  const [splitModalOpen, setSplitModalOpen] = useState(false);
+  const [splitNewName, setSplitNewName] = useState('');
+  const [splitting, setSplitting] = useState(false);
+  const [splitError, setSplitError] = useState('');
+
+  const refreshSuggestions = async () => {
+    try {
+      const list = await suggestionsApi.listForAudio(audioId);
+      setPendingSuggestions(list);
+    } catch {
+      // ignore
+    }
+  };
 
   useEffect(() => {
     if (!audioId) return;
@@ -42,6 +60,9 @@ export default function AudioAnalysis() {
         setAudio(audioData);
         setSegments(segsData);
         setLoading(false);
+        if (audioData.status === 'processed') {
+          refreshSuggestions();
+        }
         // If still processing, poll every 5 s until done
         if (audioData.status === 'processing') {
           setTimeout(() => { if (!cancelled) fetchAll(); }, 5000);
@@ -58,6 +79,87 @@ export default function AudioAnalysis() {
     speakersApi.list().then(s => { if (!cancelled) setKnownSpeakers(s); }).catch(() => {});
     return () => { cancelled = true; };
   }, [audioId]);
+
+  const handleAcceptSuggestion = async (suggestion: SpeakerSuggestion) => {
+    setResolvingSuggestionIds(prev => new Set(prev).add(suggestion.id));
+    try {
+      await suggestionsApi.accept(audioId, suggestion.id);
+      const [newSegs, newKnown] = await Promise.all([
+        audios.getSegments(audioId),
+        speakersApi.list(),
+      ]);
+      setSegments(newSegs);
+      setKnownSpeakers(newKnown);
+      await refreshSuggestions();
+      setMergeNotice(`Confirmed as "${suggestion.suggestedSpeaker.name}". Voice samples merged.`);
+      setTimeout(() => setMergeNotice(null), 6000);
+    } finally {
+      setResolvingSuggestionIds(prev => {
+        const s = new Set(prev); s.delete(suggestion.id); return s;
+      });
+    }
+  };
+
+  const exitSplitMode = () => {
+    setSplitMode(false);
+    setSelectedSegmentIds(new Set());
+    setSplitSourceSpeakerId(null);
+    setSplitNewName('');
+    setSplitError('');
+  };
+
+  const toggleSegmentForSplit = (segmentId: number, segmentSpeakerId: number) => {
+    setSelectedSegmentIds(prev => {
+      const next = new Set(prev);
+      if (next.has(segmentId)) {
+        next.delete(segmentId);
+        if (next.size === 0) setSplitSourceSpeakerId(null);
+        return next;
+      }
+      // First selection — lock the source speaker. Subsequent selections must match.
+      if (splitSourceSpeakerId === null) {
+        setSplitSourceSpeakerId(segmentSpeakerId);
+      } else if (splitSourceSpeakerId !== segmentSpeakerId) {
+        return prev; // ignore — the segment list disables these but be defensive
+      }
+      next.add(segmentId);
+      return next;
+    });
+  };
+
+  const handleSplitConfirm = async () => {
+    if (splitSourceSpeakerId === null || selectedSegmentIds.size === 0) return;
+    setSplitting(true);
+    setSplitError('');
+    try {
+      await speakersApi.split(audioId, splitSourceSpeakerId, Array.from(selectedSegmentIds), splitNewName.trim());
+      const [newSegs, newKnown] = await Promise.all([
+        audios.getSegments(audioId),
+        speakersApi.list(),
+      ]);
+      setSegments(newSegs);
+      setKnownSpeakers(newKnown);
+      await refreshSuggestions();
+      setSplitModalOpen(false);
+      exitSplitMode();
+    } catch (e: any) {
+      setSplitError(e.message ?? 'Split failed.');
+    } finally {
+      setSplitting(false);
+    }
+  };
+
+  const handleRejectSuggestion = async (suggestion: SpeakerSuggestion) => {
+    setResolvingSuggestionIds(prev => new Set(prev).add(suggestion.id));
+    try {
+      await suggestionsApi.reject(audioId, suggestion.id);
+      await refreshSuggestions();
+    } finally {
+      setResolvingSuggestionIds(prev => {
+        const s = new Set(prev); s.delete(suggestion.id); return s;
+      });
+    }
+  };
 
   // Derive unique speakers from segments in order of appearance
   const speakers: Speaker[] = [];
@@ -172,6 +274,50 @@ export default function AudioAnalysis() {
         <div className="mb-6 flex items-center gap-3 bg-blue-500/10 border border-blue-500/30 rounded-lg px-5 py-4">
           <Merge className="w-5 h-5 text-blue-400 shrink-0" />
           <p className="text-blue-200 text-sm">{mergeNotice}</p>
+        </div>
+      )}
+
+      {pendingSuggestions.length > 0 && (
+        <div className="mb-6 space-y-3">
+          {pendingSuggestions.map(sg => {
+            const pct = Math.round(sg.confidence * 100);
+            const busy = resolvingSuggestionIds.has(sg.id);
+            return (
+              <div
+                key={sg.id}
+                className="flex items-center gap-4 bg-amber-500/10 border border-amber-500/30 rounded-lg px-5 py-4"
+              >
+                <UserCheck className="w-5 h-5 text-amber-400 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-amber-100 text-sm">
+                    <span className="font-mono text-amber-300/80">{sg.unknownSpeaker.name}</span>
+                    <span className="text-amber-200/80"> might be </span>
+                    <span className="font-medium text-white">{sg.suggestedSpeaker.name}</span>
+                    <span className="text-amber-200/80"> ({pct}% match).</span>
+                  </p>
+                  <p className="text-amber-200/60 text-xs mt-0.5">
+                    Confirming will reassign their segments and learn their voice.
+                  </p>
+                </div>
+                <button
+                  onClick={() => handleAcceptSuggestion(sg)}
+                  disabled={busy}
+                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white text-sm rounded-md flex items-center gap-1.5 transition-colors"
+                >
+                  {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserCheck className="w-4 h-4" />}
+                  Confirm
+                </button>
+                <button
+                  onClick={() => handleRejectSuggestion(sg)}
+                  disabled={busy}
+                  className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 disabled:opacity-40 text-slate-200 text-sm rounded-md flex items-center gap-1.5 transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                  Different person
+                </button>
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -296,27 +442,74 @@ export default function AudioAnalysis() {
 
           {/* Segment List */}
           <div className="bg-slate-900 border border-slate-800 rounded-lg p-6">
-            <h3 className="text-white mb-4">Speaker Segments</h3>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-white">Speaker Segments</h3>
+              {segments.length > 0 && (
+                splitMode ? (
+                  <button
+                    onClick={exitSplitMode}
+                    className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm rounded-md flex items-center gap-1.5 transition-colors"
+                  >
+                    <X className="w-4 h-4" /> Cancel split
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => setSplitMode(true)}
+                    className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-sm rounded-md flex items-center gap-1.5 transition-colors"
+                    title="Select segments that were wrongly merged into one speaker"
+                  >
+                    <Scissors className="w-4 h-4" /> Split speaker
+                  </button>
+                )
+              )}
+            </div>
+            {splitMode && (
+              <p className="text-amber-200/80 text-xs mb-3">
+                Pick segments that belong to a different person. After the first pick, only segments from the same source speaker can be added.
+              </p>
+            )}
             {segments.length === 0 ? (
               <p className="text-slate-400 text-sm">No segments found.</p>
             ) : (
               <div className="space-y-3">
                 {segments.map((seg) => {
                   const isActive = currentSegment?.id === seg.id;
+                  const isSelected = selectedSegmentIds.has(seg.id);
+                  const lockedToOther =
+                    splitMode && splitSourceSpeakerId !== null && splitSourceSpeakerId !== seg.speakerId;
                   return (
                     <div
                       key={seg.id}
                       onClick={() => {
+                        if (splitMode) {
+                          if (lockedToOther) return;
+                          toggleSegmentForSplit(seg.id, seg.speakerId);
+                          return;
+                        }
                         if (audioRef.current) audioRef.current.currentTime = seg.startTime;
                         setCurrentTime(seg.startTime);
                       }}
-                      className={`p-4 rounded-lg cursor-pointer transition-colors ${
-                        isActive
+                      className={`p-4 rounded-lg transition-colors ${
+                        lockedToOther ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
+                      } ${
+                        isSelected
+                          ? 'bg-amber-600/20 border border-amber-500'
+                          : isActive
                           ? 'bg-blue-600/20 border border-blue-500'
                           : 'bg-slate-800 border border-slate-700 hover:border-slate-600'
                       }`}
                     >
                       <div className="flex items-center gap-3 mb-2">
+                        {splitMode && (
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            disabled={lockedToOther}
+                            onChange={() => toggleSegmentForSplit(seg.id, seg.speakerId)}
+                            onClick={e => e.stopPropagation()}
+                            className="w-4 h-4 accent-amber-500"
+                          />
+                        )}
                         <div className="w-3 h-3 rounded-full" style={{ backgroundColor: seg.speakerColor }} />
                         <span className="text-white">{seg.speakerName}</span>
                         <span className="text-slate-400 text-sm ml-auto">
@@ -331,6 +524,74 @@ export default function AudioAnalysis() {
             )}
           </div>
         </div>
+
+        {/* Floating action bar — visible when at least 1 segment is picked in split mode */}
+        {splitMode && selectedSegmentIds.size > 0 && (
+          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-slate-900 border border-amber-500/40 rounded-full shadow-lg flex items-center gap-3 px-5 py-3">
+            <Scissors className="w-4 h-4 text-amber-400" />
+            <span className="text-white text-sm">
+              <span className="font-medium">{selectedSegmentIds.size}</span> segment{selectedSegmentIds.size === 1 ? '' : 's'} selected
+            </span>
+            <button
+              onClick={() => { setSplitNewName(''); setSplitError(''); setSplitModalOpen(true); }}
+              className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-sm rounded-md transition-colors"
+            >
+              Split into new speaker
+            </button>
+          </div>
+        )}
+
+        {/* Split modal */}
+        {splitModalOpen && (
+          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+            <div className="bg-slate-900 border border-slate-800 rounded-lg w-full max-w-md">
+              <div className="p-6 border-b border-slate-800">
+                <h2 className="text-white text-lg">Split selected segments off</h2>
+                <p className="text-slate-400 text-sm mt-1">
+                  These {selectedSegmentIds.size} segment{selectedSegmentIds.size === 1 ? ' will be' : 's will be'} reassigned to a new speaker. Voice samples are
+                  re-extracted from just the audio in those segments — both for the source speaker (cleaner)
+                  and the new one (clean from day one).
+                </p>
+              </div>
+              <div className="p-6 space-y-4">
+                <div>
+                  <label className="text-slate-400 text-sm mb-2 block">New speaker name (optional)</label>
+                  <input
+                    type="text"
+                    value={splitNewName}
+                    onChange={e => setSplitNewName(e.target.value)}
+                    placeholder="Leave blank to auto-name as Speaker N"
+                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                    autoFocus
+                    onKeyDown={e => e.key === 'Enter' && handleSplitConfirm()}
+                  />
+                </div>
+                {splitError && (
+                  <div className="bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2 text-sm text-red-300">
+                    {splitError}
+                  </div>
+                )}
+              </div>
+              <div className="p-6 border-t border-slate-800 flex justify-end gap-3">
+                <button
+                  onClick={() => setSplitModalOpen(false)}
+                  disabled={splitting}
+                  className="px-4 py-2 text-slate-300 hover:text-white disabled:opacity-40"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSplitConfirm}
+                  disabled={splitting}
+                  className="px-4 py-2 bg-amber-600 hover:bg-amber-700 disabled:opacity-40 text-white rounded-lg flex items-center gap-2 transition-colors"
+                >
+                  {splitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Scissors className="w-4 h-4" />}
+                  Split
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Reassign modal */}
         {reassignTarget && (
