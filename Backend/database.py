@@ -6,6 +6,11 @@ import sqlite3
 from pathlib import Path
 from typing import Optional
 
+import numpy as np
+
+EMBEDDING_DIM = 192
+CAP_SAMPLES_PER_SPEAKER = 50
+
 if os.getenv("AUDIO_INTEL_DB"):
     DB_PATH = Path(os.environ["AUDIO_INTEL_DB"])
 else:
@@ -34,12 +39,6 @@ def _hash_password(password: str, salt: str) -> str:
 
 
 def init_db():
-    with _get_conn() as conn:
-        # Mark any records left in 'processing' from a previous crashed/restarted run
-        conn.execute(
-            "UPDATE Audios SET Status='failed' WHERE Status='processing'"
-        )
-        conn.commit()
     with _get_conn() as conn:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS Users (
@@ -75,7 +74,8 @@ def init_db():
                 FileSize INTEGER DEFAULT 0,
                 Status TEXT NOT NULL DEFAULT 'processing' CHECK(Status IN ('processing', 'processed', 'failed')),
                 UploadedBy INTEGER REFERENCES Users(Id) ON DELETE SET NULL,
-                UploadedAt DATETIME DEFAULT CURRENT_TIMESTAMP
+                UploadedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+                RecordedAt DATETIME
             )
         """)
         conn.execute("""
@@ -110,7 +110,37 @@ def init_db():
                 CreatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS SpeakerEmbeddings (
+                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                SpeakerId INTEGER NOT NULL REFERENCES Speakers(Id) ON DELETE CASCADE,
+                Vector BLOB NOT NULL,
+                Dim INTEGER NOT NULL,
+                ModelVersion TEXT NOT NULL,
+                SourceAudioId INTEGER REFERENCES Audios(Id) ON DELETE SET NULL,
+                EnrolledAt DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS IX_SpeakerEmbeddings_SpeakerId
+                ON SpeakerEmbeddings(SpeakerId)
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS SpeakerSuggestions (
+                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                AudioId INTEGER NOT NULL REFERENCES Audios(Id) ON DELETE CASCADE,
+                UnknownSpeakerId INTEGER NOT NULL REFERENCES Speakers(Id) ON DELETE CASCADE,
+                SuggestedSpeakerId INTEGER NOT NULL REFERENCES Speakers(Id) ON DELETE CASCADE,
+                Confidence REAL NOT NULL,
+                CreatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
         conn.execute("PRAGMA foreign_keys = ON")
+        # Mark any records left in 'processing' from a previous crashed/restarted run.
+        # Runs after CREATE TABLE so it works on a fresh DB too.
+        conn.execute(
+            "UPDATE Audios SET Status='failed' WHERE Status='processing'"
+        )
         conn.commit()
     _seed_default_users()
 
@@ -279,12 +309,13 @@ _SPEAKER_COLORS = [
 
 
 def create_audio(name: str, description: str, file_path: str,
-                 file_size: int, uploaded_by: int) -> int:
+                 file_size: int, uploaded_by: int,
+                 recorded_at: Optional[str] = None) -> int:
     with _get_conn() as conn:
         cursor = conn.execute(
-            """INSERT INTO Audios (Name, Description, FilePath, FileSize, UploadedBy)
-               VALUES (?, ?, ?, ?, ?)""",
-            (name, description, file_path, file_size, uploaded_by),
+            """INSERT INTO Audios (Name, Description, FilePath, FileSize, UploadedBy, RecordedAt)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (name, description, file_path, file_size, uploaded_by, recorded_at),
         )
         conn.commit()
     return cursor.lastrowid
@@ -303,7 +334,7 @@ def get_audio(audio_id: int) -> Optional[dict]:
     with _get_conn() as conn:
         row = conn.execute(
             """SELECT a.Id, a.Name, a.Description, a.FilePath, a.Duration,
-                      a.FileSize, a.Status, a.UploadedAt,
+                      a.FileSize, a.Status, a.UploadedAt, a.RecordedAt,
                       u.Username AS UploadedBy
                FROM Audios a
                LEFT JOIN Users u ON u.Id = a.UploadedBy
@@ -321,6 +352,7 @@ def get_audio(audio_id: int) -> Optional[dict]:
         "fileSize": row["FileSize"],
         "status": row["Status"],
         "uploadedAt": row["UploadedAt"],
+        "recordedAt": row["RecordedAt"],
         "uploadedBy": row["UploadedBy"] or "",
     }
 
@@ -329,7 +361,7 @@ def get_all_audios() -> list[dict]:
     with _get_conn() as conn:
         rows = conn.execute(
             """SELECT a.Id, a.Name, a.Description, a.Duration, a.FileSize,
-                      a.Status, a.UploadedAt,
+                      a.Status, a.UploadedAt, a.RecordedAt,
                       u.Username AS UploadedBy,
                       COUNT(DISTINCT s.SpeakerId) AS SpeakerCount
                FROM Audios a
@@ -347,6 +379,7 @@ def get_all_audios() -> list[dict]:
             "fileSize": r["FileSize"],
             "status": r["Status"],
             "uploadedAt": r["UploadedAt"],
+            "recordedAt": r["RecordedAt"],
             "uploadedBy": r["UploadedBy"] or "",
             "speakerCount": r["SpeakerCount"],
         }
@@ -362,6 +395,32 @@ def delete_audio(audio_id: int) -> bool:
 
 
 # ─── Speakers ─────────────────────────────────────────────────────────────────
+
+def create_unknown_speaker() -> tuple[int, str]:
+    """Create a new auto-generated unknown speaker with a sequential 'Speaker N'
+    display name. The numeric N is one higher than the largest existing 'Speaker N'
+    in the table — so renamed/deleted ones leave gaps, but no two live speakers
+    ever share a name. VoiceIdentifier stays as the stable speaker_<8hex> key.
+    Returns (speaker_id, display_name)."""
+    import uuid as _uuid
+    voice_id = f"speaker_{_uuid.uuid4().hex[:8]}"
+    with _get_conn() as conn:
+        row = conn.execute(
+            """SELECT MAX(CAST(SUBSTR(Name, 9) AS INTEGER))
+               FROM Speakers
+               WHERE Name GLOB 'Speaker [0-9]*'"""
+        ).fetchone()
+        next_num = (row[0] or 0) + 1
+        display_name = f"Speaker {next_num}"
+        count = conn.execute("SELECT COUNT(*) FROM Speakers").fetchone()[0]
+        color = _SPEAKER_COLORS[count % len(_SPEAKER_COLORS)]
+        cursor = conn.execute(
+            "INSERT INTO Speakers (VoiceIdentifier, Name, Color) VALUES (?, ?, ?)",
+            (voice_id, display_name, color),
+        )
+        conn.commit()
+    return cursor.lastrowid, display_name
+
 
 def get_or_create_speaker(voice_identifier: str, name: str) -> tuple[int, bool]:
     """Return (speaker_id, created). Assigns a color from the palette automatically."""
@@ -397,7 +456,8 @@ def get_speaker(speaker_id: int) -> Optional[dict]:
     with _get_conn() as conn:
         row = conn.execute(
             """SELECT s.Id, s.VoiceIdentifier, s.Name, s.Color, s.RiskLevel, s.FirstDetected,
-                      COUNT(DISTINCT sg.AudioId) AS RecordingCount
+                      COUNT(DISTINCT sg.AudioId) AS RecordingCount,
+                      (SELECT COUNT(*) FROM SpeakerEmbeddings WHERE SpeakerId = s.Id) AS SampleCount
                FROM Speakers s
                LEFT JOIN Segments sg ON sg.SpeakerId = s.Id
                WHERE s.Id = ?
@@ -414,6 +474,7 @@ def get_speaker(speaker_id: int) -> Optional[dict]:
         "riskLevel": row["RiskLevel"],
         "firstDetected": row["FirstDetected"],
         "recordingCount": row["RecordingCount"],
+        "sampleCount": row["SampleCount"],
     }
 
 
@@ -422,7 +483,7 @@ def get_audios_for_speaker(speaker_id: int) -> list[dict]:
     with _get_conn() as conn:
         rows = conn.execute(
             """SELECT a.Id, a.Name, a.Description, a.Duration, a.FileSize,
-                      a.Status, a.UploadedAt,
+                      a.Status, a.UploadedAt, a.RecordedAt,
                       u.Username AS UploadedBy,
                       COUNT(sg.Id) AS SegmentCount,
                       COALESCE(SUM(sg.EndTime - sg.StartTime), 0) AS SpeakingTime
@@ -443,6 +504,7 @@ def get_audios_for_speaker(speaker_id: int) -> list[dict]:
             "fileSize": r["FileSize"],
             "status": r["Status"],
             "uploadedAt": r["UploadedAt"],
+            "recordedAt": r["RecordedAt"],
             "uploadedBy": r["UploadedBy"] or "",
             "segmentCount": r["SegmentCount"],
             "speakingTime": r["SpeakingTime"],
@@ -455,7 +517,8 @@ def get_all_speakers() -> list[dict]:
     with _get_conn() as conn:
         rows = conn.execute(
             """SELECT s.Id, s.VoiceIdentifier, s.Name, s.Color, s.RiskLevel, s.FirstDetected,
-                      COUNT(DISTINCT sg.AudioId) AS RecordingCount
+                      COUNT(DISTINCT sg.AudioId) AS RecordingCount,
+                      (SELECT COUNT(*) FROM SpeakerEmbeddings WHERE SpeakerId = s.Id) AS SampleCount
                FROM Speakers s
                LEFT JOIN Segments sg ON sg.SpeakerId = s.Id
                GROUP BY s.Id
@@ -470,6 +533,7 @@ def get_all_speakers() -> list[dict]:
             "riskLevel": r["RiskLevel"],
             "firstDetected": r["FirstDetected"],
             "recordingCount": r["RecordingCount"],
+            "sampleCount": r["SampleCount"],
         }
         for r in rows
     ]
@@ -691,6 +755,56 @@ def insert_segments(segments: list[dict]) -> None:
         conn.commit()
 
 
+def get_segments_by_ids(segment_ids: list[int]) -> list[dict]:
+    """Look up specific segments by Id. Used by the split-speaker flow to find
+    the time ranges the user wants moved."""
+    if not segment_ids:
+        return []
+    placeholders = ",".join("?" for _ in segment_ids)
+    with _get_conn() as conn:
+        rows = conn.execute(
+            f"""SELECT Id, AudioId, SpeakerId, StartTime, EndTime
+                FROM Segments WHERE Id IN ({placeholders})""",
+            segment_ids,
+        ).fetchall()
+    return [
+        {
+            "id": r["Id"],
+            "audioId": r["AudioId"],
+            "speakerId": r["SpeakerId"],
+            "startTime": r["StartTime"],
+            "endTime": r["EndTime"],
+        }
+        for r in rows
+    ]
+
+
+def repoint_segments(segment_ids: list[int], new_speaker_id: int) -> int:
+    """Repoint each given segment to a new speaker. Returns the row count updated."""
+    if not segment_ids:
+        return 0
+    placeholders = ",".join("?" for _ in segment_ids)
+    with _get_conn() as conn:
+        result = conn.execute(
+            f"UPDATE Segments SET SpeakerId = ? WHERE Id IN ({placeholders})",
+            (new_speaker_id, *segment_ids),
+        )
+        conn.commit()
+    return result.rowcount
+
+
+def delete_embeddings_for_speaker_and_audio(speaker_id: int, audio_id: int) -> int:
+    """Delete embeddings of a speaker that came from a specific audio. Used by
+    split-speaker so we can re-extract clean per-audio embeddings."""
+    with _get_conn() as conn:
+        result = conn.execute(
+            "DELETE FROM SpeakerEmbeddings WHERE SpeakerId = ? AND SourceAudioId = ?",
+            (speaker_id, audio_id),
+        )
+        conn.commit()
+    return result.rowcount
+
+
 def get_segments_by_audio(audio_id: int) -> list[dict]:
     with _get_conn() as conn:
         rows = conn.execute(
@@ -814,3 +928,181 @@ def get_all_alerts() -> list[dict]:
         }
         for r in rows
     ]
+
+
+# ─── Speaker Embeddings ───────────────────────────────────────────────────────
+
+def insert_embeddings(
+    speaker_id: int,
+    vectors: np.ndarray,
+    model_version: str,
+    source_audio_id: Optional[int] = None,
+) -> int:
+    """Append every row of `vectors` (shape (N, dim)) to SpeakerEmbeddings, then
+    trim oldest-first so the speaker keeps at most CAP_SAMPLES_PER_SPEAKER rows.
+    Returns the number of rows actually inserted."""
+    arr = np.asarray(vectors, dtype=np.float32)
+    if arr.ndim == 1:
+        arr = arr.reshape(1, -1)
+    if arr.size == 0:
+        return 0
+    dim = arr.shape[1]
+    rows = [
+        (speaker_id, arr[i].tobytes(), dim, model_version, source_audio_id)
+        for i in range(arr.shape[0])
+    ]
+    with _get_conn() as conn:
+        conn.executemany(
+            """INSERT INTO SpeakerEmbeddings
+               (SpeakerId, Vector, Dim, ModelVersion, SourceAudioId)
+               VALUES (?, ?, ?, ?, ?)""",
+            rows,
+        )
+        conn.execute(
+            f"""DELETE FROM SpeakerEmbeddings
+                 WHERE SpeakerId = ?
+                   AND Id NOT IN (
+                     SELECT Id FROM SpeakerEmbeddings
+                      WHERE SpeakerId = ?
+                      ORDER BY EnrolledAt DESC, Id DESC
+                      LIMIT {CAP_SAMPLES_PER_SPEAKER}
+                   )""",
+            (speaker_id, speaker_id),
+        )
+        conn.commit()
+    return len(rows)
+
+
+def get_all_embeddings() -> dict[int, np.ndarray]:
+    """Return {speaker_id: ndarray of shape (M, dim)} for every speaker that has at
+    least one embedding. Decodes BLOB → float32 vectors. Skips rows whose Dim does
+    not match EMBEDDING_DIM (defensive against future model swaps)."""
+    out: dict[int, list[np.ndarray]] = {}
+    with _get_conn() as conn:
+        rows = conn.execute(
+            "SELECT SpeakerId, Vector, Dim FROM SpeakerEmbeddings"
+        ).fetchall()
+    for r in rows:
+        if r["Dim"] != EMBEDDING_DIM:
+            continue
+        vec = np.frombuffer(r["Vector"], dtype=np.float32)
+        if vec.shape[0] != EMBEDDING_DIM:
+            continue
+        out.setdefault(r["SpeakerId"], []).append(vec)
+    return {sid: np.stack(v) for sid, v in out.items()}
+
+
+def count_embeddings(speaker_id: int) -> int:
+    with _get_conn() as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) FROM SpeakerEmbeddings WHERE SpeakerId = ?",
+            (speaker_id,),
+        ).fetchone()
+    return row[0] if row else 0
+
+
+def clear_embeddings_for_speaker(speaker_id: int) -> None:
+    with _get_conn() as conn:
+        conn.execute(
+            "DELETE FROM SpeakerEmbeddings WHERE SpeakerId = ?", (speaker_id,)
+        )
+        conn.commit()
+
+
+def move_embeddings(source_speaker_id: int, target_speaker_id: int) -> None:
+    """Repoint every embedding from source → target, then trim target to the cap.
+    Used by accept-suggestion and merge flows."""
+    if source_speaker_id == target_speaker_id:
+        return
+    with _get_conn() as conn:
+        conn.execute(
+            "UPDATE SpeakerEmbeddings SET SpeakerId = ? WHERE SpeakerId = ?",
+            (target_speaker_id, source_speaker_id),
+        )
+        conn.execute(
+            f"""DELETE FROM SpeakerEmbeddings
+                 WHERE SpeakerId = ?
+                   AND Id NOT IN (
+                     SELECT Id FROM SpeakerEmbeddings
+                      WHERE SpeakerId = ?
+                      ORDER BY EnrolledAt DESC, Id DESC
+                      LIMIT {CAP_SAMPLES_PER_SPEAKER}
+                   )""",
+            (target_speaker_id, target_speaker_id),
+        )
+        conn.commit()
+
+
+# ─── Speaker Suggestions ──────────────────────────────────────────────────────
+
+def insert_speaker_suggestion(
+    audio_id: int,
+    unknown_speaker_id: int,
+    suggested_speaker_id: int,
+    confidence: float,
+) -> int:
+    with _get_conn() as conn:
+        cursor = conn.execute(
+            """INSERT INTO SpeakerSuggestions
+               (AudioId, UnknownSpeakerId, SuggestedSpeakerId, Confidence)
+               VALUES (?, ?, ?, ?)""",
+            (audio_id, unknown_speaker_id, suggested_speaker_id, confidence),
+        )
+        conn.commit()
+    return cursor.lastrowid
+
+
+def get_suggestions_for_audio(audio_id: int) -> list[dict]:
+    with _get_conn() as conn:
+        rows = conn.execute(
+            """SELECT s.Id, s.Confidence, s.CreatedAt,
+                      u.Id AS UnknownId, u.Name AS UnknownName, u.Color AS UnknownColor,
+                      t.Id AS TargetId, t.Name AS TargetName, t.Color AS TargetColor
+               FROM SpeakerSuggestions s
+               JOIN Speakers u ON u.Id = s.UnknownSpeakerId
+               JOIN Speakers t ON t.Id = s.SuggestedSpeakerId
+               WHERE s.AudioId = ?
+               ORDER BY s.Confidence DESC""",
+            (audio_id,),
+        ).fetchall()
+    return [
+        {
+            "id": r["Id"],
+            "confidence": r["Confidence"],
+            "createdAt": r["CreatedAt"],
+            "unknownSpeaker": {
+                "id": r["UnknownId"], "name": r["UnknownName"], "color": r["UnknownColor"],
+            },
+            "suggestedSpeaker": {
+                "id": r["TargetId"], "name": r["TargetName"], "color": r["TargetColor"],
+            },
+        }
+        for r in rows
+    ]
+
+
+def get_suggestion(suggestion_id: int) -> Optional[dict]:
+    with _get_conn() as conn:
+        row = conn.execute(
+            """SELECT Id, AudioId, UnknownSpeakerId, SuggestedSpeakerId, Confidence
+               FROM SpeakerSuggestions WHERE Id = ?""",
+            (suggestion_id,),
+        ).fetchone()
+    if not row:
+        return None
+    return {
+        "id": row["Id"],
+        "audioId": row["AudioId"],
+        "unknownSpeakerId": row["UnknownSpeakerId"],
+        "suggestedSpeakerId": row["SuggestedSpeakerId"],
+        "confidence": row["Confidence"],
+    }
+
+
+def delete_suggestion(suggestion_id: int) -> bool:
+    with _get_conn() as conn:
+        result = conn.execute(
+            "DELETE FROM SpeakerSuggestions WHERE Id = ?", (suggestion_id,)
+        )
+        conn.commit()
+    return result.rowcount > 0

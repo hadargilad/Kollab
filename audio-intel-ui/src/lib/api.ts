@@ -106,6 +106,7 @@ export interface AudioRecord {
   fileSize: number;
   status: 'processing' | 'processed' | 'failed';
   uploadedAt: string;
+  recordedAt: string | null;
   uploadedBy: string;
   speakerCount: number;
 }
@@ -134,17 +135,41 @@ export interface SpeakerRecord {
   riskLevel: 'low' | 'medium' | 'high';
   firstDetected: string;
   recordingCount: number;
+  sampleCount: number;
+}
+
+export interface EnrollSpeakerResult {
+  status: string;
+  message: string;
+  speakerId: number;
+  sampleCount: number;
+  addedThisCall: number;
+}
+
+export interface SpeakerSuggestion {
+  id: number;
+  confidence: number;
+  createdAt: string;
+  unknownSpeaker: { id: number; name: string; color: string };
+  suggestedSpeaker: { id: number; name: string; color: string };
 }
 
 // ─── Audios ───────────────────────────────────────────────────────────────────
 
 export const audios = {
-  upload: (file: File, name: string, description: string, uploadedBy: number): Promise<UploadResult> => {
+  upload: (
+    file: File,
+    name: string,
+    description: string,
+    uploadedBy: number,
+    recordedAt: string,
+  ): Promise<UploadResult> => {
     const form = new FormData();
     form.append("file", file);
     form.append("name", name);
     form.append("description", description);
     form.append("uploaded_by", String(uploadedBy));
+    form.append("recorded_at", recordedAt);
     return fetch(`${BASE}/audios/upload`, { method: "POST", body: form }).then(async (r) => {
       if (!r.ok) {
         const err = await r.json().catch(() => ({ detail: "Upload failed" }));
@@ -197,6 +222,34 @@ export const speakers = {
       new_name: newName,
       force_separate: forceSeparate,
     }),
+  split: (audioId: number, speakerId: number, segmentIds: number[], newName = "") =>
+    request<SpeakerRecord>("POST", `/audios/${audioId}/speakers/${speakerId}/split`, {
+      segment_ids: segmentIds,
+      new_name: newName,
+    }),
+  enroll: (name: string, file: File): Promise<EnrollSpeakerResult> => {
+    const form = new FormData();
+    form.append("name", name);
+    form.append("file", file);
+    return fetch(`${BASE}/speakers/enroll`, { method: "POST", body: form }).then(async (r) => {
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({ detail: "Enroll failed" }));
+        throw new Error(err.detail ?? "Enroll failed");
+      }
+      return r.json() as Promise<EnrollSpeakerResult>;
+    });
+  },
+};
+
+export const suggestions = {
+  listForAudio: (audioId: number) =>
+    request<SpeakerSuggestion[]>("GET", `/audios/${audioId}/suggestions`),
+  accept: (audioId: number, suggestionId: number) =>
+    request<{ success: boolean; mergedIntoId: number }>(
+      "POST", `/audios/${audioId}/suggestions/${suggestionId}/accept`
+    ),
+  reject: (audioId: number, suggestionId: number) =>
+    request<{ success: boolean }>("DELETE", `/audios/${audioId}/suggestions/${suggestionId}`),
 };
 
 // ─── Alerts ───────────────────────────────────────────────────────────────────
@@ -243,7 +296,7 @@ export const relations = {
   list: () => request<RelationRecord[]>("GET", "/relations"),
 };
 
-// ─── ML Service ───────────────────────────────────────────────────────────────
+// ─── ML Service (stateless analysis) ──────────────────────────────────────────
 
 export const ml = {
   analyze: (file: File) => {
@@ -253,23 +306,4 @@ export const ml = {
       (r) => r.json()
     );
   },
-
-  listSpeakers: () => request<{ count: number; speakers: { name: string; sample_count: number }[] }>(
-    "GET", "/speakers", undefined, ML_BASE
-  ),
-
-  addSpeaker: (name: string, file: File) => {
-    const form = new FormData();
-    form.append("name", name);
-    form.append("file", file);
-    return fetch(`${ML_BASE}/speakers/add`, { method: "POST", body: form }).then(
-      (r) => r.json()
-    );
-  },
-
-  renameSpeaker: (oldName: string, newName: string) =>
-    request("PATCH", "/speakers/rename", { old_name: oldName, new_name: newName }, ML_BASE),
-
-  deleteSpeaker: (name: string) =>
-    request("DELETE", `/speakers/${encodeURIComponent(name)}`, undefined, ML_BASE),
 };

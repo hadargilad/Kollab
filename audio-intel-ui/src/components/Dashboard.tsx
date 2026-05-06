@@ -1,48 +1,14 @@
-import { useState, useEffect, useRef, lazy, Suspense } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { FileAudio, Users, AlertTriangle, TrendingUp, Clock, ArrowRight, Loader2, HardDrive, Database, Activity } from 'lucide-react';
+import { FileAudio, Users, AlertTriangle, TrendingUp, Clock, ArrowRight, HardDrive, Database, Activity } from 'lucide-react';
 import { audios, speakers, alerts, stats, type AudioRecord, type SpeakerRecord, type AlertRecord, type SystemStats } from '../lib/api';
-
-const DashboardCharts = lazy(() => import('./DashboardCharts'));
-
-function getDayLabel(date: Date) {
-  return date.toLocaleDateString('en-GB', { weekday: 'short' });
-}
-
-function buildWeeklyActivity(uploads: AudioRecord[]) {
-  const days: { date: string; label: string; files: number }[] = [];
-  const now = new Date();
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date(now);
-    d.setDate(now.getDate() - i);
-    days.push({ date: d.toDateString(), label: getDayLabel(d), files: 0 });
-  }
-  for (const u of uploads) {
-    const ds = new Date(u.uploadedAt).toDateString();
-    const entry = days.find(d => d.date === ds);
-    if (entry) entry.files++;
-  }
-  return days.map(({ label, files }) => ({ date: label, files }));
-}
-
-function buildStatusDistribution(uploads: AudioRecord[]) {
-  const counts = { processed: 0, processing: 0, failed: 0 };
-  for (const u of uploads) {
-    if (u.status in counts) counts[u.status as keyof typeof counts]++;
-  }
-  return [
-    { label: 'Processed', count: counts.processed },
-    { label: 'Processing', count: counts.processing },
-    { label: 'Failed', count: counts.failed },
-  ];
-}
 
 export default function Dashboard() {
   const [uploadList, setUploadList] = useState<AudioRecord[]>([]);
   const [speakerList, setSpeakerList] = useState<SpeakerRecord[]>([]);
   const [alertList, setAlertList] = useState<AlertRecord[]>([]);
   const [systemStats, setSystemStats] = useState<SystemStats | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [, setLoading] = useState(true);
   const alertsRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -59,8 +25,6 @@ export default function Dashboard() {
 
   const processedCount = uploadList.filter(u => u.status === 'processed').length;
   const recentUploads = uploadList.slice(0, 4);
-  const weeklyData = buildWeeklyActivity(uploadList);
-  const statusData = buildStatusDistribution(uploadList);
 
   const formatBytes = (bytes: number) => {
     if (bytes >= 1_073_741_824) return `${(bytes / 1_073_741_824).toFixed(1)} GB`;
@@ -156,22 +120,6 @@ export default function Dashboard() {
           </div>
         </button>
       </div>
-
-      {/* Charts Row (lazy-loaded so the rest of the page is interactive immediately) */}
-      <Suspense
-        fallback={
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-            <div className="bg-slate-900 border border-slate-800 rounded-lg p-6 h-65 flex items-center justify-center">
-              <Loader2 className="w-6 h-6 text-blue-500 animate-spin" />
-            </div>
-            <div className="bg-slate-900 border border-slate-800 rounded-lg p-6 h-65 flex items-center justify-center">
-              <Loader2 className="w-6 h-6 text-blue-500 animate-spin" />
-            </div>
-          </div>
-        }
-      >
-        {!loading && <DashboardCharts weeklyData={weeklyData} statusData={statusData} />}
-      </Suspense>
 
       {/* System Health */}
       {systemStats && (
