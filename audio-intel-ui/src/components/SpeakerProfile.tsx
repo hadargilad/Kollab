@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { User, FileAudio, Calendar, Link2, Loader2, AlertCircle, Pencil, Check, X, Merge, Trash2, PlayCircle, Clock, ArrowLeft } from 'lucide-react';
+import { User, FileAudio, Calendar, Link2, Loader2, AlertCircle, Pencil, Check, X, Merge, Trash2, PlayCircle, Clock, ArrowLeft, Sparkles, ExternalLink } from 'lucide-react';
 import { speakers, relations, type SpeakerRecord, type RelationRecord, type SpeakerAudioRecord } from '../lib/api';
 
 const RISK_COLORS = {
@@ -494,6 +494,23 @@ export default function SpeakerProfile() {
                   })}
                 </span>
               </div>
+              {speaker.wikidataId && (
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-400 flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-blue-400" />
+                    Wikidata
+                  </span>
+                  <a
+                    href={`https://www.wikidata.org/wiki/${speaker.wikidataId}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-400 hover:underline font-mono text-xs inline-flex items-center gap-1"
+                  >
+                    {speaker.wikidataId}
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                </div>
+              )}
             </div>
 
             {/* Decorative waveform */}

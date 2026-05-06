@@ -1,5 +1,5 @@
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Upload, Network, Search, Settings, LogOut, User, UserSearch, Users, UserCircle, FileAudio, Loader2, CheckCircle2 } from 'lucide-react';
+import { LayoutDashboard, Upload, Network, Search, Settings, LogOut, User, UserSearch, Users, UserCircle, FileAudio, Loader2, CheckCircle2, Sparkles } from 'lucide-react';
 import KolLabLogo from './KolLabLogo';
 import { useState } from 'react';
 import { useMlStatus } from '../hooks/useMlStatus';
@@ -28,6 +28,7 @@ export default function Layout({ user, onLogout }: LayoutProps) {
     { path: '/network', icon: Network, label: 'Network' },
     { path: '/identity', icon: Search, label: 'Identity' },
     { path: '/profile-search', icon: UserSearch, label: 'Profile Search' },
+    { path: '/related-speakers', icon: Sparkles, label: 'Related Speakers' },
     { path: '/settings', icon: Settings, label: 'Settings' },
   ];
 

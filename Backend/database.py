@@ -61,9 +61,15 @@ def init_db():
                 Name TEXT NOT NULL,
                 Color TEXT NOT NULL DEFAULT '#6366f1',
                 RiskLevel TEXT NOT NULL DEFAULT 'low' CHECK(RiskLevel IN ('low', 'medium', 'high')),
-                FirstDetected DATETIME DEFAULT CURRENT_TIMESTAMP
+                FirstDetected DATETIME DEFAULT CURRENT_TIMESTAMP,
+                WikidataId TEXT
             )
         """)
+        # Migration for DBs created before WikidataId was added.
+        # ALTER TABLE ... ADD COLUMN can't be IF NOT EXISTS in sqlite, so probe pragma first.
+        existing_cols = {row[1] for row in conn.execute("PRAGMA table_info(Speakers)").fetchall()}
+        if "WikidataId" not in existing_cols:
+            conn.execute("ALTER TABLE Speakers ADD COLUMN WikidataId TEXT")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS Audios (
                 Id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -455,7 +461,7 @@ def get_or_create_speaker(voice_identifier: str, name: str) -> tuple[int, bool]:
 def get_speaker(speaker_id: int) -> Optional[dict]:
     with _get_conn() as conn:
         row = conn.execute(
-            """SELECT s.Id, s.VoiceIdentifier, s.Name, s.Color, s.RiskLevel, s.FirstDetected,
+            """SELECT s.Id, s.VoiceIdentifier, s.Name, s.Color, s.RiskLevel, s.FirstDetected, s.WikidataId,
                       COUNT(DISTINCT sg.AudioId) AS RecordingCount,
                       (SELECT COUNT(*) FROM SpeakerEmbeddings WHERE SpeakerId = s.Id) AS SampleCount
                FROM Speakers s
@@ -473,6 +479,7 @@ def get_speaker(speaker_id: int) -> Optional[dict]:
         "color": row["Color"],
         "riskLevel": row["RiskLevel"],
         "firstDetected": row["FirstDetected"],
+        "wikidataId": row["WikidataId"],
         "recordingCount": row["RecordingCount"],
         "sampleCount": row["SampleCount"],
     }
@@ -516,7 +523,7 @@ def get_audios_for_speaker(speaker_id: int) -> list[dict]:
 def get_all_speakers() -> list[dict]:
     with _get_conn() as conn:
         rows = conn.execute(
-            """SELECT s.Id, s.VoiceIdentifier, s.Name, s.Color, s.RiskLevel, s.FirstDetected,
+            """SELECT s.Id, s.VoiceIdentifier, s.Name, s.Color, s.RiskLevel, s.FirstDetected, s.WikidataId,
                       COUNT(DISTINCT sg.AudioId) AS RecordingCount,
                       (SELECT COUNT(*) FROM SpeakerEmbeddings WHERE SpeakerId = s.Id) AS SampleCount
                FROM Speakers s
@@ -532,6 +539,7 @@ def get_all_speakers() -> list[dict]:
             "color": r["Color"],
             "riskLevel": r["RiskLevel"],
             "firstDetected": r["FirstDetected"],
+            "wikidataId": r["WikidataId"],
             "recordingCount": r["RecordingCount"],
             "sampleCount": r["SampleCount"],
         }
@@ -687,6 +695,49 @@ def find_speaker_by_name(name: str, exclude_id: Optional[int] = None) -> Optiona
     if not row:
         return None
     return {"id": row["Id"], "voiceIdentifier": row["VoiceIdentifier"], "name": row["Name"]}
+
+
+def _normalize_wikidata_id(entity_id: str) -> str:
+    """Wikidata IDs are 'Q' + digits. Uppercase the Q so lookups are stable."""
+    cleaned = entity_id.strip()
+    return cleaned[:1].upper() + cleaned[1:] if cleaned else ""
+
+
+def set_wikidata_id(speaker_id: int, entity_id: str) -> None:
+    """Persist a Wikidata QID on a speaker. Raises ValueError if another
+    speaker already claims the same entity. Pass an empty string to clear."""
+    normalized = _normalize_wikidata_id(entity_id)
+    if normalized and not (normalized.startswith("Q") and normalized[1:].isdigit()):
+        raise ValueError(f"'{entity_id}' is not a valid Wikidata QID (expected like 'Q9682').")
+    with _get_conn() as conn:
+        if normalized:
+            clash = conn.execute(
+                "SELECT Id FROM Speakers WHERE WikidataId = ? AND Id != ?",
+                (normalized, speaker_id),
+            ).fetchone()
+            if clash:
+                raise ValueError(f"Wikidata entity {normalized} is already linked to another speaker.")
+            conn.execute(
+                "UPDATE Speakers SET WikidataId = ? WHERE Id = ?", (normalized, speaker_id)
+            )
+        else:
+            conn.execute("UPDATE Speakers SET WikidataId = NULL WHERE Id = ?", (speaker_id,))
+        conn.commit()
+
+
+def get_speaker_by_wikidata_id(entity_id: str) -> Optional[dict]:
+    """Look up a speaker by Wikidata QID. Returns the same shape as
+    get_speaker(), or None."""
+    normalized = _normalize_wikidata_id(entity_id)
+    if not normalized:
+        return None
+    with _get_conn() as conn:
+        row = conn.execute(
+            "SELECT Id FROM Speakers WHERE WikidataId = ?", (normalized,)
+        ).fetchone()
+    if not row:
+        return None
+    return get_speaker(row["Id"])
 
 
 def merge_speakers(source_id: int, target_id: int) -> bool:

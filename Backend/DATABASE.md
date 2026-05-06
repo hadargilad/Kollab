@@ -47,6 +47,7 @@ when no candidate clears the auto-match threshold.
 | `Color`           | TEXT     | Hex colour assigned from a rotating palette for the timeline   |
 | `RiskLevel`       | TEXT     | `"low"` / `"medium"` / `"high"` (default `"low"`)             |
 | `FirstDetected`   | DATETIME | Auto-set on insert                                             |
+| `WikidataId`      | TEXT     | Optional Wikidata QID (e.g. `Q9682`). Set by the "Related Speakers" wizard once the user confirms an entity match. App-level uniqueness check in `set_wikidata_id()`. Drives the Public Intelligence Enrichment feature. |
 
 ---
 

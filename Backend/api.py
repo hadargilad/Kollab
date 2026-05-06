@@ -25,6 +25,8 @@ from typing import Optional
 
 import database
 import matcher
+from enrichment_provider import ProviderNotConfiguredError
+import enrichment_providers
 
 ML_URL = os.getenv("ML_API_URL", "http://127.0.0.1:8000")
 
@@ -604,10 +606,9 @@ def update_speaker(speaker_id: int, body: UpdateSpeakerRequest):
 
 # ─── Speaker Enrollment + Suggestions ─────────────────────────────────────────
 
-@app.post("/speakers/enroll", status_code=201)
-async def enroll_speaker(name: str = Form(...), file: UploadFile = File(...)):
-    """Register a known speaker in the voice database from a clean audio sample.
-    Calls ML's stateless /speakers/embed and persists the returned vectors."""
+async def _enroll_from_audio(name: str, file: UploadFile) -> tuple[int, int]:
+    """Shared enrollment plumbing: ML embed + persist + cap-trim.
+    Returns (speaker_id, rows_inserted). Raises HTTPException on failure."""
     clean_name = name.strip()
     if not clean_name:
         raise HTTPException(status_code=400, detail="Name cannot be empty.")
@@ -636,13 +637,157 @@ async def enroll_speaker(name: str = Form(...), file: UploadFile = File(...)):
         embeddings,
         model_version=payload.get("model_version", "ecapa-tdnn-v1"),
     )
+    return speaker_id, inserted
+
+
+@app.post("/speakers/enroll", status_code=201)
+async def enroll_speaker(name: str = Form(...), file: UploadFile = File(...)):
+    """Register a known speaker in the voice database from a clean audio sample.
+    Calls ML's stateless /speakers/embed and persists the returned vectors."""
+    speaker_id, inserted = await _enroll_from_audio(name, file)
     return {
         "status": "ok",
-        "message": f"Speaker '{clean_name}' enrolled successfully.",
+        "message": f"Speaker '{name.strip()}' enrolled successfully.",
         "speakerId": speaker_id,
         "sampleCount": database.count_embeddings(speaker_id),
         "addedThisCall": inserted,
     }
+
+
+# ─── Speaker ↔ Public Intelligence Enrichment (Wikidata) ──────────────────────
+#
+# These endpoints power the "Related Speakers" wizard. They surface entities
+# from a public-knowledge graph (Wikidata by default) so an analyst can see
+# *suggested* connections and choose to enroll them as new speakers. Results
+# are explicitly framed as suggestions — the UI labels them as such, and the
+# relation rows we write are tagged Topic='wikidata' so the network graph can
+# render them differently from audio-derived edges.
+
+class ConfirmEntityRequest(BaseModel):
+    entityId: str
+
+
+def _provider_or_503():
+    """Surface a missing-config provider as a clean 503 to the UI."""
+    return enrichment_providers.provider
+
+
+@app.get("/speakers/{speaker_id}/enrichment/search")
+def enrichment_search(speaker_id: int, query: str, limit: int = 5):
+    """Search the public-knowledge graph by name. Returns top-N candidates so
+    the analyst can disambiguate (multiple John Smiths, etc.). Does NOT
+    persist anything."""
+    speaker = database.get_speaker(speaker_id)
+    if not speaker:
+        raise HTTPException(status_code=404, detail="Speaker not found.")
+    if not query.strip():
+        raise HTTPException(status_code=400, detail="query is required.")
+    try:
+        candidates = _provider_or_503().search(query, limit=limit)
+    except ProviderNotConfiguredError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    return [
+        {
+            "entityId": c.entity_id,
+            "label": c.label,
+            "description": c.description,
+            "imageUrl": c.image_url,
+        }
+        for c in candidates
+    ]
+
+
+@app.post("/speakers/{speaker_id}/enrichment/confirm")
+def enrichment_confirm(speaker_id: int, body: ConfirmEntityRequest):
+    """Persist the chosen Wikidata entity ID on the speaker. Idempotent."""
+    speaker = database.get_speaker(speaker_id)
+    if not speaker:
+        raise HTTPException(status_code=404, detail="Speaker not found.")
+    try:
+        database.set_wikidata_id(speaker_id, body.entityId)
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    return {
+        "success": True,
+        "speakerId": speaker_id,
+        "wikidataId": body.entityId.strip().upper(),
+    }
+
+
+@app.get("/speakers/{speaker_id}/enrichment/related")
+def enrichment_related(speaker_id: int, limit: int = 25):
+    """Suggested related entities with reasons. Requires the speaker to have
+    a confirmed entity ID (Step 2)."""
+    speaker = database.get_speaker(speaker_id)
+    if not speaker:
+        raise HTTPException(status_code=404, detail="Speaker not found.")
+    if not speaker.get("wikidataId"):
+        raise HTTPException(
+            status_code=400,
+            detail="Confirm a public-graph entity for this speaker first (Step 2).",
+        )
+    try:
+        candidates = _provider_or_503().related(speaker["wikidataId"], limit=limit)
+    except ProviderNotConfiguredError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    return [
+        {
+            "entityId": c.entity_id,
+            "label": c.label,
+            "description": c.description,
+            "imageUrl": c.image_url,
+            "reason": c.reason,
+        }
+        for c in candidates
+    ]
+
+
+@app.post("/speakers/{speaker_id}/enrichment/link", status_code=201)
+async def enrichment_link(
+    speaker_id: int,
+    entityId: str = Form(...),
+    name: str = Form(...),
+    file: Optional[UploadFile] = File(None),
+):
+    """Enroll a suggested related entity as a new speaker, linked to the
+    source.
+
+    If a speaker with this Wikidata entity already exists, reuse them — audio
+    is not required (and is ignored if provided). Otherwise we enroll a
+    brand-new speaker, which requires an audio clip per the project's
+    "speakers always have voice embeddings" invariant.
+
+    Either way we upsert a Relations row with Topic='wikidata' so the new
+    edge can be rendered as a suggested (dashed) connection in the network
+    graph, distinct from audio-derived edges.
+    """
+    source = database.get_speaker(speaker_id)
+    if not source:
+        raise HTTPException(status_code=404, detail="Source speaker not found.")
+    if not entityId.strip():
+        raise HTTPException(status_code=400, detail="entityId is required.")
+
+    existing = database.get_speaker_by_wikidata_id(entityId)
+    reused = False
+    if existing:
+        if existing["id"] == speaker_id:
+            raise HTTPException(status_code=400, detail="Cannot link a speaker to themselves.")
+        new_speaker_id = existing["id"]
+        reused = True
+    else:
+        if file is None or not getattr(file, "filename", ""):
+            raise HTTPException(
+                status_code=400,
+                detail="Audio file is required when adding a new speaker.",
+            )
+        new_speaker_id, _ = await _enroll_from_audio(name, file)
+        try:
+            database.set_wikidata_id(new_speaker_id, entityId)
+        except ValueError as e:
+            raise HTTPException(status_code=409, detail=str(e))
+
+    database.upsert_relation(speaker_id, new_speaker_id, topic="wikidata")
+    return {"newSpeakerId": new_speaker_id, "reused": reused}
 
 
 @app.get("/audios/{audio_id}/suggestions")

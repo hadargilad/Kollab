@@ -25,6 +25,7 @@ services:
       - AUDIO_INTEL_DB=/data/AudioIntelDB.db
       - AUDIO_STORAGE_DIR=/data/uploads
       - ML_API_URL=http://ml:8000
+      - ENRICHMENT_PROVIDER=${ENRICHMENT_PROVIDER:-wikidata}
 
   ml:
     build:
@@ -37,6 +38,7 @@ services:
       - ml_models:/app/pretrained_models
     environment:
       - HF_TOKEN=${HF_TOKEN:-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}
+      - WHISPER_MODEL=${WHISPER_MODEL:-medium}
     profiles:
       - ml
 

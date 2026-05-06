@@ -12,6 +12,7 @@ import Settings from './components/Settings';
 import Layout from './components/Layout';
 import WaveformAnalysis from './components/WaveformAnalysis';
 import ProfileSearch from './components/ProfileSearch';
+import RelatedSpeakers from './components/RelatedSpeakers';
 import AllUploads from './components/AllUploads';
 import UserManagement from './components/UserManagement';
 import ForcePasswordChange from './components/ForcePasswordChange';
@@ -83,6 +84,7 @@ export default function App() {
           <Route path="identity" element={<IdentityMatching />} />
           <Route path="settings" element={<Settings />} />
           <Route path="profile-search" element={<ProfileSearch />} />
+          <Route path="related-speakers" element={<RelatedSpeakers />} />
           <Route path="profile" element={<Profile currentUser={user} onUpdateSuccess={handleUpdate} />} />
         </Route>
       </Routes>
