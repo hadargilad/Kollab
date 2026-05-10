@@ -141,6 +141,21 @@ def init_db():
                 CreatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS SpeakerGroups (
+                Id        INTEGER PRIMARY KEY AUTOINCREMENT,
+                Name      TEXT NOT NULL UNIQUE,
+                Color     TEXT NOT NULL DEFAULT '#6366f1',
+                CreatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS SpeakerGroupMembers (
+                GroupId   INTEGER NOT NULL REFERENCES SpeakerGroups(Id) ON DELETE CASCADE,
+                SpeakerId INTEGER NOT NULL REFERENCES Speakers(Id) ON DELETE CASCADE,
+                PRIMARY KEY (GroupId, SpeakerId)
+            )
+        """)
         conn.execute("PRAGMA foreign_keys = ON")
         # Mark any records left in 'processing' from a previous crashed/restarted run.
         # Runs after CREATE TABLE so it works on a fresh DB too.
@@ -618,6 +633,19 @@ def speaker_has_segments(speaker_id: int) -> bool:
     return row is not None
 
 
+def get_audio_speaker_ids(audio_id: int) -> set[int]:
+    with _get_conn() as conn:
+        return _distinct_audio_speakers(conn, audio_id)
+
+
+def adjust_relations_for_audio(audio_id: int, before_speakers: set[int]) -> None:
+    """Update Relations to reflect the current speaker set in `audio_id` vs a before snapshot."""
+    with _get_conn() as conn:
+        after_speakers = _distinct_audio_speakers(conn, audio_id)
+        _adjust_relations_for_audio_diff(conn, before_speakers, after_speakers)
+        conn.commit()
+
+
 def reassign_speaker_in_audio(audio_id: int, old_speaker_id: int, new_name: str) -> dict | None:
     """
     Create a new speaker and re-point all segments in `audio_id` from `old_speaker_id`
@@ -626,6 +654,7 @@ def reassign_speaker_in_audio(audio_id: int, old_speaker_id: int, new_name: str)
     import uuid as _uuid
     new_voice_id = f"speaker_{_uuid.uuid4().hex[:8]}"
     with _get_conn() as conn:
+        before = _distinct_audio_speakers(conn, audio_id)
         count = conn.execute("SELECT COUNT(*) FROM Speakers").fetchone()[0]
         color = _SPEAKER_COLORS[count % len(_SPEAKER_COLORS)]
         cursor = conn.execute(
@@ -637,6 +666,8 @@ def reassign_speaker_in_audio(audio_id: int, old_speaker_id: int, new_name: str)
             "UPDATE Segments SET SpeakerId = ? WHERE AudioId = ? AND SpeakerId = ?",
             (new_id, audio_id, old_speaker_id),
         )
+        after = _distinct_audio_speakers(conn, audio_id)
+        _adjust_relations_for_audio_diff(conn, before, after)
         conn.commit()
         row = conn.execute(
             "SELECT Id, VoiceIdentifier, Name, Color, RiskLevel, FirstDetected FROM Speakers WHERE Id = ?",
@@ -918,6 +949,141 @@ def get_all_relations() -> list[dict]:
             "interactionCount": r["InteractionCount"],
             "topic": r["Topic"],
             "lastContact": r["LastContact"],
+        }
+        for r in rows
+    ]
+
+
+# ─── Speaker Groups ───────────────────────────────────────────────────────────
+
+def get_all_groups() -> list[dict]:
+    with _get_conn() as conn:
+        groups = conn.execute(
+            "SELECT Id, Name, Color, CreatedAt FROM SpeakerGroups ORDER BY CreatedAt ASC"
+        ).fetchall()
+        members = conn.execute(
+            """SELECT sgm.GroupId, s.Id, s.Name, s.Color
+               FROM SpeakerGroupMembers sgm
+               JOIN Speakers s ON s.Id = sgm.SpeakerId"""
+        ).fetchall()
+    by_group: dict[int, list[dict]] = {}
+    for m in members:
+        by_group.setdefault(m["GroupId"], []).append(
+            {"id": m["Id"], "name": m["Name"], "color": m["Color"]}
+        )
+    return [
+        {
+            "id": g["Id"],
+            "name": g["Name"],
+            "color": g["Color"],
+            "createdAt": g["CreatedAt"],
+            "members": by_group.get(g["Id"], []),
+        }
+        for g in groups
+    ]
+
+
+def create_group(name: str, color: str = "#6366f1") -> int:
+    with _get_conn() as conn:
+        cursor = conn.execute(
+            "INSERT INTO SpeakerGroups (Name, Color) VALUES (?, ?)", (name, color)
+        )
+        conn.commit()
+    return cursor.lastrowid
+
+
+def update_group(group_id: int, name: str, color: str) -> bool:
+    with _get_conn() as conn:
+        result = conn.execute(
+            "UPDATE SpeakerGroups SET Name = ?, Color = ? WHERE Id = ?",
+            (name, color, group_id),
+        )
+        conn.commit()
+    return result.rowcount > 0
+
+
+def delete_group(group_id: int) -> bool:
+    with _get_conn() as conn:
+        result = conn.execute("DELETE FROM SpeakerGroups WHERE Id = ?", (group_id,))
+        conn.commit()
+    return result.rowcount > 0
+
+
+def add_group_member(group_id: int, speaker_id: int) -> bool:
+    with _get_conn() as conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO SpeakerGroupMembers (GroupId, SpeakerId) VALUES (?, ?)",
+            (group_id, speaker_id),
+        )
+        conn.commit()
+    return True
+
+
+def remove_group_member(group_id: int, speaker_id: int) -> bool:
+    with _get_conn() as conn:
+        result = conn.execute(
+            "DELETE FROM SpeakerGroupMembers WHERE GroupId = ? AND SpeakerId = ?",
+            (group_id, speaker_id),
+        )
+        conn.commit()
+    return result.rowcount > 0
+
+
+def get_bridges(group_a_id: int, group_b_id: int) -> list[dict]:
+    """Return speakers connected to at least one member of each group."""
+    groups = {g["id"]: g for g in get_all_groups()}
+    group_a = groups.get(group_a_id)
+    group_b = groups.get(group_b_id)
+    if not group_a or not group_b:
+        return []
+
+    members_a = {m["id"] for m in group_a["members"]}
+    members_b = {m["id"] for m in group_b["members"]}
+
+    relations = get_all_relations()
+    adjacency: dict[int, set[int]] = {}
+    for r in relations:
+        a_id, b_id = r["speakerA"]["id"], r["speakerB"]["id"]
+        adjacency.setdefault(a_id, set()).add(b_id)
+        adjacency.setdefault(b_id, set()).add(a_id)
+
+    bridges = []
+    seen = set()
+    for speaker_id, neighbors in adjacency.items():
+        if speaker_id in seen:
+            continue
+        if neighbors & members_a and neighbors & members_b:
+            seen.add(speaker_id)
+            bridges.append(speaker_id)
+
+    if not bridges:
+        return []
+
+    with _get_conn() as conn:
+        placeholders = ",".join("?" * len(bridges))
+        rows = conn.execute(
+            f"""SELECT s.Id, s.Name, s.Color, s.RiskLevel, s.FirstDetected,
+                       s.VoiceIdentifier, s.WikidataId,
+                       COUNT(DISTINCT seg.AudioId) AS RecordingCount,
+                       COUNT(se.Id) AS SampleCount
+                FROM Speakers s
+                LEFT JOIN Segments seg ON seg.SpeakerId = s.Id
+                LEFT JOIN SpeakerEmbeddings se ON se.SpeakerId = s.Id
+                WHERE s.Id IN ({placeholders})
+                GROUP BY s.Id""",
+            bridges,
+        ).fetchall()
+    return [
+        {
+            "id": r["Id"],
+            "name": r["Name"],
+            "color": r["Color"],
+            "riskLevel": r["RiskLevel"],
+            "firstDetected": r["FirstDetected"],
+            "voiceIdentifier": r["VoiceIdentifier"],
+            "wikidataId": r["WikidataId"],
+            "recordingCount": r["RecordingCount"],
+            "sampleCount": r["SampleCount"],
         }
         for r in rows
     ]

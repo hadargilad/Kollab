@@ -55,10 +55,12 @@ WINDOW_HOP             = 2.5   # sliding window hop — 50% overlap
 MERGE_THRESHOLD        = 0.85  # within-recording: clusters with cosine ≥ this are the same person
 
 EMBEDDING_MODEL_VERSION = "ecapa-tdnn-v1"
+WHISPER_MODEL           = os.getenv("WHISPER_MODEL", "base")
+WHISPER_MODEL_DIR       = os.getenv("WHISPER_MODEL_DIR", "/app/pretrained_models/whisper")
 
 # ─── Load models once at startup ─────────────────────────────────────────────
-print("⏳ Loading Whisper model (medium)...")
-whisper_model = whisper.load_model("medium")
+print(f"⏳ Loading Whisper model ({WHISPER_MODEL})...")
+whisper_model = whisper.load_model(WHISPER_MODEL, download_root=WHISPER_MODEL_DIR)
 
 print("⏳ Loading diarization pipeline (pyannote)...")
 diarization_pipeline = DiarizationPipeline.from_pretrained(
