@@ -134,8 +134,29 @@ export interface SpeakerRecord {
   color: string;
   riskLevel: 'low' | 'medium' | 'high';
   firstDetected: string;
+  wikidataId: string | null;
   recordingCount: number;
   sampleCount: number;
+}
+
+export interface EntityCandidate {
+  entityId: string;       // e.g. "Q9682"
+  label: string;          // display name
+  description: string;    // short tagline
+  imageUrl: string;       // may be empty
+}
+
+export interface RelatedEntity {
+  entityId: string;
+  label: string;
+  description: string;
+  imageUrl: string;
+  reason: string;         // human-readable connection reason
+}
+
+export interface EnrichmentLinkResult {
+  newSpeakerId: number;
+  reused: boolean;
 }
 
 export interface EnrollSpeakerResult {
@@ -237,6 +258,36 @@ export const speakers = {
         throw new Error(err.detail ?? "Enroll failed");
       }
       return r.json() as Promise<EnrollSpeakerResult>;
+    });
+  },
+
+  enrichmentSearch: (speakerId: number, query: string, limit = 5) =>
+    request<EntityCandidate[]>(
+      "GET",
+      `/speakers/${speakerId}/enrichment/search?query=${encodeURIComponent(query)}&limit=${limit}`
+    ),
+
+  enrichmentConfirm: (speakerId: number, entityId: string) =>
+    request<{ success: boolean; speakerId: number; wikidataId: string }>(
+      "POST", `/speakers/${speakerId}/enrichment/confirm`, { entityId }
+    ),
+
+  enrichmentRelated: (speakerId: number, limit = 25) =>
+    request<RelatedEntity[]>(
+      "GET", `/speakers/${speakerId}/enrichment/related?limit=${limit}`
+    ),
+
+  enrichmentLink: (speakerId: number, entityId: string, name: string, file: File | null): Promise<EnrichmentLinkResult> => {
+    const form = new FormData();
+    form.append("entityId", entityId);
+    form.append("name", name);
+    if (file) form.append("file", file);
+    return fetch(`${BASE}/speakers/${speakerId}/enrichment/link`, { method: "POST", body: form }).then(async (r) => {
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({ detail: "Link failed" }));
+        throw new Error(err.detail ?? "Link failed");
+      }
+      return r.json() as Promise<EnrichmentLinkResult>;
     });
   },
 };
