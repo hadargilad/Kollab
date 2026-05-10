@@ -15,46 +15,47 @@ export default function Layout({ user, onLogout }: LayoutProps) {
   const [showUserMenu, setShowUserMenu] = useState(false);
   const { ready: mlReady } = useMlStatus();
 
-  const isActive = (path: string) => {
-    return location.pathname === path || location.pathname.startsWith(path);
-  };
+  const isActive = (path: string) =>
+    location.pathname === path || location.pathname.startsWith(path + '/');
 
-  // Base navigation items for everyone
   const navItems = [
-    { path: '/profile', icon: UserCircle, label: 'My Profile' },
-    { path: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-    { path: '/upload', icon: Upload, label: 'Upload' },
-    { path: '/all-uploads', icon: FileAudio, label: 'All Uploads' },
-    { path: '/network', icon: Network, label: 'Network' },
-    { path: '/identity', icon: Search, label: 'Identity' },
-    { path: '/profile-search', icon: UserSearch, label: 'Profile Search' },
-    { path: '/related-speakers', icon: Sparkles, label: 'Related Speakers' },
-    { path: '/settings', icon: Settings, label: 'Settings' },
+    { path: '/profile',          icon: UserCircle,     label: 'My Profile' },
+    { path: '/dashboard',        icon: LayoutDashboard, label: 'Dashboard' },
+    { path: '/upload',           icon: Upload,          label: 'Upload' },
+    { path: '/all-uploads',      icon: FileAudio,       label: 'All Uploads' },
+    { path: '/network',          icon: Network,         label: 'Network' },
+    { path: '/identity',         icon: Search,          label: 'Identity' },
+    { path: '/profile-search',   icon: UserSearch,      label: 'Profile Search' },
+    { path: '/related-speakers', icon: Sparkles,        label: 'Related Speakers' },
+    { path: '/settings',         icon: Settings,        label: 'Settings' },
   ];
 
-  // Admin-only management items
   const adminItems = [
     { path: '/user-management', icon: Users, label: 'User Management' },
   ];
 
   return (
-    <div className="min-h-screen bg-slate-950 flex">
-      {/* Sidebar Navigation */}
-      <aside className="w-64 bg-slate-900 border-r border-slate-800 flex flex-col">
-        <div className="p-6 border-b border-slate-800">
+    <div className="min-h-screen bg-black flex text-sm">
+      {/* Sidebar */}
+      <aside className="w-60 bg-black border-r border-zinc-800 flex flex-col shrink-0">
+        {/* Brand */}
+        <div className="px-5 py-5 border-b border-zinc-800">
           <div className="flex items-center gap-3">
-            <KolLabLogo size={42} />
+            <KolLabLogo size={36} />
             <div>
-              <h1 className="text-white text-xl font-bold tracking-wide">
+              <div className="text-white font-bold tracking-wide text-base leading-none">
                 Kol<span className="text-blue-400">L</span>ab
-              </h1>
-              <p className="text-slate-400 text-xs">Intelligence Platform</p>
+              </div>
+              <div className="text-zinc-600 text-[10px] font-mono uppercase tracking-widest mt-0.5">
+                Intel Platform
+              </div>
             </div>
           </div>
         </div>
 
-        <nav className="flex-1 p-4 overflow-y-auto">
-          <ul className="space-y-2">
+        {/* Nav */}
+        <nav className="flex-1 py-3 overflow-y-auto">
+          <ul>
             {navItems.map((item) => {
               const Icon = item.icon;
               const active = isActive(item.path);
@@ -62,23 +63,26 @@ export default function Layout({ user, onLogout }: LayoutProps) {
                 <li key={item.path}>
                   <Link
                     to={item.path}
-                    className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
+                    className={`flex items-center gap-3 px-5 py-2.5 border-l-2 transition-all ${
                       active
-                        ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20'
-                        : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+                        ? 'border-blue-500 bg-blue-500/8 text-white'
+                        : 'border-transparent text-zinc-500 hover:text-zinc-200 hover:bg-white/4'
                     }`}
                   >
-                    <Icon className="w-5 h-5" />
-                    <span>{item.label}</span>
+                    <Icon className="w-4 h-4 shrink-0" />
+                    <span className="text-sm">{item.label}</span>
                   </Link>
                 </li>
               );
             })}
 
-            {/* Admin Section */}
             {user?.role === 'Admin' && (
-              <div className="mt-6 pt-6 border-t border-slate-800">
-                <p className="text-slate-500 text-xs font-bold px-4 mb-2 uppercase tracking-widest">Management</p>
+              <>
+                <li className="px-5 pt-5 pb-2">
+                  <span className="text-zinc-700 text-[10px] font-mono uppercase tracking-widest">
+                    Management
+                  </span>
+                </li>
                 {adminItems.map((item) => {
                   const Icon = item.icon;
                   const active = isActive(item.path);
@@ -86,123 +90,105 @@ export default function Layout({ user, onLogout }: LayoutProps) {
                     <li key={item.path}>
                       <Link
                         to={item.path}
-                        className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
+                        className={`flex items-center gap-3 px-5 py-2.5 border-l-2 transition-all ${
                           active
-                            ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20'
-                            : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+                            ? 'border-blue-500 bg-blue-500/8 text-white'
+                            : 'border-transparent text-zinc-500 hover:text-zinc-200 hover:bg-white/4'
                         }`}
                       >
-                        <Icon className="w-5 h-5" />
-                        <span>{item.label}</span>
+                        <Icon className="w-4 h-4 shrink-0" />
+                        <span className="text-sm">{item.label}</span>
                       </Link>
                     </li>
                   );
                 })}
-              </div>
+              </>
             )}
           </ul>
         </nav>
 
-        <div className="p-4 border-t border-slate-800">
+        {/* Logout */}
+        <div className="border-t border-zinc-800 p-3">
           <button
             onClick={onLogout}
-            className="flex items-center gap-3 px-4 py-3 rounded-lg text-slate-400 hover:bg-red-500/10 hover:text-red-400 transition-colors w-full"
+            className="flex items-center gap-3 w-full px-4 py-2.5 rounded text-zinc-500 hover:text-red-400 hover:bg-red-500/8 transition-all border border-transparent hover:border-red-500/20"
           >
-            <LogOut className="w-5 h-5" />
-            <span>Logout System</span>
+            <LogOut className="w-4 h-4 shrink-0" />
+            <span>Logout</span>
           </button>
         </div>
       </aside>
 
-      {/* Main View Area */}
-      <main className="flex-1 overflow-auto flex flex-col">
-        {/* Dynamic Header */}
-        <header className="bg-slate-900 border-b border-slate-800 px-8 py-4 sticky top-0 z-50">
-          <div className="flex items-center justify-between">
-            <div className="text-slate-400 text-sm font-medium">
-              Secure Intelligence System | <span className="text-blue-400 font-bold">{user?.role} Access</span>
+      {/* Main */}
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Header */}
+        <header className="bg-black border-b border-zinc-800 px-6 py-3 sticky top-0 z-50 flex items-center justify-between">
+          <div className="flex items-center gap-2 text-zinc-600 text-xs font-mono uppercase tracking-widest">
+            <span className="text-zinc-700">KolLab</span>
+            <span>/</span>
+            <span className="text-blue-500">{user?.role ?? 'User'}</span>
+          </div>
+
+          <div className="flex items-center gap-3">
+            {/* ML status */}
+            <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-mono border ${
+              mlReady
+                ? 'bg-emerald-500/8 border-emerald-500/25 text-emerald-400'
+                : 'bg-amber-500/8 border-amber-500/25 text-amber-400'
+            }`}>
+              {mlReady
+                ? <><CheckCircle2 className="w-3 h-3" /><span>ML READY</span></>
+                : <><Loader2 className="w-3 h-3 animate-spin" /><span>ML LOADING</span></>
+              }
             </div>
 
-            <div className="flex items-center gap-3">
-              <div
-                title={mlReady ? 'ML models loaded' : 'ML models still loading — uploads will be available shortly'}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium border ${
-                  mlReady
-                    ? 'bg-green-500/10 border-green-500/30 text-green-300'
-                    : 'bg-yellow-500/10 border-yellow-500/30 text-yellow-300'
-                }`}
-              >
-                {mlReady ? (
-                  <>
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span>ML ready</span>
-                  </>
-                ) : (
-                  <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    <span>Loading ML…</span>
-                  </>
-                )}
-              </div>
-
-              <div className="relative">
+            {/* User menu */}
+            <div className="relative">
               <button
                 onClick={() => setShowUserMenu(!showUserMenu)}
-                className="flex items-center gap-3 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 transition-all border border-slate-700 hover:border-slate-500 shadow-sm"
+                className="flex items-center gap-2 px-3 py-1.5 rounded border border-zinc-800 bg-zinc-900 hover:bg-zinc-800 hover:border-zinc-700 transition-all"
               >
-                <div className="bg-gradient-to-br from-blue-600 to-blue-700 p-1.5 rounded-lg">
-                  <User className="w-4 h-4 text-white" />
+                <div className="w-5 h-5 rounded bg-blue-600 flex items-center justify-center">
+                  <User className="w-3 h-3 text-white" />
                 </div>
-                <div className="text-left hidden sm:block">
-                  <div className="text-white text-sm font-bold">{user?.username}</div>
-                  <div className="text-slate-500 text-[10px] uppercase font-black tracking-tighter">{user?.role}</div>
-                </div>
+                <span className="text-zinc-300 text-xs font-medium hidden sm:block">{user?.username}</span>
               </button>
 
-              {/* User Dropdown Menu */}
               {showUserMenu && (
                 <>
-                  <div className="fixed inset-0 z-10" onClick={() => setShowUserMenu(false)}></div>
-                  <div className="absolute right-0 mt-2 w-56 bg-slate-800 border border-slate-700 rounded-xl shadow-2xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-100">
-                    <div className="p-2 border-b border-slate-700 bg-slate-800/50">
-                        <div className="px-3 py-2 text-xs font-bold text-slate-500 uppercase tracking-widest">Account</div>
+                  <div className="fixed inset-0 z-10" onClick={() => setShowUserMenu(false)} />
+                  <div className="absolute right-0 mt-1.5 w-48 bg-zinc-950 border border-zinc-800 rounded shadow-xl z-50 overflow-hidden">
+                    <div className="px-3 py-2 border-b border-zinc-800">
+                      <div className="text-white text-xs font-medium">{user?.username}</div>
+                      <div className="text-zinc-600 text-[10px] font-mono uppercase">{user?.role}</div>
                     </div>
-                    <div className="p-1.5">
+                    <div className="p-1">
                       <button
-                        onClick={() => {
-                          setShowUserMenu(false);
-                          navigate('/profile');
-                        }}
-                        className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-300 hover:bg-blue-600 hover:text-white transition-all w-full group"
+                        onClick={() => { setShowUserMenu(false); navigate('/profile'); }}
+                        className="flex items-center gap-2.5 w-full px-3 py-2 rounded text-zinc-400 hover:text-white hover:bg-white/5 transition-all text-xs"
                       >
-                        <UserCircle className="w-4 h-4 text-blue-400 group-hover:text-white" />
-                        <span className="text-sm font-medium">My Profile</span>
+                        <UserCircle className="w-3.5 h-3.5" />
+                        My Profile
                       </button>
-                      
                       <button
-                        onClick={() => {
-                          setShowUserMenu(false);
-                          onLogout();
-                        }}
-                        className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-300 hover:bg-red-500/10 hover:text-red-400 transition-all w-full mt-1 group"
+                        onClick={() => { setShowUserMenu(false); onLogout(); }}
+                        className="flex items-center gap-2.5 w-full px-3 py-2 rounded text-zinc-400 hover:text-red-400 hover:bg-red-500/8 transition-all text-xs mt-0.5"
                       >
-                        <LogOut className="w-4 h-4 text-slate-500 group-hover:text-red-400" />
-                        <span className="text-sm font-medium">Logout</span>
+                        <LogOut className="w-3.5 h-3.5" />
+                        Logout
                       </button>
                     </div>
                   </div>
                 </>
               )}
             </div>
-            </div>
           </div>
         </header>
 
-        {/* Page Outlet */}
-        <div className="flex-1">
+        <main className="flex-1 overflow-auto bg-black">
           <Outlet />
-        </div>
-      </main>
+        </main>
+      </div>
     </div>
   );
 }

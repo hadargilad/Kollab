@@ -14,7 +14,7 @@ export default function ProfileSearch() {
     let cancelled = false;
     speakersApi.list()
       .then(data => { if (!cancelled) setProfiles(data); })
-      .catch(() => { if (!cancelled) setError('Failed to load speaker profiles. Make sure the backend is running.'); })
+      .catch(() => { if (!cancelled) setError('Failed to load speaker profiles.'); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, []);
@@ -29,143 +29,115 @@ export default function ProfileSearch() {
     );
   }, [profiles, searchQuery]);
 
-  const getRiskColor = (level: string) => {
+  const getRiskCls = (level: string) => {
     switch (level) {
-      case 'high':
-        return 'bg-red-500/10 text-red-400 border-red-500/20';
-      case 'medium':
-        return 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20';
-      case 'low':
-        return 'bg-green-500/10 text-green-400 border-green-500/20';
-      default:
-        return 'bg-slate-500/10 text-slate-400 border-slate-500/20';
+      case 'high':   return 'bg-red-500/10 text-red-400 border-red-500/25';
+      case 'medium': return 'bg-amber-500/10 text-amber-400 border-amber-500/25';
+      case 'low':    return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/25';
+      default:       return 'bg-zinc-500/10 text-zinc-400 border-zinc-500/25';
     }
   };
 
   const formatDate = (dateString: string) => {
     if (!dateString) return '—';
-    return new Date(dateString).toLocaleDateString('en-GB', {
-      year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
-    });
+    return new Date(dateString).toLocaleDateString('en-GB', { year: 'numeric', month: 'short', day: 'numeric' });
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 p-8">
-      <div className="max-w-7xl mx-auto">
-        <div className="mb-8">
-          <h1 className="text-white text-3xl mb-2">Profile Search</h1>
-          <p className="text-slate-400">
-            Speakers identified from uploaded recordings. Search by name, voice ID, or risk level.
-          </p>
+    <div className="p-6 space-y-5">
+      <div>
+        <div className="text-zinc-600 text-[10px] font-mono uppercase tracking-widest mb-1">Intelligence</div>
+        <h1 className="text-white text-2xl font-bold tracking-tight">Profile Search</h1>
+        <p className="text-zinc-500 text-sm mt-0.5">Search by name, voice identifier, or risk level</p>
+      </div>
+
+      <div className="relative max-w-xl">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-600" />
+        <input
+          type="text"
+          placeholder="Search profiles…"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="w-full bg-black border border-zinc-800 rounded pl-9 pr-4 py-2.5 text-white text-sm placeholder-zinc-700 focus:outline-none focus:border-blue-500 transition-all font-mono"
+        />
+      </div>
+
+      {loading && (
+        <div className="flex items-center justify-center py-20">
+          <Loader2 className="w-6 h-6 text-blue-500 animate-spin" />
         </div>
+      )}
 
-        <div className="mb-8">
-          <div className="relative">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Search by name, voice identifier, or risk level..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-slate-900 border border-slate-800 rounded-lg pl-12 pr-4 py-4 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
+      {!loading && error && (
+        <div className="bg-red-500/5 border border-red-500/20 rounded-md p-6 text-center">
+          <AlertCircle className="w-6 h-6 text-red-400 mx-auto mb-2" />
+          <p className="text-red-400 text-sm">{error}</p>
         </div>
+      )}
 
-        {loading && (
-          <div className="flex items-center justify-center py-20">
-            <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
+      {!loading && !error && (
+        <div className="space-y-4">
+          <div className="text-zinc-600 text-xs font-mono">
+            {searchQuery
+              ? `${filteredProfiles.length} / ${profiles.length} profiles`
+              : `${profiles.length} profile${profiles.length !== 1 ? 's' : ''}`}
           </div>
-        )}
 
-        {!loading && error && (
-          <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-6 text-center">
-            <AlertCircle className="w-8 h-8 text-red-400 mx-auto mb-2" />
-            <p className="text-red-400">{error}</p>
-          </div>
-        )}
-
-        {!loading && !error && (
-          <>
-            <div className="mb-4 text-slate-400">
-              {searchQuery
-                ? `Found ${filteredProfiles.length} of ${profiles.length} profile${profiles.length !== 1 ? 's' : ''}`
-                : `${profiles.length} speaker profile${profiles.length !== 1 ? 's' : ''}`}
+          {profiles.length === 0 ? (
+            <div className="text-center py-16 border border-dashed border-zinc-900 rounded-md">
+              <User className="w-8 h-8 text-zinc-700 mx-auto mb-3" />
+              <p className="text-zinc-600 text-sm">No speakers yet. Upload a recording to get started.</p>
             </div>
-
-            {profiles.length === 0 ? (
-              <div className="text-center py-16">
-                <div className="bg-slate-900 border border-slate-800 rounded-full w-20 h-20 flex items-center justify-center mx-auto mb-4">
-                  <User className="w-10 h-10 text-slate-600" />
-                </div>
-                <h3 className="text-white text-xl mb-2">No speakers yet</h3>
-                <p className="text-slate-400">Upload an audio recording and detected speakers will appear here.</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {filteredProfiles.map((profile) => (
-                  <div
-                    key={profile.id}
-                    className="bg-slate-900 border border-slate-800 rounded-lg p-6 hover:border-blue-500/50 transition-all cursor-pointer group"
-                    onClick={() => navigate(`/speaker/${profile.id}`)}
-                  >
-                    <div className="flex items-start justify-between mb-4">
-                      <div className="flex items-center gap-4">
-                        <div
-                          className="p-3 rounded-full"
-                          style={{ backgroundColor: `${profile.color}20` }}
-                        >
-                          <User className="w-6 h-6" style={{ color: profile.color }} />
-                        </div>
-                        <div>
-                          <h3 className="text-white text-lg">{profile.name}</h3>
-                          <div className={`inline-flex items-center px-2 py-1 rounded border text-xs mt-1 ${getRiskColor(profile.riskLevel)}`}>
-                            {profile.riskLevel.toUpperCase()} RISK
-                          </div>
-                        </div>
+          ) : filteredProfiles.length === 0 ? (
+            <div className="text-center py-16 border border-dashed border-zinc-900 rounded-md">
+              <Search className="w-8 h-8 text-zinc-700 mx-auto mb-3" />
+              <p className="text-zinc-600 text-sm">No profiles match your search.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+              {filteredProfiles.map((profile) => (
+                <div
+                  key={profile.id}
+                  className="bg-zinc-900 border border-zinc-800 rounded-md p-5 hover:border-zinc-600 transition-colors cursor-pointer group"
+                  onClick={() => navigate(`/speaker/${profile.id}`)}
+                >
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded flex items-center justify-center shrink-0"
+                        style={{ backgroundColor: `${profile.color}18` }}>
+                        <User className="w-5 h-5" style={{ color: profile.color }} />
                       </div>
-                      <ArrowRight className="w-5 h-5 text-slate-600 group-hover:text-blue-400 transition-colors" />
-                    </div>
-
-                    <div className="grid grid-cols-1 gap-3">
-                      <div className="flex items-center gap-2 text-sm">
-                        <Fingerprint className="w-4 h-4 text-slate-500 shrink-0" />
-                        <span className="text-slate-300 font-mono text-xs truncate" title={profile.voiceIdentifier}>
-                          {profile.voiceIdentifier}
+                      <div>
+                        <div className="text-white text-sm font-medium">{profile.name}</div>
+                        <span className={`inline-flex items-center px-1.5 py-0.5 rounded border text-[10px] font-mono uppercase mt-0.5 ${getRiskCls(profile.riskLevel)}`}>
+                          {profile.riskLevel} risk
                         </span>
                       </div>
-                      <div className="flex items-center gap-2 text-sm">
-                        <Calendar className="w-4 h-4 text-slate-500 shrink-0" />
-                        <span className="text-slate-300">First detected: {formatDate(profile.firstDetected)}</span>
-                      </div>
                     </div>
+                    <ArrowRight className="w-4 h-4 text-zinc-700 group-hover:text-zinc-400 transition-colors shrink-0" />
+                  </div>
 
-                    <div className="mt-4 pt-4 border-t border-slate-800">
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-slate-400 flex items-center gap-2">
-                          <FileAudio className="w-4 h-4" />
-                          Recordings
-                        </span>
-                        <span className="text-white">{profile.recordingCount}</span>
-                      </div>
+                  <div className="space-y-1.5">
+                    <div className="flex items-center gap-2">
+                      <Fingerprint className="w-3.5 h-3.5 text-zinc-600 shrink-0" />
+                      <span className="text-zinc-500 font-mono text-xs truncate">{profile.voiceIdentifier}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Calendar className="w-3.5 h-3.5 text-zinc-600 shrink-0" />
+                      <span className="text-zinc-500 text-xs">First: {formatDate(profile.firstDetected)}</span>
                     </div>
                   </div>
-                ))}
-              </div>
-            )}
 
-            {profiles.length > 0 && filteredProfiles.length === 0 && (
-              <div className="text-center py-16">
-                <div className="bg-slate-900 border border-slate-800 rounded-full w-20 h-20 flex items-center justify-center mx-auto mb-4">
-                  <Search className="w-10 h-10 text-slate-600" />
+                  <div className="mt-3 pt-3 border-t border-zinc-800 flex items-center gap-1.5 text-zinc-600 text-xs">
+                    <FileAudio className="w-3.5 h-3.5" />
+                    <span className="font-mono">{profile.recordingCount} recording{profile.recordingCount !== 1 ? 's' : ''}</span>
+                  </div>
                 </div>
-                <h3 className="text-white text-xl mb-2">No profiles found</h3>
-                <p className="text-slate-400">Try adjusting your search query</p>
-              </div>
-            )}
-          </>
-        )}
-      </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

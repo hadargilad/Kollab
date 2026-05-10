@@ -18,26 +18,20 @@ export default function AllUploads() {
 
   useEffect(() => {
     let cancelled = false;
-
     const fetchAndSchedule = () => {
       audios.list()
         .then(data => {
           if (cancelled) return;
           setUploads(data);
           setLoading(false);
-          // If any file is still processing, poll again in 5 s
           if (data.some(u => u.status === 'processing')) {
             setTimeout(() => { if (!cancelled) fetchAndSchedule(); }, 5000);
           }
         })
         .catch(() => {
-          if (!cancelled) {
-            setError('Failed to load uploads. Make sure the backend is running.');
-            setLoading(false);
-          }
+          if (!cancelled) { setError('Failed to load uploads.'); setLoading(false); }
         });
     };
-
     fetchAndSchedule();
     return () => { cancelled = true; };
   }, []);
@@ -46,9 +40,7 @@ export default function AllUploads() {
     const matchesSearch =
       upload.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       upload.description.toLowerCase().includes(searchQuery.toLowerCase());
-
     const matchesStatus = statusFilter === 'all' || upload.status === statusFilter;
-
     const uploadDate = new Date(upload.uploadedAt);
     const now = new Date();
     const daysDiff = Math.floor((now.getTime() - uploadDate.getTime()) / (1000 * 60 * 60 * 24));
@@ -56,20 +48,15 @@ export default function AllUploads() {
     if (dateFilter === 'today') matchesDate = daysDiff === 0;
     else if (dateFilter === 'week') matchesDate = daysDiff <= 7;
     else if (dateFilter === 'month') matchesDate = daysDiff <= 30;
-
-    // Recorded-time range — independent of upload date.
-    // Datetime-local strings are local-naive, lexically comparable in YYYY-MM-DDTHH:MM order.
     let matchesRecorded = true;
     if (recordedFrom || recordedTo) {
-      if (!upload.recordedAt) {
-        matchesRecorded = false;  // exclude legacy rows that don't have a recorded time
-      } else {
-        const recorded = upload.recordedAt.slice(0, 16);  // strip seconds for comparable form
+      if (!upload.recordedAt) { matchesRecorded = false; }
+      else {
+        const recorded = upload.recordedAt.slice(0, 16);
         if (recordedFrom && recorded < recordedFrom) matchesRecorded = false;
         if (recordedTo && recorded > recordedTo) matchesRecorded = false;
       }
     }
-
     return matchesSearch && matchesStatus && matchesDate && matchesRecorded;
   });
 
@@ -88,26 +75,18 @@ export default function AllUploads() {
     return (bytes / Math.pow(k, i)).toFixed(1) + ' ' + sizes[i];
   };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('he-IL', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
+  const formatDate = (dateString: string) =>
+    new Date(dateString).toLocaleDateString('he-IL', {
+      year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
     });
-  };
 
   const handleRetry = async (id: number) => {
     setRetrying(prev => new Set(prev).add(id));
     try {
       await audios.retry(id);
       setUploads(prev => prev.map(u => u.id === id ? { ...u, status: 'processing' } : u));
-    } catch {
-      // leave as failed
-    } finally {
-      setRetrying(prev => { const s = new Set(prev); s.delete(id); return s; });
-    }
+    } catch { /* leave as failed */ }
+    finally { setRetrying(prev => { const s = new Set(prev); s.delete(id); return s; }); }
   };
 
   const handleDelete = async (id: number) => {
@@ -116,64 +95,54 @@ export default function AllUploads() {
       await audios.remove(id);
       setUploads(prev => prev.filter(u => u.id !== id));
       setConfirmDelete(null);
-    } catch {
-      setError('Failed to delete file. Please try again.');
-    } finally {
-      setDeleting(prev => { const s = new Set(prev); s.delete(id); return s; });
-    }
+    } catch { setError('Failed to delete file.'); }
+    finally { setDeleting(prev => { const s = new Set(prev); s.delete(id); return s; }); }
   };
 
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'processed':  return <CheckCircle className="w-5 h-5 text-green-400" />;
-      case 'processing': return <Clock className="w-5 h-5 text-blue-400" />;
-      case 'failed':     return <AlertCircle className="w-5 h-5 text-red-400" />;
-      default:           return null;
-    }
+  const statusBadge = (status: string) => {
+    if (status === 'processed')  return 'text-emerald-400';
+    if (status === 'processing') return 'text-amber-400';
+    return 'text-red-400';
   };
 
-  const getStatusText = (status: string) => {
-    switch (status) {
-      case 'processed':  return 'Processed';
-      case 'processing': return 'Processing';
-      case 'failed':     return 'Failed';
-      default:           return status;
-    }
+  const statusIcon = (status: string) => {
+    if (status === 'processed')  return <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />;
+    if (status === 'processing') return <Clock className="w-3.5 h-3.5 text-amber-400" />;
+    return <AlertCircle className="w-3.5 h-3.5 text-red-400" />;
   };
+
+  const inputCls = 'w-full bg-black border border-zinc-800 rounded px-3 py-2 text-white text-sm placeholder-zinc-700 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 transition-all font-mono';
+  const selectCls = 'w-full bg-black border border-zinc-800 rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500 appearance-none transition-all font-mono';
 
   return (
-    <div className="p-8">
-      <div className="mb-8">
-        <h1 className="text-white mb-2">All Uploads</h1>
-        <p className="text-slate-400">View and search all uploaded audio files</p>
+    <div className="p-6 space-y-5">
+      <div>
+        <div className="text-zinc-600 text-[10px] font-mono uppercase tracking-widest mb-1">Files</div>
+        <h1 className="text-white text-2xl font-bold tracking-tight">All Uploads</h1>
+        <p className="text-zinc-500 text-sm mt-0.5">Search and manage uploaded audio recordings</p>
       </div>
 
-      {/* Search and Filters */}
-      <div className="bg-slate-900 border border-slate-800 rounded-lg p-6 mb-6">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="md:col-span-1">
-            <label className="text-slate-400 text-sm mb-2 block">Search Files</label>
+      {/* Filters */}
+      <div className="bg-zinc-900 border border-zinc-800 rounded-md p-4 space-y-3">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div>
+            <label className="text-zinc-600 text-[10px] font-mono uppercase tracking-widest block mb-1.5">Search</label>
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-600" />
               <input
                 type="text"
-                placeholder="Search by name or description..."
+                placeholder="Name or description…"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-slate-800 border border-slate-700 rounded-lg pl-10 pr-4 py-2 text-white placeholder-slate-400 focus:outline-none focus:border-blue-500"
+                className={inputCls + ' pl-9'}
               />
             </div>
           </div>
-
           <div>
-            <label className="text-slate-400 text-sm mb-2 block">Status</label>
+            <label className="text-zinc-600 text-[10px] font-mono uppercase tracking-widest block mb-1.5">Status</label>
             <div className="relative">
-              <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="w-full bg-slate-800 border border-slate-700 rounded-lg pl-10 pr-4 py-2 text-white appearance-none focus:outline-none focus:border-blue-500"
-              >
+              <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-600" />
+              <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className={selectCls + ' pl-9'}>
                 <option value="all">All Status</option>
                 <option value="processed">Processed</option>
                 <option value="processing">Processing</option>
@@ -181,16 +150,11 @@ export default function AllUploads() {
               </select>
             </div>
           </div>
-
           <div>
-            <label className="text-slate-400 text-sm mb-2 block">Upload Date</label>
+            <label className="text-zinc-600 text-[10px] font-mono uppercase tracking-widest block mb-1.5">Upload Date</label>
             <div className="relative">
-              <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-              <select
-                value={dateFilter}
-                onChange={(e) => setDateFilter(e.target.value)}
-                className="w-full bg-slate-800 border border-slate-700 rounded-lg pl-10 pr-4 py-2 text-white appearance-none focus:outline-none focus:border-blue-500"
-              >
+              <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-600" />
+              <select value={dateFilter} onChange={(e) => setDateFilter(e.target.value)} className={selectCls + ' pl-9'}>
                 <option value="all">All Time</option>
                 <option value="today">Today</option>
                 <option value="week">Last 7 Days</option>
@@ -200,151 +164,130 @@ export default function AllUploads() {
           </div>
         </div>
 
-        {/* Recorded-date range — separate from upload date */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
-          <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="md:col-span-2 grid grid-cols-2 gap-3">
             <div>
-              <label className="text-slate-400 text-sm mb-2 block">Recorded From</label>
-              <input
-                type="datetime-local"
-                value={recordedFrom}
-                onChange={(e) => setRecordedFrom(e.target.value)}
-                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-blue-500 scheme-dark"
-              />
+              <label className="text-zinc-600 text-[10px] font-mono uppercase tracking-widest block mb-1.5">Recorded From</label>
+              <input type="datetime-local" value={recordedFrom} onChange={(e) => setRecordedFrom(e.target.value)}
+                className={inputCls + ' scheme-dark'} />
             </div>
             <div>
-              <label className="text-slate-400 text-sm mb-2 block">Recorded To</label>
-              <input
-                type="datetime-local"
-                value={recordedTo}
-                onChange={(e) => setRecordedTo(e.target.value)}
-                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-blue-500 scheme-dark"
-              />
+              <label className="text-zinc-600 text-[10px] font-mono uppercase tracking-widest block mb-1.5">Recorded To</label>
+              <input type="datetime-local" value={recordedTo} onChange={(e) => setRecordedTo(e.target.value)}
+                className={inputCls + ' scheme-dark'} />
             </div>
           </div>
-          {(recordedFrom || recordedTo) && (
-            <div className="flex items-end">
+          <div className="flex items-end gap-2">
+            {(recordedFrom || recordedTo) && (
               <button
                 onClick={() => { setRecordedFrom(''); setRecordedTo(''); }}
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-sm transition-colors"
+                className="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-400 text-xs rounded transition-colors font-mono"
               >
-                Clear recorded range
+                Clear Range
               </button>
-            </div>
-          )}
+            )}
+          </div>
         </div>
 
-        <div className="mt-4 pt-4 border-t border-slate-800">
-          <p className="text-slate-400 text-sm">
-            {loading ? 'Loading...' : `Showing ${filteredUploads.length} of ${uploads.length} files`}
+        <div className="pt-2 border-t border-zinc-800">
+          <p className="text-zinc-600 text-xs font-mono">
+            {loading ? 'Loading…' : `${filteredUploads.length} / ${uploads.length} files`}
           </p>
         </div>
       </div>
 
-      {/* States */}
       {loading && (
-        <div className="flex items-center justify-center py-20">
-          <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
+        <div className="flex items-center justify-center py-16">
+          <Loader2 className="w-6 h-6 text-blue-500 animate-spin" />
         </div>
       )}
 
       {!loading && error && (
-        <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-6 text-center">
-          <AlertCircle className="w-8 h-8 text-red-400 mx-auto mb-2" />
-          <p className="text-red-400">{error}</p>
+        <div className="bg-red-500/5 border border-red-500/20 rounded-md p-5 text-center">
+          <AlertCircle className="w-6 h-6 text-red-400 mx-auto mb-2" />
+          <p className="text-red-400 text-sm">{error}</p>
         </div>
       )}
 
-      {/* Uploads List */}
       {!loading && !error && (
-        <div className="space-y-4">
+        <div className="space-y-2">
           {filteredUploads.length === 0 ? (
-            <div className="bg-slate-900 border border-slate-800 rounded-lg p-12 text-center">
-              <FileAudio className="w-12 h-12 text-slate-600 mx-auto mb-4" />
-              <p className="text-slate-400">
-                {uploads.length === 0
-                  ? 'No files uploaded yet. Go to Upload to add your first recording.'
-                  : 'No files match your search criteria.'}
+            <div className="bg-zinc-900 border border-zinc-800 rounded-md p-10 text-center">
+              <FileAudio className="w-10 h-10 text-zinc-800 mx-auto mb-3" />
+              <p className="text-zinc-500 text-sm">
+                {uploads.length === 0 ? 'No files uploaded yet.' : 'No files match your filters.'}
               </p>
             </div>
           ) : (
             filteredUploads.map((upload) => (
-              <div
-                key={upload.id}
-                className="bg-slate-900 border border-slate-800 rounded-lg p-6 hover:border-slate-700 transition-colors"
-              >
-                <div className="flex items-start justify-between">
-                  <div className="flex items-start gap-4 flex-1">
-                    <div className="bg-blue-600/20 p-3 rounded-lg">
-                      <FileAudio className="w-6 h-6 text-blue-400" />
+              <div key={upload.id} className="bg-zinc-900 border border-zinc-800 rounded-md px-5 py-4 hover:border-zinc-700 transition-colors">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex items-start gap-3 flex-1 min-w-0">
+                    <div className="w-8 h-8 bg-zinc-800 border border-zinc-700 rounded flex items-center justify-center shrink-0 mt-0.5">
+                      <FileAudio className="w-4 h-4 text-zinc-400" />
                     </div>
-
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-2">
-                        <h3 className="text-white">{upload.name}</h3>
-                        <div className="flex items-center gap-2">
-                          {getStatusIcon(upload.status)}
-                          <span className="text-sm text-slate-400">{getStatusText(upload.status)}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2.5 mb-1">
+                        <h3 className="text-white font-medium truncate">{upload.name}</h3>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {statusIcon(upload.status)}
+                          <span className={`text-xs font-mono uppercase ${statusBadge(upload.status)}`}>
+                            {upload.status}
+                          </span>
                         </div>
                       </div>
                       {upload.description && (
-                        <p className="text-slate-400 text-sm mb-3">{upload.description}</p>
+                        <p className="text-zinc-500 text-sm mb-1.5">{upload.description}</p>
                       )}
-                      <div className="flex items-center gap-x-6 gap-y-1 flex-wrap text-sm text-slate-500">
+                      <div className="flex items-center gap-x-4 gap-y-1 flex-wrap text-xs font-mono text-zinc-600">
                         {upload.recordedAt && (
-                          <span className="flex items-center gap-2 text-slate-400">
-                            <Calendar className="w-4 h-4" />
-                            Recorded: {formatDate(upload.recordedAt)}
+                          <span className="flex items-center gap-1.5 text-zinc-500">
+                            <Calendar className="w-3 h-3" />
+                            {formatDate(upload.recordedAt)}
                           </span>
                         )}
-                        <span className="flex items-center gap-2">
-                          <Clock className="w-4 h-4" />
-                          Uploaded: {formatDate(upload.uploadedAt)}
+                        <span className="flex items-center gap-1.5">
+                          <Clock className="w-3 h-3" />
+                          {formatDate(upload.uploadedAt)}
                         </span>
-                        <span>Duration: {formatDuration(upload.duration)}</span>
-                        <span>Size: {formatFileSize(upload.fileSize)}</span>
-                        <span>{upload.speakerCount} speaker{upload.speakerCount !== 1 ? 's' : ''}</span>
-                        {upload.uploadedBy && (
-                          <span>By: {upload.uploadedBy}</span>
-                        )}
+                        <span>{formatDuration(upload.duration)}</span>
+                        <span>{formatFileSize(upload.fileSize)}</span>
+                        <span>{upload.speakerCount} spk</span>
+                        {upload.uploadedBy && <span>by {upload.uploadedBy}</span>}
                       </div>
                     </div>
                   </div>
 
-                  <div className="ml-4 shrink-0 flex items-center gap-2">
+                  <div className="flex items-center gap-2 shrink-0">
                     {upload.status === 'processed' && (
                       <Link
                         to={`/analysis/${upload.id}`}
-                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs rounded transition-colors"
                       >
-                        <PlayCircle className="w-4 h-4" />
-                        View Analysis
+                        <PlayCircle className="w-3.5 h-3.5" />
+                        Analysis
                       </Link>
                     )}
                     {upload.status === 'processing' && (
-                      <button
-                        disabled
-                        className="flex items-center gap-2 px-4 py-2 bg-slate-800 text-slate-500 rounded-lg cursor-not-allowed"
-                      >
-                        <Clock className="w-4 h-4" />
-                        Processing...
-                      </button>
+                      <div className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 text-zinc-500 text-xs rounded cursor-not-allowed">
+                        <Clock className="w-3.5 h-3.5" />
+                        Processing
+                      </div>
                     )}
                     {upload.status === 'failed' && (
                       <button
                         onClick={() => handleRetry(upload.id)}
                         disabled={retrying.has(upload.id)}
-                        className="flex items-center gap-2 px-4 py-2 bg-red-600/20 hover:bg-red-600/30 disabled:opacity-50 text-red-400 rounded-lg transition-colors"
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/25 disabled:opacity-50 text-red-400 text-xs rounded transition-colors"
                       >
-                        <RefreshCw className={`w-4 h-4 ${retrying.has(upload.id) ? 'animate-spin' : ''}`} />
+                        <RefreshCw className={`w-3.5 h-3.5 ${retrying.has(upload.id) ? 'animate-spin' : ''}`} />
                         {retrying.has(upload.id) ? 'Retrying…' : 'Retry'}
                       </button>
                     )}
                     <button
                       onClick={() => setConfirmDelete(upload)}
                       disabled={deleting.has(upload.id)}
-                      title="Delete recording"
-                      className="p-2 bg-slate-800 hover:bg-red-600/20 text-slate-400 hover:text-red-400 disabled:opacity-50 rounded-lg transition-colors"
+                      className="p-1.5 text-zinc-600 hover:text-red-400 hover:bg-red-500/8 rounded transition-colors disabled:opacity-50"
                     >
                       {deleting.has(upload.id)
                         ? <Loader2 className="w-4 h-4 animate-spin" />
@@ -358,35 +301,37 @@ export default function AllUploads() {
         </div>
       )}
 
+      {/* Delete modal */}
       {confirmDelete && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-lg w-full max-w-md">
-            <div className="p-6 border-b border-slate-800">
-              <div className="flex items-center gap-3">
-                <div className="bg-red-600/20 p-2 rounded-lg">
-                  <Trash2 className="w-5 h-5 text-red-400" />
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+          <div className="bg-zinc-950 border border-zinc-800 rounded-md w-full max-w-md shadow-2xl">
+            <div className="p-5 border-b border-zinc-800">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-8 h-8 bg-red-500/10 border border-red-500/25 rounded flex items-center justify-center">
+                  <Trash2 className="w-4 h-4 text-red-400" />
                 </div>
-                <h2 className="text-white text-lg">Delete recording?</h2>
+                <h2 className="text-white font-semibold">Delete recording?</h2>
               </div>
-              <p className="text-slate-400 text-sm mt-3">
-                This will permanently remove <span className="text-white font-medium">{confirmDelete.name}</span>,
+              <p className="text-zinc-400 text-sm">
+                This permanently removes{' '}
+                <span className="text-white font-medium">{confirmDelete.name}</span>,
                 its audio file, transcript and speaker segments. This action cannot be undone.
               </p>
             </div>
-            <div className="p-6 flex gap-3 justify-end">
+            <div className="p-4 flex gap-2 justify-end">
               <button
                 onClick={() => setConfirmDelete(null)}
                 disabled={deleting.has(confirmDelete.id)}
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg transition-colors"
+                className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-white text-sm rounded transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={() => handleDelete(confirmDelete.id)}
                 disabled={deleting.has(confirmDelete.id)}
-                className="px-4 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white rounded-lg transition-colors flex items-center gap-2"
+                className="px-4 py-2 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white text-sm rounded transition-colors flex items-center gap-2"
               >
-                {deleting.has(confirmDelete.id) && <Loader2 className="w-4 h-4 animate-spin" />}
+                {deleting.has(confirmDelete.id) && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                 Delete
               </button>
             </div>

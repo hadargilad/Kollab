@@ -316,6 +316,23 @@ export interface AlertRecord {
 
 export const alerts = {
   list: () => request<AlertRecord[]>("GET", "/alerts"),
+  listForAudio: (audioId: number) => request<AlertRecord[]>("GET", `/audios/${audioId}/alerts`),
+};
+
+// ─── Dangerous Words ──────────────────────────────────────────────────────────
+
+export interface DangerousWordRecord {
+  id: number;
+  word: string;
+  severity: 'low' | 'medium' | 'high';
+  createdAt: string;
+}
+
+export const dangerousWords = {
+  list: () => request<DangerousWordRecord[]>("GET", "/dangerous-words"),
+  add: (word: string, severity: string) =>
+    request<DangerousWordRecord>("POST", "/dangerous-words", { word, severity }),
+  remove: (id: number) => request<{ success: boolean }>("DELETE", `/dangerous-words/${id}`),
 };
 
 // ─── System Stats ─────────────────────────────────────────────────────────────

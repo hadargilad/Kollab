@@ -43,54 +43,72 @@ export default function Dashboard() {
   const timeAgo = (dateString: string) => {
     const diff = Date.now() - new Date(dateString).getTime();
     const mins = Math.floor(diff / 60000);
-    if (mins < 60) return `${mins} min ago`;
+    if (mins < 60) return `${mins}m ago`;
     const hrs = Math.floor(mins / 60);
-    if (hrs < 24) return `${hrs} hour${hrs !== 1 ? 's' : ''} ago`;
-    return `${Math.floor(hrs / 24)} day${Math.floor(hrs / 24) !== 1 ? 's' : ''} ago`;
+    if (hrs < 24) return `${hrs}h ago`;
+    return `${Math.floor(hrs / 24)}d ago`;
+  };
+
+  const statusColor = (status: string) => {
+    if (status === 'processed')  return 'text-emerald-400';
+    if (status === 'processing') return 'text-amber-400';
+    return 'text-red-400';
+  };
+
+  const alertAccent = (type: string) => {
+    if (type === 'high')   return 'border-l-red-500 bg-red-500/4';
+    if (type === 'medium') return 'border-l-amber-500 bg-amber-500/4';
+    return 'border-l-blue-500 bg-blue-500/4';
+  };
+
+  const alertIcon = (type: string) => {
+    if (type === 'high')   return 'text-red-500';
+    if (type === 'medium') return 'text-amber-500';
+    return 'text-blue-500';
   };
 
   return (
-    <div className="p-8">
-      <div className="mb-8">
-        <h1 className="text-white text-3xl mb-2">Intelligence Dashboard</h1>
-        <p className="text-slate-400">Real-time audio analysis overview</p>
+    <div className="p-6 space-y-6">
+      {/* Page header */}
+      <div>
+        <div className="text-zinc-600 text-[10px] font-mono uppercase tracking-widest mb-1">
+          Intel Operations
+        </div>
+        <h1 className="text-white text-2xl font-bold tracking-tight">Dashboard</h1>
+        <p className="text-zinc-500 text-sm mt-0.5">Real-time audio analysis overview</p>
       </div>
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+      {/* KPI row */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Link
           to="/all-uploads"
-          className="bg-slate-900 border border-slate-800 rounded-lg p-6 hover:border-blue-500/50 hover:bg-slate-900/80 transition-colors group"
+          className="bg-zinc-900 border border-zinc-800 border-l-2 border-l-blue-500 rounded-md p-5 hover:bg-zinc-800 hover:border-zinc-700 transition-all group"
         >
-          <div className="flex items-center justify-between mb-4">
-            <div className="bg-blue-600/10 p-3 rounded-lg">
-              <FileAudio className="w-6 h-6 text-blue-500" />
-            </div>
-            <span className="text-green-500 text-sm flex items-center gap-1">
-              <TrendingUp className="w-4 h-4" />
-              {processedCount} processed
+          <div className="flex items-start justify-between mb-3">
+            <FileAudio className="w-5 h-5 text-blue-500" />
+            <span className="text-emerald-400 text-xs font-mono flex items-center gap-1">
+              <TrendingUp className="w-3.5 h-3.5" />
+              {processedCount} done
             </span>
           </div>
-          <div className="text-white text-2xl mb-1">{uploadList.length}</div>
-          <div className="text-slate-400 text-sm flex items-center gap-1">
-            Audio Files Total
-            <ArrowRight className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity" />
+          <div className="text-white text-3xl font-bold font-mono">{uploadList.length}</div>
+          <div className="text-zinc-500 text-xs mt-1 flex items-center gap-1">
+            Audio Files
+            <ArrowRight className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity ml-0.5" />
           </div>
         </Link>
 
         <Link
           to="/profile-search"
-          className="bg-slate-900 border border-slate-800 rounded-lg p-6 hover:border-purple-500/50 hover:bg-slate-900/80 transition-colors group"
+          className="bg-zinc-900 border border-zinc-800 border-l-2 border-l-purple-500 rounded-md p-5 hover:bg-zinc-800 hover:border-zinc-700 transition-all group"
         >
-          <div className="flex items-center justify-between mb-4">
-            <div className="bg-purple-600/10 p-3 rounded-lg">
-              <Users className="w-6 h-6 text-purple-500" />
-            </div>
+          <div className="flex items-start justify-between mb-3">
+            <Users className="w-5 h-5 text-purple-500" />
           </div>
-          <div className="text-white text-2xl mb-1">{speakerList.length}</div>
-          <div className="text-slate-400 text-sm flex items-center gap-1">
+          <div className="text-white text-3xl font-bold font-mono">{speakerList.length}</div>
+          <div className="text-zinc-500 text-xs mt-1 flex items-center gap-1">
             Identified Speakers
-            <ArrowRight className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity" />
+            <ArrowRight className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity ml-0.5" />
           </div>
         </Link>
 
@@ -98,123 +116,88 @@ export default function Dashboard() {
           type="button"
           onClick={() => alertsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
           disabled={alertList.length === 0}
-          className="bg-slate-900 border border-slate-800 rounded-lg p-6 text-left transition-colors enabled:hover:border-red-500/50 enabled:hover:bg-slate-900/80 disabled:cursor-default group"
+          className="bg-zinc-900 border border-zinc-800 border-l-2 border-l-red-500 rounded-md p-5 text-left transition-all enabled:hover:bg-zinc-800 enabled:hover:border-zinc-700 disabled:cursor-default group"
         >
-          <div className="flex items-center justify-between mb-4">
-            <div className="bg-red-600/10 p-3 rounded-lg">
-              <AlertTriangle className="w-6 h-6 text-red-500" />
-            </div>
+          <div className="flex items-start justify-between mb-3">
+            <AlertTriangle className="w-5 h-5 text-red-500" />
             {alertList.length > 0 && (
-              <span className="text-red-500 text-sm flex items-center gap-1">
-                <Clock className="w-4 h-4" />
-                New
+              <span className="text-red-400 text-xs font-mono flex items-center gap-1">
+                <Clock className="w-3.5 h-3.5" />
+                Active
               </span>
             )}
           </div>
-          <div className="text-white text-2xl mb-1">{alertList.length}</div>
-          <div className="text-slate-400 text-sm flex items-center gap-1">
+          <div className="text-white text-3xl font-bold font-mono">{alertList.length}</div>
+          <div className="text-zinc-500 text-xs mt-1 flex items-center gap-1">
             Pending Alerts
             {alertList.length > 0 && (
-              <ArrowRight className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity" />
+              <ArrowRight className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity ml-0.5" />
             )}
           </div>
         </button>
       </div>
 
-      {/* System Health */}
+      {/* System health */}
       {systemStats && (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          <div className="bg-slate-900 border border-slate-800 rounded-lg px-5 py-4 flex items-center gap-4">
-            <div className="bg-blue-600/10 p-2.5 rounded-lg shrink-0">
-              <Users className="w-5 h-5 text-blue-400" />
-            </div>
-            <div>
-              <div className="text-white text-xl font-semibold">{systemStats.totalUsers}</div>
-              <div className="text-slate-400 text-xs">Registered Users</div>
-            </div>
-          </div>
-
-          <div className="bg-slate-900 border border-slate-800 rounded-lg px-5 py-4 flex items-center gap-4">
-            <div className="bg-purple-600/10 p-2.5 rounded-lg shrink-0">
-              <HardDrive className="w-5 h-5 text-purple-400" />
-            </div>
-            <div>
-              <div className="text-white text-xl font-semibold">{formatBytes(systemStats.storageUsedBytes)}</div>
-              <div className="text-slate-400 text-xs">Storage Used</div>
-            </div>
-          </div>
-
-          <div className="bg-slate-900 border border-slate-800 rounded-lg px-5 py-4 flex items-center gap-4">
-            <div className={`p-2.5 rounded-lg shrink-0 ${systemStats.dbStatus ? 'bg-green-600/10' : 'bg-red-600/10'}`}>
-              <Database className={`w-5 h-5 ${systemStats.dbStatus ? 'text-green-400' : 'text-red-400'}`} />
-            </div>
-            <div>
-              <div className={`text-xl font-semibold ${systemStats.dbStatus ? 'text-green-400' : 'text-red-400'}`}>
-                {systemStats.dbStatus ? 'Online' : 'Error'}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          {[
+            { icon: Users,     color: 'text-blue-400',    value: systemStats.totalUsers,                label: 'Registered Users' },
+            { icon: HardDrive, color: 'text-purple-400',  value: formatBytes(systemStats.storageUsedBytes), label: 'Storage Used' },
+            { icon: Database,  color: systemStats.dbStatus ? 'text-emerald-400' : 'text-red-400',
+              value: systemStats.dbStatus ? 'Online' : 'Error', label: 'Database' },
+            { icon: Activity,  color: 'text-cyan-400',    value: systemStats.uptime,                    label: 'Uptime' },
+          ].map(({ icon: Icon, color, value, label }) => (
+            <div key={label} className="bg-zinc-950 border border-zinc-900 rounded-md px-4 py-3 flex items-center gap-3">
+              <Icon className={`w-4 h-4 ${color} shrink-0`} />
+              <div className="min-w-0">
+                <div className={`font-mono font-semibold text-sm truncate ${color}`}>{value}</div>
+                <div className="text-zinc-600 text-xs">{label}</div>
               </div>
-              <div className="text-slate-400 text-xs">Database Status</div>
             </div>
-          </div>
-
-          <div className="bg-slate-900 border border-slate-800 rounded-lg px-5 py-4 flex items-center gap-4">
-            <div className="bg-cyan-600/10 p-2.5 rounded-lg shrink-0">
-              <Activity className="w-5 h-5 text-cyan-400" />
-            </div>
-            <div>
-              <div className="text-white text-xl font-semibold">{systemStats.uptime}</div>
-              <div className="text-slate-400 text-xs">Server Uptime</div>
-            </div>
-          </div>
+          ))}
         </div>
       )}
 
-      {/* Recent Uploads and Alerts */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-lg p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-white">Recent Uploads</h2>
+      {/* Recent uploads + alerts */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* Uploads */}
+        <div className="lg:col-span-2 bg-zinc-900 border border-zinc-800 rounded-md">
+          <div className="flex items-center justify-between px-5 py-3.5 border-b border-zinc-800">
+            <span className="text-zinc-400 text-xs font-mono uppercase tracking-widest">Recent Uploads</span>
             <Link
               to="/all-uploads"
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-xs rounded transition-colors"
             >
-              View All
-              <ArrowRight className="w-4 h-4" />
+              View All <ArrowRight className="w-3 h-3" />
             </Link>
           </div>
+
           {recentUploads.length === 0 ? (
-            <div className="text-center py-8">
-              <FileAudio className="w-10 h-10 text-slate-600 mx-auto mb-3" />
-              <p className="text-slate-400 text-sm">No uploads yet. Go to Upload to add your first recording.</p>
+            <div className="text-center py-10">
+              <FileAudio className="w-8 h-8 text-zinc-800 mx-auto mb-3" />
+              <p className="text-zinc-600 text-sm">No uploads yet.</p>
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="divide-y divide-zinc-800">
               {recentUploads.map((upload) => (
                 <Link
                   key={upload.id}
                   to={upload.status === 'processed' ? `/analysis/${upload.id}` : '#'}
-                  className="flex items-center justify-between p-4 bg-slate-800 rounded-lg hover:bg-slate-700 transition-colors border border-slate-700"
+                  className="flex items-center justify-between px-5 py-3 hover:bg-zinc-800/50 transition-colors"
                 >
-                  <div className="flex items-center gap-4 flex-1 min-w-0">
-                    <div className="bg-blue-600/10 p-2 rounded shrink-0">
-                      <FileAudio className="w-5 h-5 text-blue-500" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-white text-sm mb-1 truncate">{upload.name}</div>
-                      <div className="text-slate-400 text-xs">{timeAgo(upload.uploadedAt)}</div>
+                  <div className="flex items-center gap-3 min-w-0">
+                    <FileAudio className="w-4 h-4 text-zinc-600 shrink-0" />
+                    <div className="min-w-0">
+                      <div className="text-white text-sm truncate">{upload.name}</div>
+                      <div className="text-zinc-600 text-xs font-mono">{timeAgo(upload.uploadedAt)}</div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-4 shrink-0">
-                    <div className="text-slate-400 text-sm">{formatDuration(upload.duration)}</div>
-                    <div className="text-slate-400 text-sm">{upload.speakerCount} spk</div>
-                    <div className={`px-3 py-1 rounded-full text-xs ${
-                      upload.status === 'processed'
-                        ? 'bg-green-600/10 text-green-500'
-                        : upload.status === 'failed'
-                        ? 'bg-red-600/10 text-red-500'
-                        : 'bg-yellow-600/10 text-yellow-500'
-                    }`}>
+                  <div className="flex items-center gap-4 shrink-0 ml-3">
+                    <span className="text-zinc-600 text-xs font-mono hidden sm:block">{formatDuration(upload.duration)}</span>
+                    <span className="text-zinc-600 text-xs hidden sm:block">{upload.speakerCount} spk</span>
+                    <span className={`text-xs font-mono uppercase ${statusColor(upload.status)}`}>
                       {upload.status}
-                    </div>
+                    </span>
                   </div>
                 </Link>
               ))}
@@ -222,31 +205,28 @@ export default function Dashboard() {
           )}
         </div>
 
-        <div ref={alertsRef} className="bg-slate-900 border border-slate-800 rounded-lg p-6 scroll-mt-6">
-          <h2 className="text-white mb-4">Recent Alerts</h2>
+        {/* Alerts */}
+        <div ref={alertsRef} className="bg-zinc-900 border border-zinc-800 rounded-md scroll-mt-6">
+          <div className="px-5 py-3.5 border-b border-zinc-800">
+            <span className="text-zinc-400 text-xs font-mono uppercase tracking-widest">Alerts</span>
+          </div>
+
           {alertList.length === 0 ? (
-            <div className="text-center py-8">
-              <AlertTriangle className="w-10 h-10 text-slate-600 mx-auto mb-3" />
-              <p className="text-slate-400 text-sm">No alerts.</p>
+            <div className="text-center py-10">
+              <AlertTriangle className="w-8 h-8 text-zinc-800 mx-auto mb-3" />
+              <p className="text-zinc-600 text-sm">No active alerts.</p>
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="divide-y divide-zinc-800">
               {alertList.slice(0, 5).map((alert) => (
-                <div key={alert.id} className="p-4 bg-slate-800 rounded-lg border border-slate-700">
-                  <div className="flex items-start gap-3">
-                    <div className={`p-1 rounded mt-0.5 ${
-                      alert.type === 'high' ? 'bg-red-600/10' :
-                      alert.type === 'medium' ? 'bg-yellow-600/10' : 'bg-blue-600/10'
-                    }`}>
-                      <AlertTriangle className={`w-4 h-4 ${
-                        alert.type === 'high' ? 'text-red-500' :
-                        alert.type === 'medium' ? 'text-yellow-500' : 'text-blue-500'
-                      }`} />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-slate-300 text-sm mb-1">{alert.message}</p>
-                      <p className="text-slate-500 text-xs">{timeAgo(alert.createdAt)}</p>
-                    </div>
+                <div
+                  key={alert.id}
+                  className={`flex items-start gap-3 px-5 py-3 border-l-2 ${alertAccent(alert.type)}`}
+                >
+                  <AlertTriangle className={`w-3.5 h-3.5 mt-0.5 shrink-0 ${alertIcon(alert.type)}`} />
+                  <div className="min-w-0">
+                    <p className="text-zinc-300 text-xs leading-relaxed">{alert.message}</p>
+                    <p className="text-zinc-600 text-[10px] font-mono mt-1">{timeAgo(alert.createdAt)}</p>
                   </div>
                 </div>
               ))}

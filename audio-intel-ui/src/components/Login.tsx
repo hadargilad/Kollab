@@ -17,63 +17,84 @@ export default function Login({ onLogin }: LoginProps) {
     e.preventDefault();
     setIsLoading(true);
     setErrorMessage(null);
-
     try {
       const user = await auth.login(username, password);
       onLogin(user);
     } catch (err: any) {
-      setErrorMessage(err.message ?? 'Invalid username or password. Please try again.');
+      setErrorMessage(err.message ?? 'Invalid credentials.');
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        <div className="flex flex-col items-center mb-8">
-          <KolLabLogo size={80} />
-          <h1 className="text-white text-3xl font-bold tracking-tight mt-2">
+    <div className="min-h-screen bg-black flex items-center justify-center p-4">
+      {/* Subtle grid overlay */}
+      <div
+        className="absolute inset-0 pointer-events-none opacity-[0.03]"
+        style={{
+          backgroundImage: 'linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)',
+          backgroundSize: '40px 40px',
+        }}
+      />
+
+      <div className="relative w-full max-w-sm">
+        {/* Access warning */}
+        <div className="text-center mb-8">
+          <div className="flex items-center justify-center gap-2 text-zinc-700 text-[10px] font-mono uppercase tracking-widest mb-6">
+            <span className="w-8 h-px bg-zinc-800" />
+            <span>Authorized Personnel Only</span>
+            <span className="w-8 h-px bg-zinc-800" />
+          </div>
+
+          <KolLabLogo size={56} />
+          <h1 className="text-white text-2xl font-bold tracking-tight mt-4">
             Kol<span className="text-blue-400">L</span>ab
           </h1>
-          <p className="text-slate-400 mt-2">Intelligence Management Platform</p>
+          <p className="text-zinc-600 text-xs font-mono mt-1 uppercase tracking-widest">
+            Intelligence Management Platform
+          </p>
         </div>
 
-        <div className="bg-slate-900 rounded-2xl shadow-2xl p-8 border border-slate-800">
-          <form onSubmit={handleSubmit} className="space-y-6">
-
+        {/* Card */}
+        <div className="bg-zinc-950 border border-zinc-800 rounded-md p-6">
+          <form onSubmit={handleSubmit} className="space-y-4">
             {errorMessage && (
-              <div className="flex items-center gap-3 bg-red-500/10 border border-red-500/50 text-red-500 p-4 rounded-xl text-sm animate-in fade-in slide-in-from-top-2">
-                <AlertCircle className="w-5 h-5 shrink-0" />
+              <div className="flex items-start gap-2.5 bg-red-500/8 border border-red-500/25 text-red-400 px-3 py-2.5 rounded text-sm">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
                 <p>{errorMessage}</p>
               </div>
             )}
 
             <div>
-              <label className="block text-slate-300 text-sm font-medium mb-2">Username</label>
+              <label className="block text-zinc-500 text-xs font-mono uppercase tracking-widest mb-1.5">
+                Username
+              </label>
               <div className="relative">
-                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
+                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-600" />
                 <input
                   type="text"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-11 pr-4 py-3 text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-600 transition-all"
-                  placeholder="UserName"
+                  className="w-full bg-black border border-zinc-800 rounded px-3 pl-9 py-2.5 text-white text-sm placeholder-zinc-700 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/30 transition-all font-mono"
+                  placeholder="username"
                   required
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-slate-300 text-sm font-medium mb-2">Password</label>
+              <label className="block text-zinc-500 text-xs font-mono uppercase tracking-widest mb-1.5">
+                Password
+              </label>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-600" />
                 <input
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-11 pr-4 py-3 text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-600 transition-all"
-                  placeholder="Password"
+                  className="w-full bg-black border border-zinc-800 rounded px-3 pl-9 py-2.5 text-white text-sm placeholder-zinc-700 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/30 transition-all font-mono"
+                  placeholder="••••••••"
                   required
                 />
               </div>
@@ -82,19 +103,21 @@ export default function Login({ onLogin }: LoginProps) {
             <button
               type="submit"
               disabled={isLoading}
-              className={`w-full py-3.5 rounded-xl font-bold text-white transition-all shadow-lg ${
+              className={`w-full py-2.5 rounded font-semibold text-sm tracking-wide transition-all mt-2 ${
                 isLoading
-                  ? 'bg-slate-800 cursor-not-allowed text-slate-500'
-                  : 'bg-blue-600 hover:bg-blue-500 active:scale-95 shadow-blue-600/20'
+                  ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
+                  : 'bg-blue-600 hover:bg-blue-500 text-white active:scale-[0.98]'
               }`}
             >
-              {isLoading ? 'Verifying Credentials...' : 'Login'}
+              {isLoading ? 'Authenticating…' : 'Access System'}
             </button>
           </form>
 
-          <div className="mt-8 flex items-center justify-center gap-2 text-slate-600 uppercase tracking-widest text-[10px] font-bold">
-            <span className="w-2 h-2 rounded-full bg-red-600 animate-pulse"></span>
-            Classified Access Only
+          <div className="mt-5 pt-4 border-t border-zinc-900 flex items-center justify-center gap-2">
+            <span className="w-1.5 h-1.5 rounded-full bg-red-600 animate-pulse" />
+            <span className="text-zinc-700 font-mono text-[10px] uppercase tracking-widest">
+              Classified Access Only
+            </span>
           </div>
         </div>
       </div>
