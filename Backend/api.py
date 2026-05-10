@@ -96,6 +96,18 @@ class UpdateProfileRequest(BaseModel):
     password: Optional[str] = ""
 
 
+class CreateGroupRequest(BaseModel):
+    name: str
+    color: str = "#6366f1"
+
+class UpdateGroupRequest(BaseModel):
+    name: str
+    color: str = "#6366f1"
+
+class AddGroupMemberRequest(BaseModel):
+    speaker_id: int
+
+
 # ─── Health ───────────────────────────────────────────────────────────────────
 
 @app.get("/")
@@ -534,9 +546,11 @@ async def split_speaker(audio_id: int, speaker_id: int, body: SplitSpeakerReques
         )
     remaining_embeddings, _ = await _embeddings_for_ranges(audio_path, remaining_ranges) if remaining_ranges else (np.zeros((0, 192), dtype=np.float32), model_version)
 
+    # Snapshot speaker set before any repointing so we can diff relations afterward.
+    before_speakers = database.get_audio_speaker_ids(audio_id)
+
     # Create the new speaker (auto-named "Speaker N" unless caller gave a name)
     if body.new_name.strip():
-        # Honour user-supplied name. Reuse get_or_create_speaker so it picks a fresh VoiceIdentifier.
         import uuid as _uuid
         new_voice_id = f"speaker_{_uuid.uuid4().hex[:8]}"
         new_id, _ = database.get_or_create_speaker(new_voice_id, body.new_name.strip())
@@ -559,6 +573,7 @@ async def split_speaker(audio_id: int, speaker_id: int, body: SplitSpeakerReques
         database.merge_speakers(speaker_id, new_id)
         return database.get_speaker(new_id)
 
+    database.adjust_relations_for_audio(audio_id, before_speakers)
     return database.get_speaker(new_id)
 
 
@@ -830,6 +845,65 @@ def reject_suggestion(audio_id: int, suggestion_id: int):
 @app.get("/relations")
 def list_relations():
     return database.get_all_relations()
+
+
+# ─── Groups ───────────────────────────────────────────────────────────────────
+
+@app.get("/groups")
+def list_groups():
+    return database.get_all_groups()
+
+@app.post("/groups", status_code=201)
+def create_group(body: CreateGroupRequest):
+    group_id = database.create_group(body.name, body.color)
+    groups = {g["id"]: g for g in database.get_all_groups()}
+    group = groups.get(group_id)
+    if not group:
+        raise HTTPException(status_code=500, detail="Group creation failed.")
+    return group
+
+@app.put("/groups/{group_id}")
+def update_group(group_id: int, body: UpdateGroupRequest):
+    ok = database.update_group(group_id, body.name, body.color)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Group not found.")
+    groups = {g["id"]: g for g in database.get_all_groups()}
+    return groups[group_id]
+
+@app.delete("/groups/{group_id}")
+def delete_group(group_id: int):
+    ok = database.delete_group(group_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Group not found.")
+    return {"success": True}
+
+@app.post("/groups/{group_id}/members", status_code=201)
+def add_group_member(group_id: int, body: AddGroupMemberRequest):
+    database.add_group_member(group_id, body.speaker_id)
+    groups = {g["id"]: g for g in database.get_all_groups()}
+    group = groups.get(group_id)
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found.")
+    return group
+
+@app.delete("/groups/{group_id}/members/{speaker_id}")
+def remove_group_member(group_id: int, speaker_id: int):
+    database.remove_group_member(group_id, speaker_id)
+    groups = {g["id"]: g for g in database.get_all_groups()}
+    group = groups.get(group_id)
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found.")
+    return group
+
+@app.get("/groups/bridges")
+def get_bridges(groupA: int, groupB: int):
+    all_groups = {g["id"]: g for g in database.get_all_groups()}
+    group_a = all_groups.get(groupA)
+    group_b = all_groups.get(groupB)
+    if not group_a or not group_b:
+        raise HTTPException(status_code=404, detail="One or both groups not found.")
+    bridges = database.get_bridges(groupA, groupB)
+    return {"groupA": group_a, "groupB": group_b, "bridges": bridges}
 
 
 # ─── Alerts ───────────────────────────────────────────────────────────────────

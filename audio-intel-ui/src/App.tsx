@@ -80,7 +80,7 @@ export default function App() {
           <Route path="waveform/:id" element={<WaveformAnalysis />} />
           <Route path="transcript/:id" element={<TranscriptView />} />
           <Route path="speaker/:id" element={<SpeakerProfile />} />
-          <Route path="network" element={<NetworkGraph />} />
+          <Route path="network" element={<NetworkGraph isAdmin={user?.role === 'Admin'} />} />
           <Route path="identity" element={<IdentityMatching />} />
           <Route path="settings" element={<Settings />} />
           <Route path="profile-search" element={<ProfileSearch />} />

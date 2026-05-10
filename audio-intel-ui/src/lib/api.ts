@@ -347,6 +347,43 @@ export const relations = {
   list: () => request<RelationRecord[]>("GET", "/relations"),
 };
 
+// ─── Groups ───────────────────────────────────────────────────────────────────
+
+export interface GroupMember {
+  id: number;
+  name: string;
+  color: string;
+}
+
+export interface GroupRecord {
+  id: number;
+  name: string;
+  color: string;
+  createdAt: string;
+  members: GroupMember[];
+}
+
+export interface BridgesResult {
+  groupA: GroupRecord;
+  groupB: GroupRecord;
+  bridges: SpeakerRecord[];
+}
+
+export const groups = {
+  list: () => request<GroupRecord[]>("GET", "/groups"),
+  create: (name: string, color: string) =>
+    request<GroupRecord>("POST", "/groups", { name, color }),
+  update: (id: number, name: string, color: string) =>
+    request<GroupRecord>("PUT", `/groups/${id}`, { name, color }),
+  remove: (id: number) => request<{ success: boolean }>("DELETE", `/groups/${id}`),
+  addMember: (groupId: number, speakerId: number) =>
+    request<GroupRecord>("POST", `/groups/${groupId}/members`, { speaker_id: speakerId }),
+  removeMember: (groupId: number, speakerId: number) =>
+    request<GroupRecord>("DELETE", `/groups/${groupId}/members/${speakerId}`),
+  bridges: (groupAId: number, groupBId: number) =>
+    request<BridgesResult>("GET", `/groups/bridges?groupA=${groupAId}&groupB=${groupBId}`),
+};
+
 // ─── ML Service (stateless analysis) ──────────────────────────────────────────
 
 export const ml = {
