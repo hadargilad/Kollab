@@ -12,23 +12,19 @@ type Step = 1 | 2 | 3;
 const wikidataUrl = (qid: string) => `https://www.wikidata.org/wiki/${qid}`;
 
 export default function RelatedSpeakers() {
-  // ─── Step state ─────────────────────────────────────────────────────────────
   const [step, setStep] = useState<Step>(1);
 
-  // Step 1: pick source speaker
   const [allSpeakers, setAllSpeakers] = useState<SpeakerRecord[]>([]);
   const [speakersLoading, setSpeakersLoading] = useState(true);
   const [speakerFilter, setSpeakerFilter] = useState('');
   const [sourceId, setSourceId] = useState<number | null>(null);
 
-  // Step 2: search Wikidata + pick candidate
   const [searchQuery, setSearchQuery] = useState('');
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState('');
   const [searchResults, setSearchResults] = useState<EntityCandidate[]>([]);
   const [confirmLoadingId, setConfirmLoadingId] = useState<string | null>(null);
 
-  // Step 3: related entities
   const [related, setRelated] = useState<RelatedEntity[]>([]);
   const [relatedLoading, setRelatedLoading] = useState(false);
   const [relatedError, setRelatedError] = useState('');
@@ -41,28 +37,21 @@ export default function RelatedSpeakers() {
   const [linkSuccess, setLinkSuccess] = useState('');
   const linkFileRef = useRef<HTMLInputElement>(null);
 
-  // ─── Load speakers on mount ────────────────────────────────────────────────
   useEffect(() => {
     speakers.list()
       .then(setAllSpeakers)
-      .catch(() => {/* ignore — UI shows empty state */})
+      .catch(() => {})
       .finally(() => setSpeakersLoading(false));
   }, []);
 
-  const source = useMemo(
-    () => allSpeakers.find(s => s.id === sourceId) ?? null,
-    [allSpeakers, sourceId],
-  );
+  const source = useMemo(() => allSpeakers.find(s => s.id === sourceId) ?? null, [allSpeakers, sourceId]);
 
   const filteredSpeakers = useMemo(() => {
     const q = speakerFilter.trim().toLowerCase();
     if (!q) return allSpeakers;
-    return allSpeakers.filter(s =>
-      s.name.toLowerCase().includes(q) || s.voiceIdentifier.toLowerCase().includes(q),
-    );
+    return allSpeakers.filter(s => s.name.toLowerCase().includes(q) || s.voiceIdentifier.toLowerCase().includes(q));
   }, [allSpeakers, speakerFilter]);
 
-  // ─── Step transitions ──────────────────────────────────────────────────────
   const goToStep2 = (id: number) => {
     setSourceId(id);
     const s = allSpeakers.find(x => x.id === id);
@@ -93,9 +82,7 @@ export default function RelatedSpeakers() {
     setConfirmLoadingId(cand.entityId);
     try {
       await speakers.enrichmentConfirm(sourceId, cand.entityId);
-      setAllSpeakers(prev => prev.map(s =>
-        s.id === sourceId ? { ...s, wikidataId: cand.entityId } : s,
-      ));
+      setAllSpeakers(prev => prev.map(s => s.id === sourceId ? { ...s, wikidataId: cand.entityId } : s));
       setStep(3);
       loadRelated(sourceId);
     } catch (e: any) {
@@ -127,18 +114,12 @@ export default function RelatedSpeakers() {
     if (linkFileRef.current) linkFileRef.current.value = '';
   };
 
-  const cancelLink = () => {
-    setLinkTarget(null);
-    setLinkName('');
-    setLinkFile(null);
-    setLinkError('');
-  };
+  const cancelLink = () => { setLinkTarget(null); setLinkName(''); setLinkFile(null); setLinkError(''); };
 
   const submitLink = async () => {
     if (!sourceId || !linkTarget) return;
     if (!linkName.trim()) { setLinkError('Name is required.'); return; }
     if (!linkFile) { setLinkError('Please choose an audio file for this person.'); return; }
-
     setLinking(true);
     setLinkError('');
     try {
@@ -154,393 +135,293 @@ export default function RelatedSpeakers() {
     }
   };
 
-  // ─── Render ────────────────────────────────────────────────────────────────
+  const inputCls = 'w-full bg-black border border-zinc-800 rounded px-3 py-2.5 text-white text-sm placeholder-zinc-700 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 transition-all';
+
+  const stepLabels = ['Pick speaker', 'Match entity', 'Add suggestions'];
+
   return (
-    <div className="p-8">
-      <div className="mb-8">
-        <div className="flex items-center gap-3 mb-2">
-          <Sparkles className="w-7 h-7 text-blue-400" />
-          <h1 className="text-white text-3xl">Related Speakers</h1>
+    <div className="p-6 space-y-5">
+      <div>
+        <div className="text-zinc-600 text-[10px] font-mono uppercase tracking-widest mb-1">Intelligence</div>
+        <div className="flex items-center gap-2.5 mb-0.5">
+          <Sparkles className="w-5 h-5 text-blue-400" />
+          <h1 className="text-white text-2xl font-bold tracking-tight">Related Speakers</h1>
         </div>
-        <p className="text-slate-400">
-          Public Intelligence Enrichment — find entities related to a known speaker on
-          Wikidata, then enroll them as new speakers in the system.
-        </p>
-        <p className="text-slate-500 text-xs mt-1">
-          Suggestions are derived from public knowledge graphs and require analyst confirmation
-          before they're treated as real intelligence.
+        <p className="text-zinc-500 text-sm">
+          Public intelligence enrichment — find entities related to a known speaker on Wikidata,
+          then enroll them as new speakers.
         </p>
       </div>
 
       {/* Stepper */}
-      <div className="max-w-4xl mb-8">
-        <div className="flex items-center gap-2">
-          {([1, 2, 3] as Step[]).map((n, i) => (
-            <div key={n} className="flex items-center flex-1">
-              <div
-                className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-colors ${
-                  step >= n
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-slate-800 text-slate-500 border border-slate-700'
-                }`}
-              >
-                {step > n ? <Check className="w-4 h-4" /> : n}
-              </div>
-              <div className={`ml-3 text-sm ${step >= n ? 'text-white' : 'text-slate-500'}`}>
-                {n === 1 && 'Pick speaker'}
-                {n === 2 && 'Match entity'}
-                {n === 3 && 'Add suggestions'}
-              </div>
-              {i < 2 && (
-                <div className={`flex-1 h-px mx-3 ${step > n ? 'bg-blue-600' : 'bg-slate-800'}`} />
-              )}
+      <div className="flex items-center gap-2 max-w-2xl">
+        {([1, 2, 3] as Step[]).map((n, i) => (
+          <div key={n} className="flex items-center flex-1">
+            <div className={`w-7 h-7 rounded flex items-center justify-center text-xs font-bold font-mono transition-colors shrink-0 ${
+              step >= n ? 'bg-blue-600 text-white' : 'bg-zinc-800 text-zinc-600 border border-zinc-700'
+            }`}>
+              {step > n ? <Check className="w-3.5 h-3.5" /> : n}
             </div>
-          ))}
-        </div>
+            <div className={`ml-2 text-xs font-mono ${step >= n ? 'text-zinc-300' : 'text-zinc-600'}`}>
+              {stepLabels[i]}
+            </div>
+            {i < 2 && <div className={`flex-1 h-px mx-3 ${step > n ? 'bg-blue-600' : 'bg-zinc-800'}`} />}
+          </div>
+        ))}
       </div>
 
-      <div className="max-w-4xl">
+      <div className="max-w-3xl">
         {linkSuccess && (
-          <div className="mb-4 px-4 py-3 bg-emerald-600/20 border border-emerald-600/40 rounded-lg text-emerald-300 text-sm flex items-center gap-2">
-            <Check className="w-4 h-4" />
-            {linkSuccess}
+          <div className="mb-4 flex items-center gap-2 px-4 py-3 bg-emerald-500/8 border border-emerald-500/25 rounded-md text-emerald-300 text-sm">
+            <Check className="w-4 h-4 shrink-0" /> {linkSuccess}
           </div>
         )}
 
-        {/* ─── Step 1 ─────────────────────────────────────────────────────── */}
+        {/* Step 1 */}
         {step === 1 && (
-          <div className="bg-slate-900 border border-slate-800 rounded-lg p-6">
-            <div className="flex items-center gap-3 mb-2">
-              <Users className="w-6 h-6 text-blue-500" />
-              <h2 className="text-white text-xl">Pick a speaker</h2>
+          <div className="bg-zinc-900 border border-zinc-800 rounded-md">
+            <div className="flex items-center gap-2.5 px-5 py-3.5 border-b border-zinc-800">
+              <Users className="w-4 h-4 text-blue-400" />
+              <span className="text-zinc-400 text-xs font-mono uppercase tracking-widest">Pick a Speaker</span>
             </div>
-            <p className="text-slate-400 text-sm mb-6">
-              Choose the speaker whose public connections you want to enrich.
-            </p>
-
-            <div className="relative mb-4">
-              <Search className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                placeholder="Search by name or voice ID…"
-                value={speakerFilter}
-                onChange={e => setSpeakerFilter(e.target.value)}
-                className="w-full bg-slate-800 border border-slate-700 rounded-lg pl-10 pr-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-
-            {speakersLoading ? (
-              <div className="flex items-center gap-2 text-slate-400 text-sm py-4">
-                <Loader2 className="w-4 h-4 animate-spin" /> Loading speakers…
+            <div className="p-5">
+              <p className="text-zinc-500 text-xs mb-4">Choose the speaker whose public connections you want to enrich.</p>
+              <div className="relative mb-4">
+                <Search className="w-3.5 h-3.5 text-zinc-600 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input type="text" placeholder="Search by name or voice ID…" value={speakerFilter}
+                  onChange={e => setSpeakerFilter(e.target.value)}
+                  className={inputCls + ' pl-9'} />
               </div>
-            ) : filteredSpeakers.length === 0 ? (
-              <div className="text-slate-500 text-sm py-8 text-center border border-dashed border-slate-700 rounded-lg">
-                No speakers found.
-              </div>
-            ) : (
-              <div className="space-y-2 max-h-96 overflow-y-auto">
-                {filteredSpeakers.map(s => (
-                  <button
-                    key={s.id}
-                    onClick={() => goToStep2(s.id)}
-                    className="w-full flex items-center justify-between px-4 py-3 bg-slate-800 hover:bg-slate-750 hover:border-blue-500/50 border border-slate-700 rounded-lg transition-colors text-left"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div
-                        className="w-10 h-10 rounded-full flex items-center justify-center"
-                        style={{ backgroundColor: `${s.color}20` }}
-                      >
-                        <User className="w-5 h-5" style={{ color: s.color }} />
-                      </div>
-                      <div>
-                        <div className="text-white">{s.name}</div>
-                        <div className="text-slate-500 text-xs">
-                          {s.recordingCount} recording{s.recordingCount !== 1 ? 's' : ''} ·{' '}
-                          {s.sampleCount} sample{s.sampleCount !== 1 ? 's' : ''}
-                          {s.wikidataId && (
-                            <span className="ml-2 text-blue-400">· {s.wikidataId}</span>
-                          )}
+
+              {speakersLoading ? (
+                <div className="flex items-center gap-2 text-zinc-500 text-xs py-4">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading speakers…
+                </div>
+              ) : filteredSpeakers.length === 0 ? (
+                <div className="text-zinc-700 text-sm py-8 text-center border border-dashed border-zinc-800 rounded-md">No speakers found.</div>
+              ) : (
+                <div className="space-y-1.5 max-h-96 overflow-y-auto">
+                  {filteredSpeakers.map(s => (
+                    <button key={s.id} onClick={() => goToStep2(s.id)}
+                      className="w-full flex items-center justify-between px-4 py-3 bg-black border border-zinc-800 hover:border-zinc-600 rounded transition-colors text-left">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded flex items-center justify-center shrink-0"
+                          style={{ backgroundColor: `${s.color}18` }}>
+                          <User className="w-4 h-4" style={{ color: s.color }} />
+                        </div>
+                        <div>
+                          <div className="text-white text-sm">{s.name}</div>
+                          <div className="text-zinc-600 text-xs font-mono">
+                            {s.recordingCount} rec · {s.sampleCount} sample{s.sampleCount !== 1 ? 's' : ''}
+                            {s.wikidataId && <span className="ml-2 text-blue-400">{s.wikidataId}</span>}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                    <ChevronRight className="w-5 h-5 text-slate-500" />
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ─── Step 2 ─────────────────────────────────────────────────────── */}
-        {step === 2 && source && (
-          <div className="bg-slate-900 border border-slate-800 rounded-lg p-6">
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-3">
-                <Globe className="w-6 h-6 text-blue-500" />
-                <h2 className="text-white text-xl">Match a Wikidata entity</h2>
-              </div>
-              <button
-                onClick={() => setStep(1)}
-                className="text-slate-400 hover:text-white text-sm"
-              >
-                ← Change speaker
-              </button>
-            </div>
-            <p className="text-slate-400 text-sm mb-6">
-              Find the public entity that corresponds to{' '}
-              <span className="text-white font-medium">{source.name}</span>. Pick the right
-              one — Wikidata often has multiple people with the same name.
-            </p>
-
-            <div className="flex flex-col sm:flex-row gap-3 mb-4">
-              <input
-                type="text"
-                placeholder="e.g. Lewis Hamilton"
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleSearch()}
-                className="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              <button
-                onClick={handleSearch}
-                disabled={searchLoading || !searchQuery.trim()}
-                className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
-              >
-                {searchLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
-                Search Wikidata
-              </button>
-            </div>
-
-            {searchError && (
-              <div className="mb-4 px-4 py-3 bg-red-600/20 border border-red-600/40 rounded-lg text-red-300 text-sm flex items-start gap-2">
-                <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
-                <span>{searchError}</span>
-              </div>
-            )}
-
-            {searchResults.length > 0 && (
-              <div className="space-y-2">
-                {searchResults.map(cand => (
-                  <div
-                    key={cand.entityId}
-                    className="flex items-center justify-between gap-4 px-4 py-3 bg-slate-800 border border-slate-700 hover:border-blue-500/40 rounded-lg transition-colors"
-                  >
-                    <div className="flex items-center gap-3 min-w-0 flex-1">
-                      {cand.imageUrl ? (
-                        <img
-                          src={cand.imageUrl}
-                          alt={cand.label}
-                          className="w-12 h-12 rounded-full object-cover bg-slate-700"
-                          onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                        />
-                      ) : (
-                        <div className="w-12 h-12 rounded-full bg-slate-700 flex items-center justify-center">
-                          <User className="w-6 h-6 text-slate-500" />
-                        </div>
-                      )}
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <div className="text-white font-medium truncate">{cand.label}</div>
-                          <a
-                            href={wikidataUrl(cand.entityId)}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-blue-400 text-xs font-mono inline-flex items-center gap-1 hover:underline"
-                            title="Open on Wikidata"
-                          >
-                            {cand.entityId}
-                            <ExternalLink className="w-3 h-3" />
-                          </a>
-                        </div>
-                        {cand.description && (
-                          <div className="text-slate-400 text-sm truncate">{cand.description}</div>
-                        )}
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => handleConfirm(cand)}
-                      disabled={confirmLoadingId !== null}
-                      className="flex items-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg text-sm transition-colors shrink-0"
-                    >
-                      {confirmLoadingId === cand.entityId ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <Check className="w-4 h-4" />
-                      )}
-                      This is {source.name}
+                      <ChevronRight className="w-4 h-4 text-zinc-600" />
                     </button>
-                  </div>
-                ))}
-              </div>
-            )}
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
 
-        {/* ─── Step 3 ─────────────────────────────────────────────────────── */}
-        {step === 3 && source && (
-          <div className="bg-slate-900 border border-slate-800 rounded-lg p-6">
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-3">
-                <Link2 className="w-6 h-6 text-blue-500" />
-                <h2 className="text-white text-xl">Suggested connections for {source.name}</h2>
+        {/* Step 2 */}
+        {step === 2 && source && (
+          <div className="bg-zinc-900 border border-zinc-800 rounded-md">
+            <div className="flex items-center justify-between px-5 py-3.5 border-b border-zinc-800">
+              <div className="flex items-center gap-2">
+                <Globe className="w-4 h-4 text-blue-400" />
+                <span className="text-zinc-400 text-xs font-mono uppercase tracking-widest">Match Wikidata Entity</span>
               </div>
-              <button
-                onClick={() => setStep(2)}
-                className="text-slate-400 hover:text-white text-sm"
-              >
-                ← Re-match entity
-              </button>
+              <button onClick={() => setStep(1)} className="text-zinc-500 hover:text-zinc-300 text-xs font-mono">← Change speaker</button>
             </div>
-            <p className="text-slate-400 text-sm mb-2">
-              Possible connections derived from public Wikidata claims (spouses, teammates,
-              employers, alma maters). Each card explains <span className="text-white">why</span>{' '}
-              the connection was suggested.
-            </p>
-            <p className="text-slate-500 text-xs mb-6">
-              Add a candidate as a speaker by clicking <span className="text-white">Add as speaker</span>.
-              You'll need a clean audio sample — they'll be enrolled and linked to {source.name} as a
-              suggested (Wikidata-derived) connection.
-            </p>
+            <div className="p-5">
+              <p className="text-zinc-500 text-xs mb-4">
+                Find the public entity for <span className="text-zinc-200 font-medium">{source.name}</span>. Pick carefully — Wikidata often has multiple people with the same name.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-2 mb-4">
+                <input type="text" placeholder="e.g. Lewis Hamilton" value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleSearch()}
+                  className={inputCls + ' flex-1'} />
+                <button onClick={handleSearch} disabled={searchLoading || !searchQuery.trim()}
+                  className="flex items-center gap-1.5 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm rounded transition-colors shrink-0">
+                  {searchLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
+                  Search Wikidata
+                </button>
+              </div>
 
-            {relatedLoading ? (
-              <div className="flex items-center gap-2 text-slate-400 text-sm py-8 justify-center">
-                <Loader2 className="w-4 h-4 animate-spin" /> Querying Wikidata…
-              </div>
-            ) : relatedError ? (
-              <div className="px-4 py-3 bg-red-600/20 border border-red-600/40 rounded-lg text-red-300 text-sm flex items-start gap-2">
-                <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
-                <span>{relatedError}</span>
-              </div>
-            ) : related.length === 0 ? (
-              <div className="text-slate-500 text-sm py-8 text-center border border-dashed border-slate-700 rounded-lg">
-                No related entities found on Wikidata for this person.
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {related.map(c => {
-                  const linked = linkedIds.has(c.entityId);
-                  return (
-                    <div
-                      key={c.entityId}
-                      className="flex items-center justify-between px-4 py-3 bg-slate-800 border border-slate-700 rounded-lg"
-                    >
+              {searchError && (
+                <div className="mb-4 flex items-start gap-2 px-4 py-3 bg-red-500/8 border border-red-500/25 rounded-md text-red-400 text-xs">
+                  <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" /><span>{searchError}</span>
+                </div>
+              )}
+
+              {searchResults.length > 0 && (
+                <div className="space-y-2">
+                  {searchResults.map(cand => (
+                    <div key={cand.entityId}
+                      className="flex items-center justify-between gap-4 px-4 py-3 bg-black border border-zinc-800 hover:border-zinc-600 rounded transition-colors">
                       <div className="flex items-center gap-3 min-w-0 flex-1">
-                        {c.imageUrl ? (
-                          <img
-                            src={c.imageUrl}
-                            alt={c.label}
-                            className="w-10 h-10 rounded-full object-cover bg-slate-700"
-                            onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                          />
+                        {cand.imageUrl ? (
+                          <img src={cand.imageUrl} alt={cand.label}
+                            className="w-10 h-10 rounded object-cover bg-zinc-800"
+                            onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                         ) : (
-                          <div className="w-10 h-10 rounded-full bg-slate-700 flex items-center justify-center">
-                            <User className="w-5 h-5 text-slate-500" />
+                          <div className="w-10 h-10 rounded bg-zinc-800 flex items-center justify-center shrink-0">
+                            <User className="w-5 h-5 text-zinc-600" />
                           </div>
                         )}
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2">
-                            <span className="text-white truncate">{c.label}</span>
-                            <a
-                              href={wikidataUrl(c.entityId)}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-blue-400 text-xs font-mono hover:underline shrink-0"
-                            >
-                              {c.entityId}
+                            <span className="text-white text-sm font-medium truncate">{cand.label}</span>
+                            <a href={wikidataUrl(cand.entityId)} target="_blank" rel="noopener noreferrer"
+                              className="text-blue-400 text-[10px] font-mono inline-flex items-center gap-0.5 hover:underline shrink-0">
+                              {cand.entityId}<ExternalLink className="w-2.5 h-2.5" />
                             </a>
                           </div>
-                          <div className="text-slate-400 text-xs truncate">
-                            <span className="text-blue-300">{c.reason}</span>
-                            {c.description && <span className="text-slate-500"> · {c.description}</span>}
-                          </div>
+                          {cand.description && <div className="text-zinc-500 text-xs truncate">{cand.description}</div>}
                         </div>
                       </div>
-                      {linked ? (
-                        <span className="px-3 py-1.5 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg border border-emerald-600/40 flex items-center gap-1.5">
-                          <Check className="w-3.5 h-3.5" /> Linked
-                        </span>
-                      ) : (
-                        <button
-                          onClick={() => startLink(c)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg transition-colors"
-                        >
-                          <Plus className="w-4 h-4" /> Add as speaker
-                        </button>
-                      )}
+                      <button onClick={() => handleConfirm(cand)} disabled={confirmLoadingId !== null}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs rounded transition-colors shrink-0">
+                        {confirmLoadingId === cand.entityId ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                        This is {source.name}
+                      </button>
                     </div>
-                  );
-                })}
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Step 3 */}
+        {step === 3 && source && (
+          <div className="bg-zinc-900 border border-zinc-800 rounded-md">
+            <div className="flex items-center justify-between px-5 py-3.5 border-b border-zinc-800">
+              <div className="flex items-center gap-2">
+                <Link2 className="w-4 h-4 text-blue-400" />
+                <span className="text-zinc-400 text-xs font-mono uppercase tracking-widest">Suggested Connections — {source.name}</span>
               </div>
-            )}
+              <button onClick={() => setStep(2)} className="text-zinc-500 hover:text-zinc-300 text-xs font-mono">← Re-match</button>
+            </div>
+            <div className="p-5">
+              <p className="text-zinc-500 text-xs mb-1">
+                Connections derived from public Wikidata claims (spouses, teammates, employers, alma maters). Each card explains <span className="text-zinc-300">why</span> it was suggested.
+              </p>
+              <p className="text-zinc-700 text-xs mb-4 font-mono">
+                Click <span className="text-zinc-500">Add as speaker</span> to enroll — you'll need a clean audio sample.
+              </p>
+
+              {relatedLoading ? (
+                <div className="flex items-center justify-center gap-2 text-zinc-500 text-xs py-8">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" /> Querying Wikidata…
+                </div>
+              ) : relatedError ? (
+                <div className="flex items-start gap-2 px-4 py-3 bg-red-500/8 border border-red-500/25 rounded-md text-red-400 text-xs">
+                  <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" /><span>{relatedError}</span>
+                </div>
+              ) : related.length === 0 ? (
+                <div className="text-zinc-700 text-sm py-8 text-center border border-dashed border-zinc-800 rounded-md">
+                  No related entities found on Wikidata for this person.
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  {related.map(c => {
+                    const linked = linkedIds.has(c.entityId);
+                    return (
+                      <div key={c.entityId}
+                        className="flex items-center justify-between px-4 py-3 bg-black border border-zinc-800 rounded">
+                        <div className="flex items-center gap-3 min-w-0 flex-1">
+                          {c.imageUrl ? (
+                            <img src={c.imageUrl} alt={c.label}
+                              className="w-8 h-8 rounded object-cover bg-zinc-800"
+                              onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                          ) : (
+                            <div className="w-8 h-8 rounded bg-zinc-800 flex items-center justify-center shrink-0">
+                              <User className="w-4 h-4 text-zinc-600" />
+                            </div>
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="text-white text-sm truncate">{c.label}</span>
+                              <a href={wikidataUrl(c.entityId)} target="_blank" rel="noopener noreferrer"
+                                className="text-blue-400 text-[10px] font-mono hover:underline shrink-0">{c.entityId}</a>
+                            </div>
+                            <div className="text-xs truncate">
+                              <span className="text-blue-300 font-mono">{c.reason}</span>
+                              {c.description && <span className="text-zinc-600"> · {c.description}</span>}
+                            </div>
+                          </div>
+                        </div>
+                        {linked ? (
+                          <span className="flex items-center gap-1 px-2.5 py-1 bg-emerald-500/8 border border-emerald-500/25 text-emerald-300 text-[10px] font-mono rounded shrink-0">
+                            <Check className="w-3 h-3" /> Linked
+                          </span>
+                        ) : (
+                          <button onClick={() => startLink(c)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs rounded transition-colors shrink-0">
+                            <Plus className="w-3.5 h-3.5" /> Add as speaker
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>
 
-      {/* ─── Add-as-speaker modal ──────────────────────────────────────────── */}
+      {/* Enroll modal */}
       {linkTarget && source && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-lg w-full max-w-lg">
-            <div className="p-6 border-b border-slate-800">
-              <div className="flex items-center justify-between">
-                <h3 className="text-white text-lg">Enroll {linkTarget.label}</h3>
-                <button onClick={cancelLink} className="text-slate-400 hover:text-white">
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-              <p className="text-slate-400 text-sm mt-2">
-                Suggested via Wikidata as <span className="text-blue-300">{linkTarget.reason}</span>.
-                Provide a clean 10–30 second audio clip; we'll enroll them as a new speaker and link
-                them to <span className="text-white">{source.name}</span> with the
-                {' '}<span className="text-blue-300">wikidata</span> topic so the connection shows up
-                as a suggested edge.
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+          <div className="bg-zinc-950 border border-zinc-800 rounded-md w-full max-w-lg shadow-2xl">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
+              <h3 className="text-white font-semibold">Enroll {linkTarget.label}</h3>
+              <button onClick={cancelLink} className="text-zinc-600 hover:text-white transition-colors">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="px-5 py-4">
+              <p className="text-zinc-500 text-xs mb-4">
+                Suggested via Wikidata as <span className="text-blue-300 font-mono">{linkTarget.reason}</span>.
+                Provide a clean 10–30 second audio clip; they'll be enrolled and linked to <span className="text-zinc-200">{source.name}</span>.
               </p>
-            </div>
-            <div className="p-6 space-y-4">
-              <div>
-                <label className="block text-slate-300 text-sm mb-2">Display name</label>
-                <input
-                  type="text"
-                  value={linkName}
-                  onChange={e => setLinkName(e.target.value)}
-                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-slate-300 text-sm mb-2">Audio sample</label>
-                <label className="flex items-center gap-2 px-4 py-2.5 bg-slate-800 border border-slate-700 hover:border-slate-500 rounded-lg text-slate-300 cursor-pointer transition-colors">
-                  <Upload className="w-4 h-4" />
-                  {linkFile ? linkFile.name : 'Choose audio file'}
-                  <input
-                    ref={linkFileRef}
-                    type="file"
-                    accept="audio/*"
-                    className="hidden"
-                    onChange={e => setLinkFile(e.target.files?.[0] ?? null)}
-                  />
-                </label>
-              </div>
-              {linkError && (
-                <div className="px-4 py-2 bg-red-600/20 border border-red-600/40 rounded-lg text-red-300 text-sm flex items-start gap-2">
-                  <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
-                  <span>{linkError}</span>
+              <div className="space-y-3">
+                <div>
+                  <label className="text-zinc-600 text-[10px] font-mono uppercase tracking-widest block mb-1.5">Display Name</label>
+                  <input type="text" value={linkName} onChange={e => setLinkName(e.target.value)}
+                    className="w-full bg-black border border-zinc-800 rounded px-3 py-2.5 text-white text-sm focus:outline-none focus:border-blue-500 transition-all" />
                 </div>
-              )}
+                <div>
+                  <label className="text-zinc-600 text-[10px] font-mono uppercase tracking-widest block mb-1.5">Audio Sample</label>
+                  <label className="flex items-center gap-2 px-3 py-2.5 bg-black border border-zinc-800 hover:border-zinc-600 rounded text-zinc-400 cursor-pointer transition-colors text-sm">
+                    <Upload className="w-3.5 h-3.5" />
+                    {linkFile ? linkFile.name : 'Choose audio file'}
+                    <input ref={linkFileRef} type="file" accept="audio/*" className="hidden"
+                      onChange={e => setLinkFile(e.target.files?.[0] ?? null)} />
+                  </label>
+                </div>
+                {linkError && (
+                  <div className="flex items-start gap-2 px-3 py-2.5 bg-red-500/8 border border-red-500/25 rounded text-red-400 text-xs">
+                    <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" /><span>{linkError}</span>
+                  </div>
+                )}
+              </div>
             </div>
-            <div className="p-6 border-t border-slate-800 flex justify-end gap-3">
-              <button
-                onClick={cancelLink}
-                disabled={linking}
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg transition-colors"
-              >
+            <div className="px-5 py-4 border-t border-zinc-800 flex justify-end gap-2">
+              <button onClick={cancelLink} disabled={linking}
+                className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-sm rounded transition-colors">
                 Cancel
               </button>
-              <button
-                onClick={submitLink}
-                disabled={linking || !linkName.trim() || !linkFile}
-                className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white rounded-lg transition-colors"
-              >
-                {linking ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-                Enroll & link
+              <button onClick={submitLink} disabled={linking || !linkName.trim() || !linkFile}
+                className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white text-sm rounded transition-colors">
+                {linking ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+                Enroll & Link
               </button>
             </div>
           </div>

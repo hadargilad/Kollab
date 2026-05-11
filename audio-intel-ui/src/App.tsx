@@ -82,7 +82,7 @@ export default function App() {
           <Route path="speaker/:id" element={<SpeakerProfile />} />
           <Route path="network" element={<NetworkGraph isAdmin={user?.role === 'Admin'} />} />
           <Route path="identity" element={<IdentityMatching />} />
-          <Route path="settings" element={<Settings />} />
+          <Route path="settings" element={<Settings isAdmin={user?.role === 'Admin'} />} />
           <Route path="profile-search" element={<ProfileSearch />} />
           <Route path="related-speakers" element={<RelatedSpeakers />} />
           <Route path="profile" element={<Profile currentUser={user} onUpdateSuccess={handleUpdate} />} />

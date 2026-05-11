@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Lock, ShieldCheck, AlertCircle } from 'lucide-react';
 import { auth } from '../lib/api';
 
@@ -15,7 +15,7 @@ export default function ForcePasswordChange({ user, onSuccess }: Props) {
 
   const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: { preventDefault: () => void }) => {
     e.preventDefault();
     setError('');
 
@@ -39,65 +39,92 @@ export default function ForcePasswordChange({ user, onSuccess }: Props) {
     }
   };
 
+  const checks = [
+    { label: 'At least 8 characters', ok: newPassword.length >= 8 },
+    { label: 'Uppercase & lowercase letters', ok: /[A-Z]/.test(newPassword) && /[a-z]/.test(newPassword) },
+    { label: 'At least one number', ok: /\d/.test(newPassword) },
+    { label: 'Special character (@$!%*?&)', ok: /[@$!%*?&]/.test(newPassword) },
+  ];
+
   return (
-    <div className="fixed inset-0 z-100 bg-slate-950 flex items-center justify-center p-4">
-      <div className="bg-slate-900 border border-slate-800 p-8 rounded-2xl max-w-md w-full shadow-2xl">
-        <div className="flex flex-col items-center text-center mb-8">
-          <div className="w-16 h-16 bg-blue-600/10 rounded-full flex items-center justify-center mb-4">
-            <ShieldCheck className="w-8 h-8 text-blue-500" />
+    <div className="fixed inset-0 z-50 bg-black flex items-center justify-center p-4">
+      <div
+        className="absolute inset-0 pointer-events-none opacity-[0.025]"
+        style={{
+          backgroundImage: 'linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)',
+          backgroundSize: '40px 40px',
+        }}
+      />
+
+      <div className="relative bg-zinc-950 border border-zinc-800 rounded-md w-full max-w-sm p-6 shadow-2xl">
+        <div className="flex flex-col items-center text-center mb-6">
+          <div className="w-12 h-12 bg-blue-500/10 border border-blue-500/25 rounded flex items-center justify-center mb-4">
+            <ShieldCheck className="w-6 h-6 text-blue-400" />
           </div>
-          <h2 className="text-2xl font-bold text-white">Security Update Required</h2>
-          <p className="text-slate-400 mt-2">
-            This is your first login, {user.username}. For your protection, you must choose a new secure password.
+          <h2 className="text-white font-bold text-lg">Security Update Required</h2>
+          <p className="text-zinc-500 text-xs font-mono mt-1.5">
+            First login detected — set a new secure password to continue, {user.username}.
           </p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-1">
-            <label className="text-xs font-semibold text-slate-500 uppercase">New Password</label>
+          <div>
+            <label className="text-zinc-500 text-[10px] font-mono uppercase tracking-widest block mb-1.5">
+              New Password
+            </label>
             <div className="relative">
-              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-600" />
               <input
                 type="password"
                 required
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 pl-10 text-white outline-none focus:ring-2 focus:ring-blue-600 transition-all"
+                className="w-full bg-black border border-zinc-800 rounded px-3 pl-9 py-2.5 text-white text-sm font-mono focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/30 transition-all"
               />
             </div>
           </div>
 
-          <div className="space-y-1">
-            <label className="text-xs font-semibold text-slate-500 uppercase">Confirm Password</label>
-            <input
-              type="password"
-              required
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white outline-none focus:ring-2 focus:ring-blue-600 transition-all"
-            />
+          <div>
+            <label className="text-zinc-500 text-[10px] font-mono uppercase tracking-widest block mb-1.5">
+              Confirm Password
+            </label>
+            <div className="relative">
+              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-600" />
+              <input
+                type="password"
+                required
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                className="w-full bg-black border border-zinc-800 rounded px-3 pl-9 py-2.5 text-white text-sm font-mono focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/30 transition-all"
+              />
+            </div>
+          </div>
+
+          {/* Requirements */}
+          <div className="bg-black border border-zinc-900 rounded p-3 space-y-1">
+            {checks.map((c) => (
+              <div key={c.label} className="flex items-center gap-2 text-xs font-mono">
+                <span className={c.ok ? 'text-emerald-400' : 'text-zinc-700'}>
+                  {c.ok ? '✓' : '○'}
+                </span>
+                <span className={c.ok ? 'text-zinc-400' : 'text-zinc-600'}>{c.label}</span>
+              </div>
+            ))}
           </div>
 
           {error && (
-            <div className="bg-red-500/10 border border-red-500/20 p-3 rounded-lg flex items-center gap-2 text-red-400 text-sm">
-              <AlertCircle className="w-4 h-4 shrink-0" />
+            <div className="flex items-start gap-2.5 bg-red-500/8 border border-red-500/25 rounded px-3 py-2.5 text-red-400 text-xs">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
               <span>{error}</span>
             </div>
           )}
 
-          <ul className="text-[10px] text-slate-500 space-y-1 px-1">
-            <li className={newPassword.length >= 8 ? 'text-green-500' : ''}>• At least 8 characters</li>
-            <li className={/[A-Z]/.test(newPassword) ? 'text-green-500' : ''}>• Uppercase &amp; lowercase letters</li>
-            <li className={/\d/.test(newPassword) ? 'text-green-500' : ''}>• At least one number</li>
-            <li className={/[@$!%*?&]/.test(newPassword) ? 'text-green-500' : ''}>• Special character (@$!%*?&amp;)</li>
-          </ul>
-
           <button
             type="submit"
             disabled={isLoading}
-            className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-bold py-3 rounded-xl mt-4 transition-all active:scale-[0.98] shadow-lg shadow-blue-600/20"
+            className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold py-2.5 rounded text-sm transition-all active:scale-[0.98]"
           >
-            {isLoading ? 'Updating...' : 'Update Password & Continue'}
+            {isLoading ? 'Updating…' : 'Set Password & Continue'}
           </button>
         </form>
       </div>

@@ -132,6 +132,15 @@ def init_db():
                 ON SpeakerEmbeddings(SpeakerId)
         """)
         conn.execute("""
+            CREATE TABLE IF NOT EXISTS DangerousWords (
+                Id        INTEGER PRIMARY KEY AUTOINCREMENT,
+                Word      TEXT    NOT NULL UNIQUE COLLATE NOCASE,
+                Severity  TEXT    NOT NULL DEFAULT 'high' CHECK(Severity IN ('low','medium','high')),
+                CreatedBy INTEGER REFERENCES Users(Id) ON DELETE SET NULL,
+                CreatedAt TEXT    NOT NULL DEFAULT (datetime('now'))
+            )
+        """)
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS SpeakerSuggestions (
                 Id INTEGER PRIMARY KEY AUTOINCREMENT,
                 AudioId INTEGER NOT NULL REFERENCES Audios(Id) ON DELETE CASCADE,
@@ -324,8 +333,8 @@ def update_password(username: str, new_password: str) -> bool:
 # ─── Audios ───────────────────────────────────────────────────────────────────
 
 _SPEAKER_COLORS = [
-    "#6366f1", "#f59e0b", "#10b981", "#ef4444", "#3b82f6",
-    "#8b5cf6", "#f97316", "#14b8a6", "#ec4899", "#84cc16",
+    "#f43f5e", "#f97316", "#facc15", "#4ade80", "#34d399",
+    "#22d3ee", "#60a5fa", "#a78bfa", "#e879f9", "#fb7185",
 ]
 
 
@@ -1142,6 +1151,60 @@ def get_all_alerts() -> list[dict]:
             "createdAt": r["CreatedAt"],
             "speakerName": r["SpeakerName"],
             "audioName": r["AudioName"],
+        }
+        for r in rows
+    ]
+
+
+# ─── Dangerous Words ──────────────────────────────────────────────────────────
+
+def get_dangerous_words() -> list[dict]:
+    with _get_conn() as conn:
+        rows = conn.execute(
+            "SELECT Id, Word, Severity, CreatedAt FROM DangerousWords ORDER BY CreatedAt DESC"
+        ).fetchall()
+    return [{"id": r["Id"], "word": r["Word"], "severity": r["Severity"], "createdAt": r["CreatedAt"]} for r in rows]
+
+
+def add_dangerous_word(word: str, severity: str, created_by: Optional[int] = None) -> dict:
+    with _get_conn() as conn:
+        cursor = conn.execute(
+            "INSERT INTO DangerousWords (Word, Severity, CreatedBy) VALUES (?, ?, ?)",
+            (word.strip(), severity, created_by or None),
+        )
+        conn.commit()
+        row = conn.execute(
+            "SELECT Id, Word, Severity, CreatedAt FROM DangerousWords WHERE Id = ?",
+            (cursor.lastrowid,),
+        ).fetchone()
+    return {"id": row["Id"], "word": row["Word"], "severity": row["Severity"], "createdAt": row["CreatedAt"]}
+
+
+def delete_dangerous_word(word_id: int) -> bool:
+    with _get_conn() as conn:
+        result = conn.execute("DELETE FROM DangerousWords WHERE Id = ?", (word_id,))
+        conn.commit()
+    return result.rowcount > 0
+
+
+def get_alerts_for_audio(audio_id: int) -> list[dict]:
+    with _get_conn() as conn:
+        rows = conn.execute(
+            """SELECT a.Id, a.Type, a.Message, a.CreatedAt,
+                      sp.Name AS SpeakerName
+               FROM Alerts a
+               LEFT JOIN Speakers sp ON sp.Id = a.RelatedSpeakerId
+               WHERE a.RelatedAudioId = ?
+               ORDER BY a.CreatedAt DESC""",
+            (audio_id,),
+        ).fetchall()
+    return [
+        {
+            "id": r["Id"],
+            "type": r["Type"],
+            "message": r["Message"],
+            "createdAt": r["CreatedAt"],
+            "speakerName": r["SpeakerName"],
         }
         for r in rows
     ]

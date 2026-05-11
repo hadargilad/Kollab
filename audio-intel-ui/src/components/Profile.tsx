@@ -22,20 +22,13 @@ export default function Profile({ currentUser, onUpdateSuccess }: Props) {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-
     if (formData.password && formData.password !== formData.confirmPassword) {
       setMessage({ type: 'error', text: 'Passwords do not match!' });
       return;
     }
-
     setIsLoading(true);
     try {
-      const result = await profileApi.updateMe(
-        currentUser!.id,
-        formData.firstName,
-        formData.lastName,
-        formData.password || undefined,
-      );
+      const result = await profileApi.updateMe(currentUser!.id, formData.firstName, formData.lastName, formData.password || undefined);
       onUpdateSuccess({ firstName: result.firstName, lastName: result.lastName });
       setIsEditing(false);
       setFormData(prev => ({ ...prev, password: '', confirmPassword: '' }));
@@ -48,148 +41,128 @@ export default function Profile({ currentUser, onUpdateSuccess }: Props) {
     }
   };
 
+  const inputCls = 'w-full bg-black border border-zinc-800 rounded px-3 py-2.5 text-white text-sm placeholder-zinc-700 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 transition-all';
+
   return (
-    <div className="max-w-4xl mx-auto p-8 animate-in fade-in duration-500 text-white">
-      <div className="flex items-center justify-between mb-8">
+    <div className="p-6 space-y-5">
+      <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-white flex items-center gap-3">
-            <User className="text-blue-500 w-8 h-8" /> My Profile
-          </h1>
-          <p className="text-slate-400 mt-1">Manage your personal information and security</p>
+          <div className="text-zinc-600 text-[10px] font-mono uppercase tracking-widest mb-1">Account</div>
+          <h1 className="text-white text-2xl font-bold tracking-tight">My Profile</h1>
+          <p className="text-zinc-500 text-sm mt-0.5">Personal information and security settings</p>
         </div>
         {!isEditing && (
-          <button
-            onClick={() => setIsEditing(true)}
-            className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-white px-5 py-2.5 rounded-xl transition-all border border-slate-700"
-          >
-            <Edit3 className="w-4 h-4" /> Edit Profile
+          <button onClick={() => setIsEditing(true)}
+            className="flex items-center gap-1.5 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-sm rounded transition-colors">
+            <Edit3 className="w-3.5 h-3.5" /> Edit Profile
           </button>
         )}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-        {/* Left: Quick Stats */}
-        <div className="md:col-span-1 space-y-6">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 text-center shadow-xl">
-            <div className="w-24 h-24 bg-linear-to-br from-blue-600 to-purple-600 rounded-full mx-auto mb-4 flex items-center justify-center text-3xl font-bold text-white shadow-lg shadow-blue-500/20">
-              {currentUser?.firstName?.charAt(0)}{currentUser?.lastName?.charAt(0)}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-5 max-w-3xl">
+        <div className="bg-zinc-900 border border-zinc-800 rounded-md p-5 text-center">
+          <div className="w-16 h-16 bg-zinc-800 border border-zinc-700 rounded mx-auto mb-3 flex items-center justify-center text-white text-xl font-bold font-mono">
+            {currentUser?.firstName?.charAt(0)}{currentUser?.lastName?.charAt(0)}
+          </div>
+          <div className="text-white font-semibold">{currentUser?.firstName} {currentUser?.lastName}</div>
+          <div className="text-zinc-500 text-xs font-mono mt-0.5">@{currentUser?.username}</div>
+          <div className="mt-4 pt-4 border-t border-zinc-800 space-y-2.5 text-left">
+            <div className="flex items-center gap-2">
+              <Shield className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+              <span className="text-zinc-400 font-mono uppercase tracking-wider text-[10px]">{currentUser?.role}</span>
             </div>
-            <h2 className="text-xl font-bold text-white">{currentUser?.firstName} {currentUser?.lastName}</h2>
-            <p className="text-blue-400 text-sm font-medium uppercase tracking-wider mt-1">@{currentUser?.username}</p>
-
-            <div className="mt-6 pt-6 border-t border-slate-800 space-y-4">
-              <div className="flex items-center gap-3 text-slate-400 text-sm justify-start">
-                <Shield className="w-4 h-4 text-purple-500" />
-                <span>Role: <strong>{currentUser?.role}</strong></span>
-              </div>
-              <div className="flex items-center gap-3 text-slate-400 text-sm justify-start">
-                <Calendar className="w-4 h-4 text-emerald-500" />
-                <span>Member since: {currentUser?.createdAt ? new Date(currentUser.createdAt).toLocaleDateString() : 'N/A'}</span>
-              </div>
+            <div className="flex items-center gap-2">
+              <Calendar className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+              <span className="text-zinc-500 text-xs font-mono">
+                {currentUser?.createdAt
+                  ? new Date(currentUser.createdAt).toLocaleDateString('en-GB', { year: 'numeric', month: 'short', day: 'numeric' })
+                  : 'N/A'}
+              </span>
             </div>
           </div>
         </div>
 
-        {/* Right: Form */}
         <div className="md:col-span-2">
-          <form onSubmit={handleSave} className="space-y-6">
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-8 shadow-xl">
-              <h3 className="text-lg font-bold text-white mb-6 flex items-center gap-2">
-                <IdCard className="text-blue-500 w-5 h-5" /> Personal Details
-              </h3>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <label className="text-xs font-black text-slate-500 uppercase">First Name</label>
-                  {isEditing ? (
-                    <input
-                      className="w-full bg-slate-950 border border-slate-800 p-3 rounded-xl text-white outline-none focus:border-blue-500 transition-all"
-                      value={formData.firstName}
-                      onChange={e => setFormData({ ...formData, firstName: e.target.value })}
-                    />
-                  ) : (
-                    <div className="text-white text-lg font-medium p-1">{currentUser?.firstName || 'Not Set'}</div>
-                  )}
+          <form onSubmit={handleSave} className="space-y-4">
+            <div className="bg-zinc-900 border border-zinc-800 rounded-md">
+              <div className="flex items-center gap-2 px-5 py-3.5 border-b border-zinc-800">
+                <IdCard className="w-4 h-4 text-blue-400" />
+                <span className="text-zinc-400 text-xs font-mono uppercase tracking-widest">Personal Details</span>
+              </div>
+              <div className="p-5 space-y-4">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-zinc-600 text-[10px] font-mono uppercase tracking-widest block mb-1.5">First Name</label>
+                    {isEditing ? (
+                      <input className={inputCls} value={formData.firstName}
+                        onChange={e => setFormData({ ...formData, firstName: e.target.value })} />
+                    ) : (
+                      <div className="text-white text-sm py-2.5 px-1">{currentUser?.firstName || '—'}</div>
+                    )}
+                  </div>
+                  <div>
+                    <label className="text-zinc-600 text-[10px] font-mono uppercase tracking-widest block mb-1.5">Last Name</label>
+                    {isEditing ? (
+                      <input className={inputCls} value={formData.lastName}
+                        onChange={e => setFormData({ ...formData, lastName: e.target.value })} />
+                    ) : (
+                      <div className="text-white text-sm py-2.5 px-1">{currentUser?.lastName || '—'}</div>
+                    )}
+                  </div>
                 </div>
-
-                <div className="space-y-2">
-                  <label className="text-xs font-black text-slate-500 uppercase">Last Name</label>
-                  {isEditing ? (
-                    <input
-                      className="w-full bg-slate-950 border border-slate-800 p-3 rounded-xl text-white outline-none focus:border-blue-500 transition-all"
-                      value={formData.lastName}
-                      onChange={e => setFormData({ ...formData, lastName: e.target.value })}
-                    />
-                  ) : (
-                    <div className="text-white text-lg font-medium p-1">{currentUser?.lastName || 'Not Set'}</div>
-                  )}
-                </div>
-
-                <div className="space-y-2 md:col-span-2">
-                  <label className="text-xs font-black text-slate-500 uppercase">ID Number</label>
-                  <div className="w-full bg-slate-800/30 border border-slate-800 p-3 rounded-xl text-slate-500 flex items-center gap-2">
-                    <Shield className="w-4 h-4" /> {currentUser?.idNumber}
+                <div>
+                  <label className="text-zinc-600 text-[10px] font-mono uppercase tracking-widest block mb-1.5">ID Number</label>
+                  <div className="flex items-center gap-2 px-3 py-2.5 bg-black border border-zinc-900 rounded text-zinc-500 text-sm font-mono">
+                    <Shield className="w-3.5 h-3.5 shrink-0" /> {currentUser?.idNumber}
                   </div>
                 </div>
               </div>
-
-              {isEditing && (
-                <div className="mt-10 pt-8 border-t border-slate-800 space-y-6 animate-in slide-in-from-top-4">
-                  <h3 className="text-lg font-bold text-white mb-2 flex items-center gap-2">
-                    <KeyRound className="text-orange-500 w-5 h-5" /> Change Password
-                  </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="space-y-2">
-                      <label className="text-xs font-black text-slate-500 uppercase ml-1">New Password</label>
-                      <input
-                        type="password"
-                        placeholder="Leave blank to keep current"
-                        className="w-full bg-slate-950 border border-slate-800 p-3 rounded-xl text-white outline-none focus:border-blue-500 transition-all"
-                        value={formData.password}
-                        onChange={e => setFormData({ ...formData, password: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-xs font-black text-slate-500 uppercase ml-1">Confirm Password</label>
-                      <input
-                        type="password"
-                        className="w-full bg-slate-950 border border-slate-800 p-3 rounded-xl text-white outline-none focus:border-blue-500 transition-all"
-                        value={formData.confirmPassword}
-                        onChange={e => setFormData({ ...formData, confirmPassword: e.target.value })}
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
             </div>
 
             {isEditing && (
-              <div className="flex items-center gap-4">
-                <button
-                  type="submit"
-                  disabled={isLoading}
-                  className="flex-1 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-bold py-4 rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2"
-                >
-                  <Save className="w-5 h-5" /> {isLoading ? 'Saving...' : 'Save Changes'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsEditing(false)}
-                  className="flex-1 bg-slate-800 hover:bg-slate-700 text-white font-bold py-4 rounded-2xl transition-all flex items-center justify-center gap-2"
-                >
-                  <X className="w-5 h-5" /> Cancel
-                </button>
+              <div className="bg-zinc-900 border border-zinc-800 rounded-md">
+                <div className="flex items-center gap-2 px-5 py-3.5 border-b border-zinc-800">
+                  <KeyRound className="w-4 h-4 text-amber-400" />
+                  <span className="text-zinc-400 text-xs font-mono uppercase tracking-widest">Change Password</span>
+                </div>
+                <div className="p-5 grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-zinc-600 text-[10px] font-mono uppercase tracking-widest block mb-1.5">New Password</label>
+                    <input type="password" placeholder="Leave blank to keep current" className={inputCls}
+                      value={formData.password} onChange={e => setFormData({ ...formData, password: e.target.value })} />
+                  </div>
+                  <div>
+                    <label className="text-zinc-600 text-[10px] font-mono uppercase tracking-widest block mb-1.5">Confirm Password</label>
+                    <input type="password" className={inputCls}
+                      value={formData.confirmPassword} onChange={e => setFormData({ ...formData, confirmPassword: e.target.value })} />
+                  </div>
+                </div>
               </div>
             )}
 
             {message.text && (
-              <div className={`p-4 rounded-xl flex items-center gap-3 ${
+              <div className={`flex items-center gap-2 px-3 py-2.5 rounded text-xs ${
                 message.type === 'error'
-                  ? 'bg-red-500/10 text-red-500 border border-red-500/20'
-                  : 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20'
+                  ? 'bg-red-500/8 border border-red-500/25 text-red-400'
+                  : 'bg-emerald-500/8 border border-emerald-500/25 text-emerald-300'
               }`}>
-                {message.type === 'error' ? <X className="w-5 h-5" /> : <CheckCircle2 className="w-5 h-5" />}
-                <span className="font-medium">{message.text}</span>
+                {message.type === 'error'
+                  ? <X className="w-3.5 h-3.5 shrink-0" />
+                  : <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />}
+                <span>{message.text}</span>
+              </div>
+            )}
+
+            {isEditing && (
+              <div className="flex gap-2">
+                <button type="submit" disabled={isLoading}
+                  className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm rounded font-medium transition-colors">
+                  <Save className="w-4 h-4" /> {isLoading ? 'Saving…' : 'Save Changes'}
+                </button>
+                <button type="button" onClick={() => setIsEditing(false)}
+                  className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-sm rounded transition-colors">
+                  <X className="w-4 h-4" /> Cancel
+                </button>
               </div>
             )}
           </form>

@@ -96,6 +96,12 @@ class UpdateProfileRequest(BaseModel):
     password: Optional[str] = ""
 
 
+class DangerousWordIn(BaseModel):
+    word: str
+    severity: str = "high"
+    created_by: Optional[int] = None
+
+
 class CreateGroupRequest(BaseModel):
     name: str
     color: str = "#6366f1"
@@ -226,6 +232,28 @@ async def _poll_ml_progress(audio_id: int, stop: asyncio.Event) -> None:
         await asyncio.sleep(3)
 
 
+def _scan_for_dangerous_words(audio_id: int) -> None:
+    """Check all segments of audio_id against flagged keywords and create alerts."""
+    words = database.get_dangerous_words()
+    if not words:
+        return
+    segments = database.get_segments_by_audio(audio_id)
+    seen: set[int] = set()
+    for word_row in words:
+        if word_row["id"] in seen:
+            continue
+        needle = word_row["word"].lower()
+        for seg in segments:
+            if needle in (seg["text"] or "").lower():
+                database.create_alert(
+                    word_row["severity"],
+                    f'Flagged keyword "{word_row["word"]}" detected in audio {audio_id}',
+                    related_audio_id=audio_id,
+                )
+                seen.add(word_row["id"])
+                break
+
+
 async def _run_ml_and_save(audio_id: int, save_path: Path, original_name: str) -> None:
     """Background task: call ML service, persist results, update audio status."""
     _audio_progress[audio_id] = {"pct": 0, "label": "Queued…"}
@@ -302,6 +330,7 @@ async def _run_ml_and_save(audio_id: int, save_path: Path, original_name: str) -
     database.clear_segments(audio_id)
     if segments_to_insert:
         database.insert_segments(segments_to_insert)
+        _scan_for_dangerous_words(audio_id)
 
     for unknown_id, suggested_id, conf in pending_suggestions:
         database.insert_speaker_suggestion(audio_id, unknown_id, suggested_id, conf)
@@ -406,6 +435,11 @@ async def retry_audio(audio_id: int, background_tasks: BackgroundTasks):
 @app.get("/audios/{audio_id}/segments")
 def get_segments(audio_id: int):
     return database.get_segments_by_audio(audio_id)
+
+
+@app.get("/audios/{audio_id}/alerts")
+def get_audio_alerts(audio_id: int):
+    return database.get_alerts_for_audio(audio_id)
 
 
 # ─── Speakers ─────────────────────────────────────────────────────────────────
@@ -911,6 +945,34 @@ def get_bridges(groupA: int, groupB: int):
 @app.get("/alerts")
 def list_alerts():
     return database.get_all_alerts()
+
+
+# ─── Dangerous Words ──────────────────────────────────────────────────────────
+
+@app.get("/dangerous-words")
+def list_dangerous_words():
+    return database.get_dangerous_words()
+
+
+@app.post("/dangerous-words", status_code=201)
+def add_dangerous_word(body: DangerousWordIn):
+    word = body.word.strip()
+    if not word:
+        raise HTTPException(status_code=400, detail="word cannot be empty.")
+    if body.severity not in ("low", "medium", "high"):
+        raise HTTPException(status_code=400, detail="severity must be low, medium, or high.")
+    try:
+        return database.add_dangerous_word(word, body.severity, body.created_by)
+    except Exception:
+        raise HTTPException(status_code=409, detail="Word already exists.")
+
+
+@app.delete("/dangerous-words/{word_id}")
+def delete_dangerous_word(word_id: int):
+    ok = database.delete_dangerous_word(word_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Word not found.")
+    return {"success": True}
 
 
 if __name__ == "__main__":
