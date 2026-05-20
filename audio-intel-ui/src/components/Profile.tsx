@@ -41,15 +41,15 @@ export default function Profile({ currentUser, onUpdateSuccess }: Props) {
     }
   };
 
-  const inputCls = 'w-full bg-black border border-zinc-800 rounded px-3 py-2.5 text-white text-sm placeholder-zinc-700 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 transition-all';
+  const inputCls = 'w-full bg-black border border-zinc-800 rounded px-3 py-2.5 text-white text-sm placeholder-zinc-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 transition-all';
 
   return (
     <div className="p-6 space-y-5">
       <div className="flex items-start justify-between">
         <div>
-          <div className="text-zinc-600 text-[10px] font-mono uppercase tracking-widest mb-1">Account</div>
+          <div className="text-zinc-200 text-[10px] font-mono uppercase tracking-widest mb-1">Account</div>
           <h1 className="text-white text-2xl font-bold tracking-tight">My Profile</h1>
-          <p className="text-zinc-500 text-sm mt-0.5">Personal information and security settings</p>
+          <p className="text-zinc-300 text-sm mt-0.5">Personal information and security settings</p>
         </div>
         {!isEditing && (
           <button onClick={() => setIsEditing(true)}
@@ -65,15 +65,15 @@ export default function Profile({ currentUser, onUpdateSuccess }: Props) {
             {currentUser?.firstName?.charAt(0)}{currentUser?.lastName?.charAt(0)}
           </div>
           <div className="text-white font-semibold">{currentUser?.firstName} {currentUser?.lastName}</div>
-          <div className="text-zinc-500 text-xs font-mono mt-0.5">@{currentUser?.username}</div>
+          <div className="text-zinc-300 text-xs font-mono mt-0.5">@{currentUser?.username}</div>
           <div className="mt-4 pt-4 border-t border-zinc-800 space-y-2.5 text-left">
             <div className="flex items-center gap-2">
               <Shield className="w-3.5 h-3.5 text-purple-400 shrink-0" />
-              <span className="text-zinc-400 font-mono uppercase tracking-wider text-[10px]">{currentUser?.role}</span>
+              <span className="text-zinc-200 font-mono uppercase tracking-wider text-[10px]">{currentUser?.role}</span>
             </div>
             <div className="flex items-center gap-2">
               <Calendar className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-              <span className="text-zinc-500 text-xs font-mono">
+              <span className="text-zinc-300 text-xs font-mono">
                 {currentUser?.createdAt
                   ? new Date(currentUser.createdAt).toLocaleDateString('en-GB', { year: 'numeric', month: 'short', day: 'numeric' })
                   : 'N/A'}
@@ -87,12 +87,12 @@ export default function Profile({ currentUser, onUpdateSuccess }: Props) {
             <div className="bg-zinc-900 border border-zinc-800 rounded-md">
               <div className="flex items-center gap-2 px-5 py-3.5 border-b border-zinc-800">
                 <IdCard className="w-4 h-4 text-blue-400" />
-                <span className="text-zinc-400 text-xs font-mono uppercase tracking-widest">Personal Details</span>
+                <span className="text-zinc-200 text-xs font-mono uppercase tracking-widest">Personal Details</span>
               </div>
               <div className="p-5 space-y-4">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-zinc-600 text-[10px] font-mono uppercase tracking-widest block mb-1.5">First Name</label>
+                    <label className="text-zinc-200 text-[10px] font-mono uppercase tracking-widest block mb-1.5">First Name</label>
                     {isEditing ? (
                       <input className={inputCls} value={formData.firstName}
                         onChange={e => setFormData({ ...formData, firstName: e.target.value })} />
@@ -101,7 +101,7 @@ export default function Profile({ currentUser, onUpdateSuccess }: Props) {
                     )}
                   </div>
                   <div>
-                    <label className="text-zinc-600 text-[10px] font-mono uppercase tracking-widest block mb-1.5">Last Name</label>
+                    <label className="text-zinc-200 text-[10px] font-mono uppercase tracking-widest block mb-1.5">Last Name</label>
                     {isEditing ? (
                       <input className={inputCls} value={formData.lastName}
                         onChange={e => setFormData({ ...formData, lastName: e.target.value })} />
@@ -111,8 +111,8 @@ export default function Profile({ currentUser, onUpdateSuccess }: Props) {
                   </div>
                 </div>
                 <div>
-                  <label className="text-zinc-600 text-[10px] font-mono uppercase tracking-widest block mb-1.5">ID Number</label>
-                  <div className="flex items-center gap-2 px-3 py-2.5 bg-black border border-zinc-900 rounded text-zinc-500 text-sm font-mono">
+                  <label className="text-zinc-200 text-[10px] font-mono uppercase tracking-widest block mb-1.5">ID Number</label>
+                  <div className="flex items-center gap-2 px-3 py-2.5 bg-black border border-zinc-900 rounded text-zinc-300 text-sm font-mono">
                     <Shield className="w-3.5 h-3.5 shrink-0" /> {currentUser?.idNumber}
                   </div>
                 </div>
@@ -123,16 +123,16 @@ export default function Profile({ currentUser, onUpdateSuccess }: Props) {
               <div className="bg-zinc-900 border border-zinc-800 rounded-md">
                 <div className="flex items-center gap-2 px-5 py-3.5 border-b border-zinc-800">
                   <KeyRound className="w-4 h-4 text-amber-400" />
-                  <span className="text-zinc-400 text-xs font-mono uppercase tracking-widest">Change Password</span>
+                  <span className="text-zinc-200 text-xs font-mono uppercase tracking-widest">Change Password</span>
                 </div>
                 <div className="p-5 grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-zinc-600 text-[10px] font-mono uppercase tracking-widest block mb-1.5">New Password</label>
+                    <label className="text-zinc-200 text-[10px] font-mono uppercase tracking-widest block mb-1.5">New Password</label>
                     <input type="password" placeholder="Leave blank to keep current" className={inputCls}
                       value={formData.password} onChange={e => setFormData({ ...formData, password: e.target.value })} />
                   </div>
                   <div>
-                    <label className="text-zinc-600 text-[10px] font-mono uppercase tracking-widest block mb-1.5">Confirm Password</label>
+                    <label className="text-zinc-200 text-[10px] font-mono uppercase tracking-widest block mb-1.5">Confirm Password</label>
                     <input type="password" className={inputCls}
                       value={formData.confirmPassword} onChange={e => setFormData({ ...formData, confirmPassword: e.target.value })} />
                   </div>

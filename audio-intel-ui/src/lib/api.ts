@@ -1,5 +1,24 @@
 const BASE = "http://127.0.0.1:8001";
 const ML_BASE = "http://127.0.0.1:8000";
+export const API_BASE = BASE;
+
+// Identity threading: filtered endpoints take ?user_id=. App.tsx calls
+// setApiUser(user) on login / null on logout so every list-style call
+// auto-appends it. Backend treats missing user_id as admin (back-compat).
+let _currentUser: { id: number; role: string } | null = null;
+
+export const setApiUser = (u: { id: number; role: string } | null) => {
+  _currentUser = u ? { id: u.id, role: u.role } : null;
+};
+
+export const getApiUser = () => _currentUser;
+
+/** Append user_id=<id> to a path; preserves existing query string. */
+export function withUser(path: string): string {
+  if (!_currentUser) return path;
+  const sep = path.includes("?") ? "&" : "?";
+  return `${path}${sep}user_id=${_currentUser.id}`;
+}
 
 async function request<T>(
   method: string,
@@ -63,6 +82,13 @@ export const auth = {
 export const users = {
   list: () => request<UserRecord[]>("GET", "/users"),
 
+  listByRole: (role?: 'Admin' | 'Analyst') => {
+    const qs = role ? `?role=${encodeURIComponent(role)}` : '';
+    return request<UserRecord[]>("GET", `/users${qs}`);
+  },
+
+  listAnalysts: () => request<UserRecord[]>("GET", "/users?role=Analyst"),
+
   create: (data: {
     username: string;
     password: string;
@@ -117,14 +143,24 @@ export interface UploadResult {
   status: string;
 }
 
+export interface SubScores {
+  a: number | null;
+  b: number | null;
+  c: number | null;
+  d: number | null;
+}
+
 export interface SegmentRecord {
   id: number;
   speakerId: number;
   speakerName: string;
   speakerColor: string;
+  speakerImagePath?: string | null;
   text: string;
   startTime: number;
   endTime: number;
+  suspicionScore?: number | null;
+  subScores?: SubScores | null;
 }
 
 export interface SpeakerRecord {
@@ -135,6 +171,8 @@ export interface SpeakerRecord {
   riskLevel: 'low' | 'medium' | 'high';
   firstDetected: string;
   wikidataId: string | null;
+  imagePath: string | null;
+  isUntracked: boolean;
   recordingCount: number;
   sampleCount: number;
 }
@@ -200,10 +238,14 @@ export const audios = {
     });
   },
 
-  list: () => request<AudioRecord[]>("GET", "/audios"),
-  get: (id: number) => request<AudioRecord>("GET", `/audios/${id}`),
+  list: () => request<AudioRecord[]>("GET", withUser("/audios")),
+  get: (id: number) => request<AudioRecord>("GET", withUser(`/audios/${id}`)),
   remove: (id: number) => request<{ success: boolean }>("DELETE", `/audios/${id}`),
-  getSegments: (id: number) => request<SegmentRecord[]>("GET", `/audios/${id}/segments`),
+  batchDelete: (ids: number[]) =>
+    request<{ deleted: number[]; failed: { id: number; reason: string }[] }>(
+      "POST", "/audios/batch-delete", { ids },
+    ),
+  getSegments: (id: number) => request<SegmentRecord[]>("GET", withUser(`/audios/${id}/segments`)),
   getProgress: (id: number) => request<{ pct: number; label: string }>("GET", `/audios/${id}/progress`),
   fileUrl: (id: number) => `${BASE}/audios/${id}/file`,
   retry: (id: number) => request<{ success: boolean }>("POST", `/audios/${id}/retry`),
@@ -232,7 +274,7 @@ export interface SpeakerAudioRecord {
 }
 
 export const speakers = {
-  list: () => request<SpeakerRecord[]>("GET", "/speakers"),
+  list: () => request<SpeakerRecord[]>("GET", withUser("/speakers")),
   get: (id: number) => request<SpeakerRecord>("GET", `/speakers/${id}`),
   audios: (id: number) => request<SpeakerAudioRecord[]>("GET", `/speakers/${id}/audios`),
   update: (id: number, name: string, riskLevel: string, forceSeparate = false) =>
@@ -290,7 +332,42 @@ export const speakers = {
       return r.json() as Promise<EnrichmentLinkResult>;
     });
   },
+
+  uploadImage: (speakerId: number, file: File): Promise<{ success: boolean; imagePath: string }> => {
+    const form = new FormData();
+    form.append("file", file);
+    return fetch(`${BASE}/speakers/${speakerId}/image`, { method: "POST", body: form }).then(async (r) => {
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({ detail: "Upload failed" }));
+        throw new Error(err.detail ?? "Upload failed");
+      }
+      return r.json() as Promise<{ success: boolean; imagePath: string }>;
+    });
+  },
+
+  deleteImage: (speakerId: number) =>
+    request<{ success: boolean }>("DELETE", `/speakers/${speakerId}/image`),
+
+  setUntracked: (speakerId: number, untracked: boolean) =>
+    request<SpeakerRecord>("PUT", `/speakers/${speakerId}/tracked`, { untracked }),
+
+  batchDelete: (ids: number[]) =>
+    request<{ deleted: number[]; failed: { id: number; reason: string }[] }>(
+      "POST", "/speakers/batch-delete", { ids },
+    ),
+
+  matchSuggestions: (id: number, limit = 5) =>
+    request<MatchSuggestion[]>("GET", `/speakers/${id}/match-suggestions?limit=${limit}`),
 };
+
+export interface MatchSuggestion {
+  id: number;
+  name: string;
+  color: string;
+  imagePath: string | null;
+  riskLevel: 'low' | 'medium' | 'high';
+  confidence: number;
+}
 
 export const suggestions = {
   listForAudio: (audioId: number) =>
@@ -305,17 +382,27 @@ export const suggestions = {
 
 // ─── Alerts ───────────────────────────────────────────────────────────────────
 
+export type AlertCategory = 'coded_language' | 'dangerous_word';
+
 export interface AlertRecord {
   id: number;
   type: 'low' | 'medium' | 'high';
+  category: AlertCategory | null;
   message: string;
   createdAt: string;
   speakerName: string | null;
   audioName: string | null;
+  audioId: number | null;
+  segmentId: number | null;
+  subScores: SubScores | null;
+  llmExplanation: string | null;
 }
 
 export const alerts = {
-  list: () => request<AlertRecord[]>("GET", "/alerts"),
+  list: (params?: { category?: AlertCategory }) => {
+    const qs = params?.category ? `?category=${encodeURIComponent(params.category)}` : '';
+    return request<AlertRecord[]>("GET", withUser(`/alerts${qs}`));
+  },
   listForAudio: (audioId: number) => request<AlertRecord[]>("GET", `/audios/${audioId}/alerts`),
 };
 
@@ -333,6 +420,33 @@ export const dangerousWords = {
   add: (word: string, severity: string) =>
     request<DangerousWordRecord>("POST", "/dangerous-words", { word, severity }),
   remove: (id: number) => request<{ success: boolean }>("DELETE", `/dangerous-words/${id}`),
+};
+
+// ─── Euphemisms (coded-language dictionary) ───────────────────────────────────
+
+export interface EuphemismRecord {
+  id: number;
+  phrase: string;
+  severity: 'low' | 'medium' | 'high';
+  isEuphemism: boolean;
+  autoLearned: boolean;
+  confidence: number | null;
+  createdAt: string;
+}
+
+export interface EuphemismExpandSummary {
+  added: number;
+  candidates_considered: number;
+  samples: EuphemismRecord[];
+  note?: string;
+}
+
+export const euphemisms = {
+  list: () => request<EuphemismRecord[]>("GET", "/euphemisms"),
+  add: (phrase: string, severity: 'low' | 'medium' | 'high' = 'high') =>
+    request<EuphemismRecord>("POST", "/euphemisms", { phrase, severity }),
+  remove: (id: number) => request<{ success: boolean }>("DELETE", `/euphemisms/${id}`),
+  expand: () => request<EuphemismExpandSummary>("POST", "/euphemisms/expand"),
 };
 
 // ─── System Stats ─────────────────────────────────────────────────────────────
@@ -370,6 +484,7 @@ export interface GroupMember {
   id: number;
   name: string;
   color: string;
+  imagePath?: string | null;
 }
 
 export interface GroupRecord {
@@ -377,6 +492,9 @@ export interface GroupRecord {
   name: string;
   color: string;
   createdAt: string;
+  parentGroupId: number | null;
+  parentGroupName: string | null;
+  description: string | null;
   members: GroupMember[];
 }
 
@@ -386,20 +504,96 @@ export interface BridgesResult {
   bridges: SpeakerRecord[];
 }
 
+interface GroupBody {
+  name: string;
+  color: string;
+  parentGroupId?: number | null;
+  description?: string | null;
+}
+
 export const groups = {
   list: () => request<GroupRecord[]>("GET", "/groups"),
-  create: (name: string, color: string) =>
-    request<GroupRecord>("POST", "/groups", { name, color }),
-  update: (id: number, name: string, color: string) =>
-    request<GroupRecord>("PUT", `/groups/${id}`, { name, color }),
+  create: (body: GroupBody) =>
+    request<GroupRecord>("POST", "/groups", body),
+  update: (id: number, body: GroupBody) =>
+    request<GroupRecord>("PUT", `/groups/${id}`, body),
   remove: (id: number) => request<{ success: boolean }>("DELETE", `/groups/${id}`),
   addMember: (groupId: number, speakerId: number) =>
     request<GroupRecord>("POST", `/groups/${groupId}/members`, { speaker_id: speakerId }),
+  addMembersBatch: (groupId: number, speakerIds: number[]) =>
+    request<{ group: GroupRecord; added: number[]; skipped: number[] }>(
+      "POST", `/groups/${groupId}/members/batch`, { speaker_ids: speakerIds },
+    ),
   removeMember: (groupId: number, speakerId: number) =>
     request<GroupRecord>("DELETE", `/groups/${groupId}/members/${speakerId}`),
   bridges: (groupAId: number, groupBId: number) =>
     request<BridgesResult>("GET", `/groups/bridges?groupA=${groupAId}&groupB=${groupBId}`),
 };
+
+// ─── Projects ─────────────────────────────────────────────────────────────────
+
+export interface ProjectSummary {
+  id: number;
+  name: string;
+  color: string;
+  description: string | null;
+  createdAt: string;
+  subgroupCount: number;
+  memberCount: number;
+  assignedAnalystCount: number;
+}
+
+export interface AnalystSummary {
+  id: number;
+  username: string;
+  firstName: string;
+  lastName: string;
+}
+
+export interface SubgroupDetail extends GroupRecord {
+  assignedAnalysts: AnalystSummary[];
+}
+
+export interface ProjectDetail extends GroupRecord {
+  assignedAnalysts: AnalystSummary[];
+  subgroups: SubgroupDetail[];
+}
+
+export const projects = {
+  list: () => request<ProjectSummary[]>("GET", withUser("/projects")),
+  get: (id: number) => request<ProjectDetail>("GET", withUser(`/projects/${id}`)),
+};
+
+// ─── Assignments ──────────────────────────────────────────────────────────────
+
+export interface AssignmentRecord {
+  id: number;
+  analystUserId: number;
+  analystUsername: string;
+  analystFirstName: string;
+  analystLastName: string;
+  groupId: number;
+  groupName: string;
+  parentGroupId: number | null;
+  parentGroupName: string | null;
+  createdAt: string;
+}
+
+export const assignments = {
+  forProject: (projectId: number) =>
+    request<AssignmentRecord[]>("GET", `/assignments?project_id=${projectId}`),
+  forUser: (userId: number) =>
+    request<AssignmentRecord[]>("GET", `/assignments?user_id=${userId}`),
+  add: (analystUserId: number, groupId: number) =>
+    request<AssignmentRecord>("POST", "/assignments", { analystUserId, groupId }),
+  remove: (id: number) =>
+    request<{ success: boolean }>("DELETE", `/assignments/${id}`),
+};
+
+// ─── Users (analyst directory alias) ──────────────────────────────────────────
+// UserDirectoryRecord is an alias kept for new callers; the existing `users`
+// object further up handles listByRole / listAnalysts.
+export type UserDirectoryRecord = UserRecord;
 
 // ─── ML Service (stateless analysis) ──────────────────────────────────────────
 

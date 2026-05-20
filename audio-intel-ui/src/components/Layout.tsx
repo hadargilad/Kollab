@@ -1,5 +1,5 @@
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Upload, Network, Search, Settings, LogOut, User, UserSearch, Users, UserCircle, FileAudio, Loader2, CheckCircle2, Sparkles } from 'lucide-react';
+import { LayoutDashboard, Upload, Network, Search, Settings, LogOut, User, UserSearch, Users, UserCircle, FileAudio, Loader2, CheckCircle2, Sparkles, ShieldAlert, Briefcase } from 'lucide-react';
 import KolLabLogo from './KolLabLogo';
 import { useState } from 'react';
 import { useMlStatus } from '../hooks/useMlStatus';
@@ -23,7 +23,9 @@ export default function Layout({ user, onLogout }: LayoutProps) {
     { path: '/dashboard',        icon: LayoutDashboard, label: 'Dashboard' },
     { path: '/upload',           icon: Upload,          label: 'Upload' },
     { path: '/all-uploads',      icon: FileAudio,       label: 'All Uploads' },
+    { path: '/projects',         icon: Briefcase,       label: 'Projects' },
     { path: '/network',          icon: Network,         label: 'Network' },
+    { path: '/alerts',           icon: ShieldAlert,     label: 'Alerts' },
     { path: '/identity',         icon: Search,          label: 'Identity' },
     { path: '/profile-search',   icon: UserSearch,      label: 'Profile Search' },
     { path: '/related-speakers', icon: Sparkles,        label: 'Related Speakers' },
@@ -46,7 +48,7 @@ export default function Layout({ user, onLogout }: LayoutProps) {
               <div className="text-white font-bold tracking-wide text-base leading-none">
                 Kol<span className="text-blue-400">L</span>ab
               </div>
-              <div className="text-zinc-600 text-[10px] font-mono uppercase tracking-widest mt-0.5">
+              <div className="text-zinc-200 text-[10px] font-mono uppercase tracking-widest mt-0.5">
                 Intel Platform
               </div>
             </div>
@@ -66,7 +68,7 @@ export default function Layout({ user, onLogout }: LayoutProps) {
                     className={`flex items-center gap-3 px-5 py-2.5 border-l-2 transition-all ${
                       active
                         ? 'border-blue-500 bg-blue-500/8 text-white'
-                        : 'border-transparent text-zinc-500 hover:text-zinc-200 hover:bg-white/4'
+                        : 'border-transparent text-zinc-300 hover:text-zinc-200 hover:bg-white/4'
                     }`}
                   >
                     <Icon className="w-4 h-4 shrink-0" />
@@ -79,7 +81,7 @@ export default function Layout({ user, onLogout }: LayoutProps) {
             {user?.role === 'Admin' && (
               <>
                 <li className="px-5 pt-5 pb-2">
-                  <span className="text-zinc-700 text-[10px] font-mono uppercase tracking-widest">
+                  <span className="text-zinc-300 text-[10px] font-mono uppercase tracking-widest">
                     Management
                   </span>
                 </li>
@@ -93,7 +95,7 @@ export default function Layout({ user, onLogout }: LayoutProps) {
                         className={`flex items-center gap-3 px-5 py-2.5 border-l-2 transition-all ${
                           active
                             ? 'border-blue-500 bg-blue-500/8 text-white'
-                            : 'border-transparent text-zinc-500 hover:text-zinc-200 hover:bg-white/4'
+                            : 'border-transparent text-zinc-300 hover:text-zinc-200 hover:bg-white/4'
                         }`}
                       >
                         <Icon className="w-4 h-4 shrink-0" />
@@ -111,7 +113,7 @@ export default function Layout({ user, onLogout }: LayoutProps) {
         <div className="border-t border-zinc-800 p-3">
           <button
             onClick={onLogout}
-            className="flex items-center gap-3 w-full px-4 py-2.5 rounded text-zinc-500 hover:text-red-400 hover:bg-red-500/8 transition-all border border-transparent hover:border-red-500/20"
+            className="flex items-center gap-3 w-full px-4 py-2.5 rounded text-zinc-300 hover:text-red-400 hover:bg-red-500/8 transition-all border border-transparent hover:border-red-500/20"
           >
             <LogOut className="w-4 h-4 shrink-0" />
             <span>Logout</span>
@@ -123,8 +125,8 @@ export default function Layout({ user, onLogout }: LayoutProps) {
       <div className="flex-1 flex flex-col min-w-0">
         {/* Header */}
         <header className="bg-black border-b border-zinc-800 px-6 py-3 sticky top-0 z-50 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-zinc-600 text-xs font-mono uppercase tracking-widest">
-            <span className="text-zinc-700">KolLab</span>
+          <div className="flex items-center gap-2 text-zinc-200 text-xs font-mono uppercase tracking-widest">
+            <span className="text-zinc-300">KolLab</span>
             <span>/</span>
             <span className="text-blue-500">{user?.role ?? 'User'}</span>
           </div>
@@ -160,19 +162,19 @@ export default function Layout({ user, onLogout }: LayoutProps) {
                   <div className="absolute right-0 mt-1.5 w-48 bg-zinc-950 border border-zinc-800 rounded shadow-xl z-50 overflow-hidden">
                     <div className="px-3 py-2 border-b border-zinc-800">
                       <div className="text-white text-xs font-medium">{user?.username}</div>
-                      <div className="text-zinc-600 text-[10px] font-mono uppercase">{user?.role}</div>
+                      <div className="text-zinc-200 text-[10px] font-mono uppercase">{user?.role}</div>
                     </div>
                     <div className="p-1">
                       <button
                         onClick={() => { setShowUserMenu(false); navigate('/profile'); }}
-                        className="flex items-center gap-2.5 w-full px-3 py-2 rounded text-zinc-400 hover:text-white hover:bg-white/5 transition-all text-xs"
+                        className="flex items-center gap-2.5 w-full px-3 py-2 rounded text-zinc-200 hover:text-white hover:bg-white/5 transition-all text-xs"
                       >
                         <UserCircle className="w-3.5 h-3.5" />
                         My Profile
                       </button>
                       <button
                         onClick={() => { setShowUserMenu(false); onLogout(); }}
-                        className="flex items-center gap-2.5 w-full px-3 py-2 rounded text-zinc-400 hover:text-red-400 hover:bg-red-500/8 transition-all text-xs mt-0.5"
+                        className="flex items-center gap-2.5 w-full px-3 py-2 rounded text-zinc-200 hover:text-red-400 hover:bg-red-500/8 transition-all text-xs mt-0.5"
                       >
                         <LogOut className="w-3.5 h-3.5" />
                         Logout

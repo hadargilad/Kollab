@@ -4,3 +4,9 @@ python-multipart
 platformdirs
 httpx
 numpy
+
+# NLP (Ofir — coded-language detection)
+transformers           # distilgpt2 for Signal C (perplexity)
+torch                  # backend for transformers + sentence-transformers
+sentence-transformers  # BAAI/bge-small-en-v1.5 segment embeddings (shared infra; Hadar will reuse)
+scikit-learn           # TfidfVectorizer + CountVectorizer + cosine

@@ -1,0 +1,62 @@
+import type { SubScores } from '../lib/api';
+
+export const SUB_LABELS: Array<[keyof SubScores, string, string]> = [
+  ['a', 'A', 'bg-fuchsia-500'],
+  ['b', 'B', 'bg-amber-500'],
+  ['c', 'C', 'bg-cyan-500'],
+  ['d', 'D', 'bg-rose-500'],
+];
+
+export const SUB_LEGEND: Record<keyof SubScores, string> = {
+  a: 'Topic incoherence',
+  b: 'Lexical anomaly',
+  c: 'Perplexity',
+  d: 'Euphemism match',
+};
+
+interface Props {
+  scores: SubScores;
+  /** Compact = no labels under the bar. */
+  compact?: boolean;
+  /** When true, each segment width is its raw value (0..1) rather than normalized. */
+  absolute?: boolean;
+  /** Pixel height of the bar. */
+  height?: number;
+}
+
+export default function SubScoresBar({ scores, compact = false, absolute = false, height = 8 }: Props) {
+  const entries = SUB_LABELS.map(([k, label, color]) => ({
+    label,
+    color,
+    value: Math.max(0, Math.min(1, scores[k] ?? 0)),
+  }));
+  const total = entries.reduce((s, e) => s + e.value, 0) || 1;
+  const denom = absolute ? entries.length : total;
+  return (
+    <div className="space-y-1">
+      <div
+        className="flex w-full overflow-hidden rounded-sm bg-zinc-900 border border-zinc-800"
+        style={{ height: `${height}px` }}
+      >
+        {entries.map(e => (
+          <div
+            key={e.label}
+            className={`${e.color} h-full`}
+            style={{ width: `${(e.value / denom) * 100}%`, opacity: e.value > 0.01 ? 0.85 : 0 }}
+            title={`${e.label} (${SUB_LEGEND[e.label.toLowerCase() as keyof SubScores]}) = ${e.value.toFixed(2)}`}
+          />
+        ))}
+      </div>
+      {!compact && (
+        <div className="flex gap-3 text-[10px] font-mono text-zinc-200 flex-wrap">
+          {entries.map(e => (
+            <span key={e.label} className="inline-flex items-center gap-1">
+              <span className={`inline-block w-1.5 h-1.5 rounded-sm ${e.color}`} />
+              {e.label} {e.value.toFixed(2)}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}

@@ -20,7 +20,7 @@ The ML service only extracts vectors; storage and identity decisions live here.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal, Optional
+from typing import Iterable, Literal, Optional
 
 import numpy as np
 
@@ -44,12 +44,36 @@ class MatchResult:
     suggested_speaker_name: Optional[str] = None
 
 
-def _max_cosine(query: np.ndarray, corpus: np.ndarray) -> float:
+def max_cosine(query: np.ndarray, corpus: np.ndarray) -> float:
     """Symmetric max-pool: largest cosine across every (q_row, c_row) pair.
     Inputs are L2-normalized at the source (ECAPA output is normalized in
     pipeline.get_window_embeddings), so cosine reduces to a dot product."""
     sims = query @ corpus.T
     return float(sims.max())
+
+
+# Back-compat: existing callers (and tests) used the underscored name.
+_max_cosine = max_cosine
+
+
+def rank_candidates(query_speaker_id: int, candidate_ids: Iterable[int]) -> list[tuple[int, float]]:
+    """Score each candidate against the query speaker's stored windows using
+    symmetric max-pool. Returns [(speaker_id, confidence), ...] sorted desc.
+    Speakers without embeddings are skipped (confidence=0)."""
+    corpus = database.get_all_embeddings()
+    query = corpus.get(query_speaker_id)
+    if query is None or query.size == 0:
+        return []
+    results: list[tuple[int, float]] = []
+    for sid in candidate_ids:
+        if sid == query_speaker_id:
+            continue
+        vecs = corpus.get(sid)
+        if vecs is None or vecs.size == 0:
+            continue
+        results.append((sid, round(max_cosine(query, vecs), 3)))
+    results.sort(key=lambda x: x[1], reverse=True)
+    return results
 
 
 def match_or_register(

@@ -62,18 +62,18 @@ export default function ForcePasswordChange({ user, onSuccess }: Props) {
             <ShieldCheck className="w-6 h-6 text-blue-400" />
           </div>
           <h2 className="text-white font-bold text-lg">Security Update Required</h2>
-          <p className="text-zinc-500 text-xs font-mono mt-1.5">
+          <p className="text-zinc-300 text-xs font-mono mt-1.5">
             First login detected — set a new secure password to continue, {user.username}.
           </p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="text-zinc-500 text-[10px] font-mono uppercase tracking-widest block mb-1.5">
+            <label className="text-zinc-300 text-[10px] font-mono uppercase tracking-widest block mb-1.5">
               New Password
             </label>
             <div className="relative">
-              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-600" />
+              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-200" />
               <input
                 type="password"
                 required
@@ -85,11 +85,11 @@ export default function ForcePasswordChange({ user, onSuccess }: Props) {
           </div>
 
           <div>
-            <label className="text-zinc-500 text-[10px] font-mono uppercase tracking-widest block mb-1.5">
+            <label className="text-zinc-300 text-[10px] font-mono uppercase tracking-widest block mb-1.5">
               Confirm Password
             </label>
             <div className="relative">
-              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-600" />
+              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-200" />
               <input
                 type="password"
                 required
@@ -104,10 +104,10 @@ export default function ForcePasswordChange({ user, onSuccess }: Props) {
           <div className="bg-black border border-zinc-900 rounded p-3 space-y-1">
             {checks.map((c) => (
               <div key={c.label} className="flex items-center gap-2 text-xs font-mono">
-                <span className={c.ok ? 'text-emerald-400' : 'text-zinc-700'}>
+                <span className={c.ok ? 'text-emerald-400' : 'text-zinc-300'}>
                   {c.ok ? '✓' : '○'}
                 </span>
-                <span className={c.ok ? 'text-zinc-400' : 'text-zinc-600'}>{c.label}</span>
+                <span className={c.ok ? 'text-zinc-200' : 'text-zinc-200'}>{c.label}</span>
               </div>
             ))}
           </div>

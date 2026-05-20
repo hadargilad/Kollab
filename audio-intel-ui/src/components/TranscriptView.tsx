@@ -1,10 +1,32 @@
 import { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
-import { Download, Search, FileText, User, Loader2, AlertCircle } from 'lucide-react';
-import { audios, dangerousWords, type AudioRecord, type SegmentRecord } from '../lib/api';
+import { useParams, useLocation, Link } from 'react-router-dom';
+import { Download, Search, FileText, User, Loader2, AlertCircle, ShieldAlert, Sparkles } from 'lucide-react';
+import { audios, dangerousWords, type AudioRecord, type SegmentRecord, type SubScores } from '../lib/api';
+import SubScoresBar, { SUB_LEGEND } from './SubScoresBar';
+import SpeakerAvatar from './SpeakerAvatar';
+
+function suspicionRowClass(score: number | null | undefined): string {
+  if (score == null) return '';
+  if (score > 0.80) return 'bg-red-500/15 hover:bg-red-500/20';
+  if (score > 0.65) return 'bg-orange-500/15 hover:bg-orange-500/20';
+  return '';
+}
+
+function dominantSignal(subs: SubScores | null | undefined): string | null {
+  if (!subs) return null;
+  let bestKey: keyof SubScores | null = null;
+  let bestVal = -1;
+  (['a', 'b', 'c', 'd'] as (keyof SubScores)[]).forEach(k => {
+    const v = subs[k] ?? 0;
+    if (v > bestVal) { bestVal = v; bestKey = k; }
+  });
+  if (!bestKey || bestVal <= 0) return null;
+  return SUB_LEGEND[bestKey];
+}
 
 export default function TranscriptView() {
   const { id } = useParams<{ id: string }>();
+  const location = useLocation();
   const audioId = Number(id);
 
   const [audio, setAudio] = useState<AudioRecord | null>(null);
@@ -25,6 +47,15 @@ export default function TranscriptView() {
       .catch(() => setError('Failed to load transcript.'))
       .finally(() => setLoading(false));
   }, [audioId]);
+
+  // Scroll to anchored segment (e.g. /transcript/12#seg-345 from the Alerts page)
+  useEffect(() => {
+    if (loading || segments.length === 0) return;
+    const hash = location.hash;
+    if (!hash) return;
+    const el = document.getElementById(hash.slice(1));
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [loading, segments.length, location.hash]);
 
   const formatTime = (seconds: number) =>
     `${Math.floor(seconds / 60).toString().padStart(2, '0')}:${Math.floor(seconds % 60).toString().padStart(2, '0')}`;
@@ -85,11 +116,17 @@ export default function TranscriptView() {
     URL.revokeObjectURL(url);
   };
 
-  const participantMap = new Map<number, { id: number; name: string; color: string; turns: number }>();
+  const participantMap = new Map<number, { id: number; name: string; color: string; imagePath: string | null; turns: number }>();
   for (const seg of segments) {
     const existing = participantMap.get(seg.speakerId);
     if (existing) existing.turns++;
-    else participantMap.set(seg.speakerId, { id: seg.speakerId, name: seg.speakerName, color: seg.speakerColor, turns: 1 });
+    else participantMap.set(seg.speakerId, {
+      id: seg.speakerId,
+      name: seg.speakerName,
+      color: seg.speakerColor,
+      imagePath: seg.speakerImagePath ?? null,
+      turns: 1,
+    });
   }
   const participants = Array.from(participantMap.values());
 
@@ -116,9 +153,9 @@ export default function TranscriptView() {
   return (
     <div className="p-6 space-y-5">
       <div>
-        <div className="text-zinc-600 text-[10px] font-mono uppercase tracking-widest mb-1">Transcript</div>
+        <div className="text-zinc-200 text-[10px] font-mono uppercase tracking-widest mb-1">Transcript</div>
         <h1 className="text-white text-2xl font-bold tracking-tight">{audio.name}</h1>
-        <p className="text-zinc-600 text-xs font-mono mt-0.5">ID:{id}</p>
+        <p className="text-zinc-200 text-xs font-mono mt-0.5">ID:{id}</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
@@ -127,13 +164,13 @@ export default function TranscriptView() {
           {/* Search bar */}
           <div className="bg-zinc-900 border border-zinc-800 rounded-md p-3 flex items-center gap-3">
             <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-600" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-200" />
               <input
                 type="text"
                 placeholder="Search transcript…"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-black border border-zinc-800 rounded px-3 pl-9 py-2 text-white text-sm placeholder-zinc-700 focus:outline-none focus:border-blue-500 transition-all font-mono"
+                className="w-full bg-black border border-zinc-800 rounded px-3 pl-9 py-2 text-white text-sm placeholder-zinc-400 focus:outline-none focus:border-blue-500 transition-all font-mono"
               />
             </div>
             <button onClick={exportTranscript}
@@ -142,41 +179,77 @@ export default function TranscriptView() {
               Export
             </button>
             {searchQuery && (
-              <span className="text-zinc-600 text-xs font-mono shrink-0">{filtered.length}/{segments.length}</span>
+              <span className="text-zinc-200 text-xs font-mono shrink-0">{filtered.length}/{segments.length}</span>
             )}
           </div>
 
           {/* Transcript body */}
           <div className="bg-zinc-900 border border-zinc-800 rounded-md">
             <div className="flex items-center gap-2 px-5 py-3.5 border-b border-zinc-800">
-              <FileText className="w-4 h-4 text-zinc-600" />
-              <span className="text-zinc-400 text-xs font-mono uppercase tracking-widest">Full Transcript</span>
+              <FileText className="w-4 h-4 text-zinc-200" />
+              <span className="text-zinc-200 text-xs font-mono uppercase tracking-widest">Full Transcript</span>
             </div>
 
             {filtered.length === 0 ? (
-              <p className="text-zinc-600 text-sm px-5 py-6">
+              <p className="text-zinc-200 text-sm px-5 py-6">
                 {segments.length === 0 ? 'No transcript available.' : 'No matching segments.'}
               </p>
             ) : (
               <div className="divide-y divide-zinc-900">
-                {filtered.map((seg) => (
-                  <div key={seg.id} className="flex gap-4 px-5 py-3 hover:bg-zinc-800/30 transition-colors">
-                    <span className="text-zinc-600 text-xs font-mono shrink-0 w-12 pt-0.5">{formatTime(seg.startTime)}</span>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: seg.speakerColor }} />
-                        <Link to={`/speaker/${seg.speakerId}`}
-                          className="text-white text-sm font-medium hover:text-blue-400 transition-colors">
-                          {seg.speakerName}
-                        </Link>
-                        <span className="text-zinc-700 text-xs font-mono">→ {formatTime(seg.endTime)}</span>
+                {filtered.map((seg) => {
+                  const tint = suspicionRowClass(seg.suspicionScore);
+                  const flagged = (seg.suspicionScore ?? 0) > 0.65;
+                  const hasScore = seg.suspicionScore != null;
+                  const scoreColor = (seg.suspicionScore ?? 0) > 0.80
+                    ? 'text-red-300 border-red-500/40 bg-red-500/10'
+                    : flagged
+                      ? 'text-orange-300 border-orange-500/40 bg-orange-500/10'
+                      : 'text-zinc-300 border-zinc-700 bg-zinc-800/50';
+                  return (
+                    <div
+                      key={seg.id}
+                      id={`seg-${seg.id}`}
+                      className={`flex gap-4 px-5 py-3 transition-colors ${tint || 'hover:bg-zinc-800/30'}`}
+                    >
+                      <span className="text-zinc-300 text-xs font-mono shrink-0 w-12 pt-0.5">{formatTime(seg.startTime)}</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
+                          <SpeakerAvatar
+                            speakerId={seg.speakerId}
+                            name={seg.speakerName}
+                            color={seg.speakerColor}
+                            imagePath={seg.speakerImagePath}
+                            size={22}
+                          />
+                          <Link to={`/speaker/${seg.speakerId}`}
+                            className="text-white text-sm font-medium hover:text-blue-400 transition-colors">
+                            {seg.speakerName}
+                          </Link>
+                          <span className="text-zinc-200 text-xs font-mono">→ {formatTime(seg.endTime)}</span>
+                          {flagged && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-mono uppercase tracking-wider text-orange-300">
+                              <ShieldAlert className="w-3 h-3" />
+                              Coded
+                            </span>
+                          )}
+                          {hasScore && (
+                            <span className={`ml-auto text-[10px] font-mono px-1.5 py-0.5 rounded border ${scoreColor}`}>
+                              {(seg.suspicionScore ?? 0).toFixed(2)}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-zinc-200 text-sm leading-relaxed">
+                          {highlightText(seg.text, searchQuery)}
+                        </p>
+                        {hasScore && seg.subScores && (
+                          <div className="mt-2 max-w-md">
+                            <SubScoresBar scores={seg.subScores} compact={!flagged} height={flagged ? 6 : 3} />
+                          </div>
+                        )}
                       </div>
-                      <p className="text-zinc-400 text-sm leading-relaxed">
-                        {highlightText(seg.text, searchQuery)}
-                      </p>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -187,7 +260,7 @@ export default function TranscriptView() {
           {/* Summary */}
           <div className="bg-zinc-900 border border-zinc-800 rounded-md">
             <div className="px-5 py-3.5 border-b border-zinc-800">
-              <span className="text-zinc-400 text-xs font-mono uppercase tracking-widest">Summary</span>
+              <span className="text-zinc-200 text-xs font-mono uppercase tracking-widest">Summary</span>
             </div>
             <div className="px-5 py-4 space-y-3">
               {[
@@ -197,31 +270,113 @@ export default function TranscriptView() {
                 { label: 'Uploaded by', value: audio.uploadedBy || '—' },
               ].map(({ label, value }) => (
                 <div key={label} className="flex items-center justify-between">
-                  <span className="text-zinc-600 text-xs uppercase tracking-wider">{label}</span>
+                  <span className="text-zinc-200 text-xs uppercase tracking-wider">{label}</span>
                   <span className="text-zinc-300 text-xs font-mono">{value}</span>
                 </div>
               ))}
             </div>
           </div>
 
+          {/* Suspicion summary — only render if at least one segment was scored */}
+          {(() => {
+            const scored = segments.filter(s => s.suspicionScore != null);
+            if (scored.length === 0) return null;
+            const flaggedSegs = scored.filter(s => (s.suspicionScore ?? 0) > 0.65);
+            const maxSeg = scored.reduce<SegmentRecord | null>(
+              (acc, s) => (acc === null || (s.suspicionScore ?? 0) > (acc.suspicionScore ?? 0)) ? s : acc,
+              null,
+            );
+            const maxScore = maxSeg?.suspicionScore ?? 0;
+            // Dominant signal across the audio = highest mean over flagged segs (or all if none flagged).
+            const base = flaggedSegs.length ? flaggedSegs : scored;
+            const sums = { a: 0, b: 0, c: 0, d: 0 } as SubScores;
+            let n = 0;
+            for (const s of base) {
+              if (!s.subScores) continue;
+              n++;
+              sums.a = (sums.a ?? 0) + (s.subScores.a ?? 0);
+              sums.b = (sums.b ?? 0) + (s.subScores.b ?? 0);
+              sums.c = (sums.c ?? 0) + (s.subScores.c ?? 0);
+              sums.d = (sums.d ?? 0) + (s.subScores.d ?? 0);
+            }
+            const avg = n ? { a: (sums.a ?? 0) / n, b: (sums.b ?? 0) / n, c: (sums.c ?? 0) / n, d: (sums.d ?? 0) / n } : null;
+            const dom = dominantSignal(avg);
+            const flaggedTextColor = maxScore > 0.80 ? 'text-red-300' : maxScore > 0.65 ? 'text-orange-300' : 'text-zinc-300';
+            return (
+              <div className="bg-zinc-900 border border-zinc-800 rounded-md">
+                <div className="flex items-center gap-2 px-5 py-3.5 border-b border-zinc-800">
+                  <Sparkles className="w-3.5 h-3.5 text-orange-300" />
+                  <span className="text-zinc-200 text-xs font-mono uppercase tracking-widest">Coded-Language</span>
+                </div>
+                <div className="px-5 py-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-zinc-200 text-xs uppercase tracking-wider">Suspicious segments</span>
+                    <span className={`text-sm font-mono ${flaggedSegs.length ? 'text-orange-300' : 'text-zinc-300'}`}>
+                      {flaggedSegs.length} / {scored.length}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-zinc-200 text-xs uppercase tracking-wider">Max score</span>
+                    <span className={`text-sm font-mono ${flaggedTextColor}`}>
+                      {maxScore.toFixed(2)}
+                    </span>
+                  </div>
+                  {dom && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-zinc-200 text-xs uppercase tracking-wider">Dominant signal</span>
+                      <span className="text-zinc-300 text-xs font-mono">{dom}</span>
+                    </div>
+                  )}
+                  {avg && (
+                    <div className="pt-1">
+                      <SubScoresBar scores={avg} compact={false} height={6} />
+                    </div>
+                  )}
+                  <div className="pt-1 flex gap-2">
+                    {maxSeg && (
+                      <a
+                        href={`#seg-${maxSeg.id}`}
+                        className="flex-1 text-center px-2 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-[11px] font-mono rounded transition-colors"
+                      >
+                        Jump to top hit
+                      </a>
+                    )}
+                    <Link
+                      to="/alerts?category=coded_language"
+                      className="flex-1 text-center px-2 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-[11px] font-mono rounded transition-colors"
+                    >
+                      All alerts →
+                    </Link>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
           {/* Participants */}
           <div className="bg-zinc-900 border border-zinc-800 rounded-md">
             <div className="flex items-center gap-2 px-5 py-3.5 border-b border-zinc-800">
-              <User className="w-3.5 h-3.5 text-zinc-600" />
-              <span className="text-zinc-400 text-xs font-mono uppercase tracking-widest">Participants</span>
+              <User className="w-3.5 h-3.5 text-zinc-200" />
+              <span className="text-zinc-200 text-xs font-mono uppercase tracking-widest">Participants</span>
             </div>
             {participants.length === 0 ? (
-              <p className="text-zinc-600 text-sm px-5 py-4">No speakers detected.</p>
+              <p className="text-zinc-200 text-sm px-5 py-4">No speakers detected.</p>
             ) : (
               <div className="divide-y divide-zinc-800">
                 {participants.map((p) => (
                   <Link key={p.id} to={`/speaker/${p.id}`}
                     className="flex items-center justify-between px-5 py-3 hover:bg-zinc-800/50 transition-colors">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: p.color }} />
-                      <span className="text-zinc-300 text-sm">{p.name}</span>
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <SpeakerAvatar
+                        speakerId={p.id}
+                        name={p.name}
+                        color={p.color}
+                        imagePath={p.imagePath}
+                        size={26}
+                      />
+                      <span className="text-zinc-200 text-sm truncate">{p.name}</span>
                     </div>
-                    <span className="text-zinc-600 text-xs font-mono">{p.turns} turns</span>
+                    <span className="text-zinc-200 text-xs font-mono shrink-0">{p.turns} turns</span>
                   </Link>
                 ))}
               </div>

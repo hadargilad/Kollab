@@ -1,23 +1,28 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { FileAudio, Users, AlertTriangle, TrendingUp, Clock, ArrowRight, HardDrive, Database, Activity } from 'lucide-react';
-import { audios, speakers, alerts, stats, type AudioRecord, type SpeakerRecord, type AlertRecord, type SystemStats } from '../lib/api';
+import { FileAudio, Users, AlertTriangle, TrendingUp, Clock, ArrowRight, Radar } from 'lucide-react';
+import { audios, speakers, alerts, type AudioRecord, type SpeakerRecord, type AlertRecord } from '../lib/api';
 
 export default function Dashboard() {
   const [uploadList, setUploadList] = useState<AudioRecord[]>([]);
   const [speakerList, setSpeakerList] = useState<SpeakerRecord[]>([]);
   const [alertList, setAlertList] = useState<AlertRecord[]>([]);
-  const [systemStats, setSystemStats] = useState<SystemStats | null>(null);
+  const [codedList, setCodedList] = useState<AlertRecord[]>([]);
   const [, setLoading] = useState(true);
   const alertsRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    Promise.all([audios.list(), speakers.list(), alerts.list(), stats.get()])
-      .then(([a, s, al, st]) => {
+    Promise.all([
+      audios.list(),
+      speakers.list(),
+      alerts.list(),
+      alerts.list({ category: 'coded_language' }),
+    ])
+      .then(([a, s, al, cl]) => {
         setUploadList(a);
         setSpeakerList(s);
         setAlertList(al);
-        setSystemStats(st);
+        setCodedList(cl);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -25,13 +30,6 @@ export default function Dashboard() {
 
   const processedCount = uploadList.filter(u => u.status === 'processed').length;
   const recentUploads = uploadList.slice(0, 4);
-
-  const formatBytes = (bytes: number) => {
-    if (bytes >= 1_073_741_824) return `${(bytes / 1_073_741_824).toFixed(1)} GB`;
-    if (bytes >= 1_048_576)     return `${(bytes / 1_048_576).toFixed(1)} MB`;
-    if (bytes >= 1_024)         return `${(bytes / 1_024).toFixed(0)} KB`;
-    return `${bytes} B`;
-  };
 
   const formatDuration = (seconds: number) => {
     if (!seconds) return '—';
@@ -71,11 +69,11 @@ export default function Dashboard() {
     <div className="p-6 space-y-6">
       {/* Page header */}
       <div>
-        <div className="text-zinc-600 text-[10px] font-mono uppercase tracking-widest mb-1">
+        <div className="text-zinc-200 text-[10px] font-mono uppercase tracking-widest mb-1">
           Intel Operations
         </div>
         <h1 className="text-white text-2xl font-bold tracking-tight">Dashboard</h1>
-        <p className="text-zinc-500 text-sm mt-0.5">Real-time audio analysis overview</p>
+        <p className="text-zinc-300 text-sm mt-0.5">Real-time audio analysis overview</p>
       </div>
 
       {/* KPI row */}
@@ -92,7 +90,7 @@ export default function Dashboard() {
             </span>
           </div>
           <div className="text-white text-3xl font-bold font-mono">{uploadList.length}</div>
-          <div className="text-zinc-500 text-xs mt-1 flex items-center gap-1">
+          <div className="text-zinc-300 text-xs mt-1 flex items-center gap-1">
             Audio Files
             <ArrowRight className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity ml-0.5" />
           </div>
@@ -106,7 +104,7 @@ export default function Dashboard() {
             <Users className="w-5 h-5 text-purple-500" />
           </div>
           <div className="text-white text-3xl font-bold font-mono">{speakerList.length}</div>
-          <div className="text-zinc-500 text-xs mt-1 flex items-center gap-1">
+          <div className="text-zinc-300 text-xs mt-1 flex items-center gap-1">
             Identified Speakers
             <ArrowRight className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity ml-0.5" />
           </div>
@@ -128,7 +126,7 @@ export default function Dashboard() {
             )}
           </div>
           <div className="text-white text-3xl font-bold font-mono">{alertList.length}</div>
-          <div className="text-zinc-500 text-xs mt-1 flex items-center gap-1">
+          <div className="text-zinc-300 text-xs mt-1 flex items-center gap-1">
             Pending Alerts
             {alertList.length > 0 && (
               <ArrowRight className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity ml-0.5" />
@@ -137,33 +135,13 @@ export default function Dashboard() {
         </button>
       </div>
 
-      {/* System health */}
-      {systemStats && (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          {[
-            { icon: Users,     color: 'text-blue-400',    value: systemStats.totalUsers,                label: 'Registered Users' },
-            { icon: HardDrive, color: 'text-purple-400',  value: formatBytes(systemStats.storageUsedBytes), label: 'Storage Used' },
-            { icon: Database,  color: systemStats.dbStatus ? 'text-emerald-400' : 'text-red-400',
-              value: systemStats.dbStatus ? 'Online' : 'Error', label: 'Database' },
-            { icon: Activity,  color: 'text-cyan-400',    value: systemStats.uptime,                    label: 'Uptime' },
-          ].map(({ icon: Icon, color, value, label }) => (
-            <div key={label} className="bg-zinc-950 border border-zinc-900 rounded-md px-4 py-3 flex items-center gap-3">
-              <Icon className={`w-4 h-4 ${color} shrink-0`} />
-              <div className="min-w-0">
-                <div className={`font-mono font-semibold text-sm truncate ${color}`}>{value}</div>
-                <div className="text-zinc-600 text-xs">{label}</div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
 
-      {/* Recent uploads + alerts */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      {/* Recent uploads + alerts + coded-language */}
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
         {/* Uploads */}
         <div className="lg:col-span-2 bg-zinc-900 border border-zinc-800 rounded-md">
           <div className="flex items-center justify-between px-5 py-3.5 border-b border-zinc-800">
-            <span className="text-zinc-400 text-xs font-mono uppercase tracking-widest">Recent Uploads</span>
+            <span className="text-zinc-200 text-xs font-mono uppercase tracking-widest">Recent Uploads</span>
             <Link
               to="/all-uploads"
               className="flex items-center gap-1.5 px-3 py-1 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-xs rounded transition-colors"
@@ -175,7 +153,7 @@ export default function Dashboard() {
           {recentUploads.length === 0 ? (
             <div className="text-center py-10">
               <FileAudio className="w-8 h-8 text-zinc-800 mx-auto mb-3" />
-              <p className="text-zinc-600 text-sm">No uploads yet.</p>
+              <p className="text-zinc-200 text-sm">No uploads yet.</p>
             </div>
           ) : (
             <div className="divide-y divide-zinc-800">
@@ -186,15 +164,15 @@ export default function Dashboard() {
                   className="flex items-center justify-between px-5 py-3 hover:bg-zinc-800/50 transition-colors"
                 >
                   <div className="flex items-center gap-3 min-w-0">
-                    <FileAudio className="w-4 h-4 text-zinc-600 shrink-0" />
+                    <FileAudio className="w-4 h-4 text-zinc-200 shrink-0" />
                     <div className="min-w-0">
                       <div className="text-white text-sm truncate">{upload.name}</div>
-                      <div className="text-zinc-600 text-xs font-mono">{timeAgo(upload.uploadedAt)}</div>
+                      <div className="text-zinc-200 text-xs font-mono">{timeAgo(upload.uploadedAt)}</div>
                     </div>
                   </div>
                   <div className="flex items-center gap-4 shrink-0 ml-3">
-                    <span className="text-zinc-600 text-xs font-mono hidden sm:block">{formatDuration(upload.duration)}</span>
-                    <span className="text-zinc-600 text-xs hidden sm:block">{upload.speakerCount} spk</span>
+                    <span className="text-zinc-200 text-xs font-mono hidden sm:block">{formatDuration(upload.duration)}</span>
+                    <span className="text-zinc-200 text-xs hidden sm:block">{upload.speakerCount} spk</span>
                     <span className={`text-xs font-mono uppercase ${statusColor(upload.status)}`}>
                       {upload.status}
                     </span>
@@ -207,14 +185,17 @@ export default function Dashboard() {
 
         {/* Alerts */}
         <div ref={alertsRef} className="bg-zinc-900 border border-zinc-800 rounded-md scroll-mt-6">
-          <div className="px-5 py-3.5 border-b border-zinc-800">
-            <span className="text-zinc-400 text-xs font-mono uppercase tracking-widest">Alerts</span>
+          <div className="px-5 py-3.5 border-b border-zinc-800 flex items-center justify-between">
+            <span className="text-zinc-200 text-xs font-mono uppercase tracking-widest">Alerts</span>
+            <Link to="/alerts" className="text-blue-400 hover:text-blue-300 text-[11px] font-mono transition-colors">
+              View all →
+            </Link>
           </div>
 
           {alertList.length === 0 ? (
             <div className="text-center py-10">
               <AlertTriangle className="w-8 h-8 text-zinc-800 mx-auto mb-3" />
-              <p className="text-zinc-600 text-sm">No active alerts.</p>
+              <p className="text-zinc-200 text-sm">No active alerts.</p>
             </div>
           ) : (
             <div className="divide-y divide-zinc-800">
@@ -226,10 +207,59 @@ export default function Dashboard() {
                   <AlertTriangle className={`w-3.5 h-3.5 mt-0.5 shrink-0 ${alertIcon(alert.type)}`} />
                   <div className="min-w-0">
                     <p className="text-zinc-300 text-xs leading-relaxed">{alert.message}</p>
-                    <p className="text-zinc-600 text-[10px] font-mono mt-1">{timeAgo(alert.createdAt)}</p>
+                    <p className="text-zinc-200 text-[10px] font-mono mt-1">{timeAgo(alert.createdAt)}</p>
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+        </div>
+
+        {/* Coded-language hits — sits in the same row, matches the Alerts shape */}
+        <div className="bg-zinc-900 border border-zinc-800 rounded-md">
+          <div className="px-5 py-3.5 border-b border-zinc-800 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <Radar className="w-3.5 h-3.5 text-orange-300 shrink-0" />
+              <span className="text-zinc-200 text-xs font-mono uppercase tracking-widest truncate">Coded-Language</span>
+            </div>
+            <Link to="/alerts?category=coded_language" className="text-blue-400 hover:text-blue-300 text-[11px] font-mono transition-colors shrink-0">
+              View all →
+            </Link>
+          </div>
+
+          {codedList.length === 0 ? (
+            <div className="text-center py-10">
+              <Radar className="w-8 h-8 text-zinc-800 mx-auto mb-3" />
+              <p className="text-zinc-200 text-sm">No detections.</p>
+              <p className="text-zinc-300 text-xs mt-1">Flags fire above 0.65.</p>
+            </div>
+          ) : (
+            <div className="divide-y divide-zinc-800">
+              {codedList.slice(0, 5).map((a) => {
+                const combined = a.subScores
+                  ? 0.30 * (a.subScores.a ?? 0) + 0.20 * (a.subScores.b ?? 0)
+                    + 0.25 * (a.subScores.c ?? 0) + 0.25 * (a.subScores.d ?? 0)
+                  : 0;
+                const tint = combined > 0.80 ? 'border-l-red-500 bg-red-500/4' : 'border-l-orange-500 bg-orange-500/4';
+                const scoreColor = combined > 0.80 ? 'text-red-300' : 'text-orange-300';
+                return (
+                  <Link
+                    key={a.id}
+                    to={a.audioId && a.segmentId
+                      ? `/transcript/${a.audioId}#seg-${a.segmentId}`
+                      : a.audioId ? `/transcript/${a.audioId}` : '/alerts'}
+                    className={`flex items-start gap-3 px-5 py-3 border-l-2 hover:bg-zinc-800/40 transition-colors ${tint}`}
+                  >
+                    <Radar className={`w-3.5 h-3.5 mt-0.5 shrink-0 ${scoreColor}`} />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-zinc-300 text-xs leading-relaxed line-clamp-2">{a.message}</p>
+                      <p className="text-zinc-200 text-[10px] font-mono mt-1">
+                        <span className={scoreColor}>{combined.toFixed(2)}</span> · {timeAgo(a.createdAt)}
+                      </p>
+                    </div>
+                  </Link>
+                );
+              })}
             </div>
           )}
         </div>

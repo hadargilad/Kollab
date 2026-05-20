@@ -27,6 +27,9 @@ import database
 import matcher
 from enrichment_provider import ProviderNotConfiguredError
 import enrichment_providers
+import nlp
+from nlp import euphemism_expansion as _euphemism_expansion
+from nlp import models as _nlp_models
 
 ML_URL = os.getenv("ML_API_URL", "http://127.0.0.1:8000")
 
@@ -51,6 +54,20 @@ app.add_middleware(
 )
 
 database.init_db()
+
+
+@app.on_event("startup")
+async def _nlp_startup() -> None:
+    """Seed the euphemism dictionary on first boot and warm up NLP models in
+    the background so uvicorn comes up immediately."""
+    try:
+        _euphemism_expansion.ensure_seeds_loaded()
+    except Exception:
+        # Non-fatal: NLP deps may not be installed yet on a stripped backend.
+        import logging
+        logging.exception("[nlp] seed load failed")
+    asyncio.get_event_loop().run_in_executor(None, _nlp_models.warm_up)
+
 
 # In-memory step tracker: audio_id → {pct, label}
 _audio_progress: dict[int, dict] = {}
@@ -102,16 +119,48 @@ class DangerousWordIn(BaseModel):
     created_by: Optional[int] = None
 
 
+class EuphemismIn(BaseModel):
+    phrase: str
+    severity: str = "high"
+    created_by: Optional[int] = None
+
+
 class CreateGroupRequest(BaseModel):
     name: str
     color: str = "#6366f1"
+    parentGroupId: Optional[int] = None
+    description: Optional[str] = None
 
 class UpdateGroupRequest(BaseModel):
     name: str
     color: str = "#6366f1"
+    parentGroupId: Optional[int] = None
+    description: Optional[str] = None
 
 class AddGroupMemberRequest(BaseModel):
     speaker_id: int
+
+
+class BatchMembersRequest(BaseModel):
+    speaker_ids: list[int]
+
+
+class BatchDeleteRequest(BaseModel):
+    ids: list[int]
+
+
+class AssignmentIn(BaseModel):
+    analystUserId: int
+    groupId: int
+
+
+def _resolve_caller(user_id: Optional[int]) -> tuple[Optional[int], bool]:
+    """Returns (user_id, is_admin). Missing user_id is treated as admin for
+    backwards-compat with screens that haven't yet been wired to setApiUser."""
+    if user_id is None:
+        return None, True
+    role = database.get_user_role(user_id)
+    return user_id, (role == "Admin")
 
 
 # ─── Health ───────────────────────────────────────────────────────────────────
@@ -330,6 +379,14 @@ async def _run_ml_and_save(audio_id: int, save_path: Path, original_name: str) -
     database.clear_segments(audio_id)
     if segments_to_insert:
         database.insert_segments(segments_to_insert)
+        # NLP pipeline. Order: embeddings + scoring first, then substring scan.
+        # Wrapped in try/except so a model error never marks the audio as failed.
+        # TODO(ofek): extract_and_resolve_entities(audio_id) goes between these two.
+        try:
+            await asyncio.to_thread(nlp.score_coded_language, audio_id)
+        except Exception:
+            import logging
+            logging.exception("score_coded_language failed for audio %s", audio_id)
         _scan_for_dangerous_words(audio_id)
 
     for unknown_id, suggested_id, conf in pending_suggestions:
@@ -375,15 +432,19 @@ async def upload_audio(
 
 
 @app.get("/audios")
-def list_audios():
-    return database.get_all_audios()
+def list_audios(user_id: Optional[int] = None):
+    uid, is_admin = _resolve_caller(user_id)
+    return database.get_audios_for_user(uid, is_admin)
 
 
 @app.get("/audios/{audio_id}")
-def get_audio(audio_id: int):
+def get_audio(audio_id: int, user_id: Optional[int] = None):
     audio = database.get_audio(audio_id)
     if not audio:
         raise HTTPException(status_code=404, detail="Audio not found.")
+    uid, is_admin = _resolve_caller(user_id)
+    if not is_admin and uid is not None and not database.user_can_see_audio(uid, False, audio_id):
+        raise HTTPException(status_code=403, detail="This audio is outside your assigned projects.")
     return audio
 
 
@@ -399,6 +460,26 @@ def delete_audio(audio_id: int):
     except Exception:
         pass
     return {"success": ok}
+
+
+@app.post("/audios/batch-delete")
+def batch_delete_audios(body: BatchDeleteRequest):
+    deleted: list[int] = []
+    failed: list[dict] = []
+    for aid in body.ids:
+        audio = database.get_audio(aid)
+        if not audio:
+            failed.append({"id": aid, "reason": "not found"})
+            continue
+        if database.delete_audio(aid):
+            try:
+                Path(audio["filePath"]).unlink(missing_ok=True)
+            except Exception:
+                pass
+            deleted.append(aid)
+        else:
+            failed.append({"id": aid, "reason": "delete failed"})
+    return {"deleted": deleted, "failed": failed}
 
 
 @app.get("/audios/{audio_id}/file")
@@ -433,7 +514,10 @@ async def retry_audio(audio_id: int, background_tasks: BackgroundTasks):
 
 
 @app.get("/audios/{audio_id}/segments")
-def get_segments(audio_id: int):
+def get_segments(audio_id: int, user_id: Optional[int] = None):
+    uid, is_admin = _resolve_caller(user_id)
+    if not is_admin and uid is not None and not database.user_can_see_audio(uid, False, audio_id):
+        raise HTTPException(status_code=403, detail="This audio is outside your assigned projects.")
     return database.get_segments_by_audio(audio_id)
 
 
@@ -445,8 +529,9 @@ def get_audio_alerts(audio_id: int):
 # ─── Speakers ─────────────────────────────────────────────────────────────────
 
 @app.get("/speakers")
-def list_speakers():
-    return database.get_all_speakers()
+def list_speakers(user_id: Optional[int] = None):
+    uid, is_admin = _resolve_caller(user_id)
+    return database.get_speakers_for_user(uid, is_admin)
 
 
 @app.get("/speakers/{speaker_id}")
@@ -463,6 +548,128 @@ def get_speaker_audios(speaker_id: int):
     if not spk:
         raise HTTPException(status_code=404, detail="Speaker not found.")
     return database.get_audios_for_speaker(speaker_id)
+
+
+# Speaker pictures live inside STORAGE_DIR/speaker_images/ so they share the
+# same on-disk root as audio uploads. We accept jpg/png/webp.
+_SPEAKER_IMG_DIR = STORAGE_DIR / "speaker_images"
+_SPEAKER_IMG_DIR.mkdir(parents=True, exist_ok=True)
+_ALLOWED_IMG_EXT = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
+
+
+def _attach_wikidata_image_if_needed(speaker_id: int) -> None:
+    """Best-effort: if this speaker has a Wikidata QID, no profile picture
+    yet, and the entity carries an image on Commons — download it and set it
+    as the speaker's avatar. Called after merges / confirmations so a freshly
+    identified person automatically gets the public-domain picture without
+    the analyst having to upload it manually.
+
+    Silent no-op on any of: speaker missing, image already set, no Wikidata id,
+    no image on the entity, or HTTP failure. We never block the user action
+    on this — it's pure enrichment.
+    """
+    import logging as _logging
+    try:
+        spk = database.get_speaker(speaker_id)
+        if not spk or spk.get("imagePath") or not spk.get("wikidataId"):
+            return
+        try:
+            provider = _provider_or_503()
+        except HTTPException:
+            return  # provider not configured — fine, skip
+        try:
+            cand = provider.lookup(spk["wikidataId"])
+        except ProviderNotConfiguredError:
+            return
+        if not cand or not cand.image_url:
+            return
+        url = cand.image_url
+        ext = Path(url.split("?", 1)[0]).suffix.lower()
+        if ext not in _ALLOWED_IMG_EXT:
+            # Wikidata Commons URLs usually end in .jpg/.png; fall back if the
+            # extension is weird (e.g. .svg, .tif) to keep the file servable.
+            ext = ".jpg"
+        try:
+            with httpx.Client(
+                timeout=15.0,
+                follow_redirects=True,
+                headers={"User-Agent": "AudioIntel/1.0 (profile image fetch)"},
+            ) as c:
+                r = c.get(url)
+        except httpx.HTTPError:
+            return
+        if r.status_code != 200 or not r.content:
+            return
+        fname = f"speaker_{speaker_id}_{uuid.uuid4().hex[:8]}{ext}"
+        dest = _SPEAKER_IMG_DIR / fname
+        dest.write_bytes(r.content)
+        database.set_speaker_image_path(speaker_id, fname)
+    except Exception:
+        _logging.exception("[wikidata image] failed for speaker %d", speaker_id)
+
+
+@app.post("/speakers/{speaker_id}/image", status_code=201)
+async def upload_speaker_image(speaker_id: int, file: UploadFile = File(...)):
+    spk = database.get_speaker(speaker_id)
+    if not spk:
+        raise HTTPException(status_code=404, detail="Speaker not found.")
+    ext = Path(file.filename or "").suffix.lower()
+    if ext not in _ALLOWED_IMG_EXT:
+        raise HTTPException(status_code=400, detail=f"Unsupported file type {ext or '(none)'}.")
+    # Remove an existing image so we don't leak stale files when ext changes.
+    if spk.get("imagePath"):
+        old = _SPEAKER_IMG_DIR / spk["imagePath"]
+        if old.exists():
+            try:
+                old.unlink()
+            except OSError:
+                pass
+    fname = f"speaker_{speaker_id}_{uuid.uuid4().hex[:8]}{ext}"
+    dest = _SPEAKER_IMG_DIR / fname
+    with dest.open("wb") as out:
+        shutil.copyfileobj(file.file, out)
+    database.set_speaker_image_path(speaker_id, fname)
+    return {"success": True, "imagePath": fname}
+
+
+@app.delete("/speakers/{speaker_id}/image")
+def delete_speaker_image(speaker_id: int):
+    spk = database.get_speaker(speaker_id)
+    if not spk:
+        raise HTTPException(status_code=404, detail="Speaker not found.")
+    if spk.get("imagePath"):
+        f = _SPEAKER_IMG_DIR / spk["imagePath"]
+        if f.exists():
+            try:
+                f.unlink()
+            except OSError:
+                pass
+    database.set_speaker_image_path(speaker_id, None)
+    return {"success": True}
+
+
+@app.get("/speakers/{speaker_id}/image")
+def get_speaker_image(speaker_id: int):
+    spk = database.get_speaker(speaker_id)
+    if not spk or not spk.get("imagePath"):
+        raise HTTPException(status_code=404, detail="No image for speaker.")
+    f = _SPEAKER_IMG_DIR / spk["imagePath"]
+    if not f.exists():
+        raise HTTPException(status_code=404, detail="Image file missing on disk.")
+    return FileResponse(str(f))
+
+
+class SpeakerTrackedRequest(BaseModel):
+    untracked: bool
+
+
+@app.put("/speakers/{speaker_id}/tracked")
+def set_speaker_tracked(speaker_id: int, body: SpeakerTrackedRequest):
+    spk = database.get_speaker(speaker_id)
+    if not spk:
+        raise HTTPException(status_code=404, detail="Speaker not found.")
+    database.set_speaker_untracked(speaker_id, body.untracked)
+    return database.get_speaker(speaker_id)
 
 
 class UpdateSpeakerRequest(BaseModel):
@@ -503,7 +710,9 @@ def reassign_speaker(audio_id: int, speaker_id: int, body: ReassignSpeakerReques
         # otherwise cascade-delete its SpeakerEmbeddings rows.
         database.move_embeddings(speaker_id, existing["id"])
         database.merge_speakers(speaker_id, existing["id"])
-        return result
+        # Wikidata-linked target may not have an avatar yet — pull one if so.
+        _attach_wikidata_image_if_needed(existing["id"])
+        return database.get_speaker(existing["id"]) or result
 
     new_speaker = database.reassign_speaker_in_audio(audio_id, speaker_id, new_name)
     if not new_speaker:
@@ -622,6 +831,45 @@ def delete_speaker_endpoint(speaker_id: int):
     return {"success": True}
 
 
+@app.post("/speakers/batch-delete")
+def batch_delete_speakers(body: BatchDeleteRequest):
+    deleted: list[int] = []
+    failed: list[dict] = []
+    for sid in body.ids:
+        if database.delete_speaker(sid):
+            deleted.append(sid)
+        else:
+            failed.append({"id": sid, "reason": "not found or delete failed"})
+    return {"deleted": deleted, "failed": failed}
+
+
+@app.get("/speakers/{speaker_id}/match-suggestions")
+def speaker_match_suggestions(speaker_id: int, limit: int = 5):
+    """Co-occurring named speakers ranked by voice-embedding similarity to the
+    queried (usually unknown) speaker. Used to power the auto-suggest panel
+    in the rename / reassign flows."""
+    if not database.get_speaker(speaker_id):
+        raise HTTPException(status_code=404, detail="Speaker not found.")
+    candidate_ids = database.get_cooccurring_named_speaker_ids(speaker_id)
+    if not candidate_ids:
+        return []
+    ranked = matcher.rank_candidates(speaker_id, candidate_ids)[: max(0, limit)]
+    out = []
+    for sid, conf in ranked:
+        spk = database.get_speaker(sid)
+        if not spk:
+            continue
+        out.append({
+            "id": spk["id"],
+            "name": spk["name"],
+            "color": spk["color"],
+            "imagePath": spk.get("imagePath"),
+            "riskLevel": spk["riskLevel"],
+            "confidence": conf,
+        })
+    return out
+
+
 @app.put("/speakers/{speaker_id}")
 def update_speaker(speaker_id: int, body: UpdateSpeakerRequest):
     new_name = body.name.strip()
@@ -645,6 +893,8 @@ def update_speaker(speaker_id: int, body: UpdateSpeakerRequest):
         database.move_embeddings(speaker_id, target["id"])
         if not database.merge_speakers(speaker_id, target["id"]):
             raise HTTPException(status_code=500, detail="Speaker merge failed.")
+        # Best-effort: if the target is Wikidata-linked without a photo yet, pull one.
+        _attach_wikidata_image_if_needed(target["id"])
         return {"success": True, "merged": True, "mergedIntoId": target["id"], "mergedIntoName": target["name"]}
 
     ok = database.update_speaker(speaker_id, new_name, body.riskLevel)
@@ -756,6 +1006,8 @@ def enrichment_confirm(speaker_id: int, body: ConfirmEntityRequest):
         database.set_wikidata_id(speaker_id, body.entityId)
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e))
+    # Best-effort: pull the Wikidata image onto the profile if there isn't one.
+    _attach_wikidata_image_if_needed(speaker_id)
     return {
         "success": True,
         "speakerId": speaker_id,
@@ -836,6 +1088,9 @@ async def enrichment_link(
             raise HTTPException(status_code=409, detail=str(e))
 
     database.upsert_relation(speaker_id, new_speaker_id, topic="wikidata")
+    # Whether reused or freshly enrolled, the speaker now carries a Wikidata id.
+    # Pull the avatar from Commons if one isn't set yet.
+    _attach_wikidata_image_if_needed(new_speaker_id)
     return {"newSpeakerId": new_speaker_id, "reused": reused}
 
 
@@ -862,6 +1117,8 @@ def accept_suggestion(audio_id: int, suggestion_id: int):
     if not database.merge_speakers(unknown_id, target_id):
         raise HTTPException(status_code=500, detail="Failed to merge speakers.")
     database.delete_suggestion(suggestion_id)
+    # If the target is already linked to Wikidata, pull the picture if missing.
+    _attach_wikidata_image_if_needed(target_id)
     return {"success": True, "mergedIntoId": target_id}
 
 
@@ -889,7 +1146,12 @@ def list_groups():
 
 @app.post("/groups", status_code=201)
 def create_group(body: CreateGroupRequest):
-    group_id = database.create_group(body.name, body.color)
+    try:
+        group_id = database.create_group(
+            body.name, body.color, body.parentGroupId, body.description
+        )
+    except database.GroupHierarchyError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     groups = {g["id"]: g for g in database.get_all_groups()}
     group = groups.get(group_id)
     if not group:
@@ -898,7 +1160,12 @@ def create_group(body: CreateGroupRequest):
 
 @app.put("/groups/{group_id}")
 def update_group(group_id: int, body: UpdateGroupRequest):
-    ok = database.update_group(group_id, body.name, body.color)
+    try:
+        ok = database.update_group(
+            group_id, body.name, body.color, body.parentGroupId, body.description
+        )
+    except database.GroupHierarchyError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     if not ok:
         raise HTTPException(status_code=404, detail="Group not found.")
     groups = {g["id"]: g for g in database.get_all_groups()}
@@ -910,6 +1177,23 @@ def delete_group(group_id: int):
     if not ok:
         raise HTTPException(status_code=404, detail="Group not found.")
     return {"success": True}
+
+@app.post("/groups/{group_id}/members/batch", status_code=201)
+def add_group_members_batch(group_id: int, body: BatchMembersRequest):
+    added: list[int] = []
+    skipped: list[int] = []
+    for sid in body.speaker_ids:
+        try:
+            database.add_group_member(group_id, sid)
+            added.append(sid)
+        except Exception:
+            skipped.append(sid)
+    groups = {g["id"]: g for g in database.get_all_groups()}
+    group = groups.get(group_id)
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found.")
+    return {"group": group, "added": added, "skipped": skipped}
+
 
 @app.post("/groups/{group_id}/members", status_code=201)
 def add_group_member(group_id: int, body: AddGroupMemberRequest):
@@ -940,11 +1224,76 @@ def get_bridges(groupA: int, groupB: int):
     return {"groupA": group_a, "groupB": group_b, "bridges": bridges}
 
 
+# ─── Projects (top-level groups) ──────────────────────────────────────────────
+
+@app.get("/projects")
+def list_projects(user_id: Optional[int] = None):
+    uid, is_admin = _resolve_caller(user_id)
+    return database.list_projects(user_id=uid, is_admin=is_admin)
+
+
+@app.get("/projects/{project_id}")
+def get_project(project_id: int, user_id: Optional[int] = None):
+    detail = database.get_project_detail(project_id)
+    if not detail:
+        raise HTTPException(status_code=404, detail="Project not found.")
+    uid, is_admin = _resolve_caller(user_id)
+    if not is_admin and uid is not None:
+        visible = database.get_visible_group_ids(uid)
+        # Project visible iff caller is assigned to it or any of its subgroups.
+        sub_ids = {sg["id"] for sg in detail["subgroups"]}
+        if project_id not in visible and not (sub_ids & visible):
+            raise HTTPException(status_code=403, detail="Project outside your assignments.")
+    return detail
+
+
+# ─── Project Assignments ──────────────────────────────────────────────────────
+
+@app.get("/assignments")
+def list_assignments(
+    project_id: Optional[int] = None,
+    user_id: Optional[int] = None,
+    group_id: Optional[int] = None,
+):
+    return database.list_assignments(group_id=group_id, user_id=user_id, project_id=project_id)
+
+
+@app.post("/assignments", status_code=201)
+def create_assignment(body: AssignmentIn):
+    try:
+        row = database.add_assignment(body.analystUserId, body.groupId)
+    except database.AssignmentError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if row is None:
+        raise HTTPException(status_code=409, detail="Assignment already exists.")
+    return row
+
+
+@app.delete("/assignments/{assignment_id}")
+def delete_assignment(assignment_id: int):
+    ok = database.remove_assignment(assignment_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Assignment not found.")
+    return {"success": True}
+
+
+# ─── User helpers (analyst list) ──────────────────────────────────────────────
+
+@app.get("/users")
+def list_users(role: Optional[str] = None):
+    return database.list_users_by_role(role=role)
+
+
 # ─── Alerts ───────────────────────────────────────────────────────────────────
 
 @app.get("/alerts")
-def list_alerts():
-    return database.get_all_alerts()
+def list_alerts(category: Optional[str] = None, user_id: Optional[int] = None):
+    """Unified alerts list. `category` optional filter:
+    'coded_language' or 'dangerous_word' (or omitted for all)."""
+    if category and category not in ("coded_language", "dangerous_word"):
+        raise HTTPException(status_code=400, detail="Unknown category.")
+    uid, is_admin = _resolve_caller(user_id)
+    return database.get_alerts_for_user(uid, is_admin, category=category)
 
 
 # ─── Dangerous Words ──────────────────────────────────────────────────────────
@@ -973,6 +1322,74 @@ def delete_dangerous_word(word_id: int):
     if not ok:
         raise HTTPException(status_code=404, detail="Word not found.")
     return {"success": True}
+
+
+# ─── Euphemisms (Ofir — coded-language dictionary) ────────────────────────────
+
+@app.get("/euphemisms")
+def list_euphemisms():
+    return database.list_euphemisms()
+
+
+@app.post("/euphemisms", status_code=201)
+def add_euphemism(body: EuphemismIn):
+    phrase = body.phrase.strip()
+    if not phrase:
+        raise HTTPException(status_code=400, detail="phrase cannot be empty.")
+    if body.severity not in ("low", "medium", "high"):
+        raise HTTPException(status_code=400, detail="severity must be low, medium, or high.")
+    # Pre-embed so Signal D doesn't pay the cost on its first scoring run
+    embedding = None
+    embedding_model = None
+    try:
+        embed = _nlp_models.get_embed_model()
+        vec = embed.encode([phrase], show_progress_bar=False, normalize_embeddings=True)
+        embedding = np.asarray(vec, dtype=np.float32)[0]
+        embedding_model = _nlp_models.EMBED_MODEL_NAME
+    except Exception:
+        import logging
+        logging.exception("euphemism pre-embed failed; storing without vector")
+    row = database.add_euphemism(
+        phrase=phrase,
+        severity=body.severity,
+        auto_learned=False,
+        confidence=None,
+        embedding=embedding,
+        embedding_model=embedding_model,
+        created_by=body.created_by,
+    )
+    if row is None:
+        raise HTTPException(status_code=409, detail="Phrase already exists.")
+    return row
+
+
+@app.delete("/euphemisms/{euph_id}")
+def delete_euphemism(euph_id: int):
+    ok = database.delete_euphemism(euph_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Euphemism not found.")
+    return {"success": True}
+
+
+@app.post("/euphemisms/expand")
+async def expand_euphemisms():
+    """Run the bootstrap expansion algorithm on the current corpus + seeds.
+    Sync from the caller's perspective but uses a thread so the event loop
+    isn't blocked while sklearn fits and embeds candidates."""
+    return await asyncio.to_thread(_euphemism_expansion.expand_euphemisms)
+
+
+@app.post("/audios/{audio_id}/rescore-coded-language")
+async def rescore_coded_language(audio_id: int):
+    """Dev/debug: re-run coded-language scoring on existing segments without
+    re-uploading. Handy when iterating on signal weights."""
+    if database.get_audio(audio_id) is None:
+        raise HTTPException(status_code=404, detail="Audio not found.")
+    try:
+        await asyncio.to_thread(nlp.score_coded_language, audio_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Rescoring failed: {e}")
+    return {"success": True, "audioId": audio_id}
 
 
 if __name__ == "__main__":

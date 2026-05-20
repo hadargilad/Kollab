@@ -69,7 +69,7 @@ export default function StartupScreen({ onReady }: Props) {
 
       <div className="relative flex flex-col items-center gap-8 w-full max-w-xs">
         {/* Boot header */}
-        <div className="text-center text-zinc-700 font-mono text-[10px] uppercase tracking-widest w-full">
+        <div className="text-center text-zinc-300 font-mono text-[10px] uppercase tracking-widest w-full">
           AUDIOINTEL v2.0 // SECURE BOOT
         </div>
 
@@ -80,7 +80,7 @@ export default function StartupScreen({ onReady }: Props) {
             <h1 className="text-white text-2xl font-bold tracking-tight">
               Kol<span className="text-blue-400">L</span>ab
             </h1>
-            <p className="text-zinc-600 text-xs font-mono uppercase tracking-widest mt-0.5">
+            <p className="text-zinc-200 text-xs font-mono uppercase tracking-widest mt-0.5">
               Intelligence Management Platform
             </p>
           </div>
@@ -104,7 +104,7 @@ export default function StartupScreen({ onReady }: Props) {
                   {active  && <Loader2 className="w-4 h-4 text-blue-400 animate-spin shrink-0" />}
                   {pending && <div className="w-4 h-4 rounded-full border border-zinc-700 shrink-0" />}
                   <span className={`text-xs font-mono ${
-                    done ? 'text-zinc-600' : active ? 'text-zinc-300' : 'text-zinc-700'
+                    done ? 'text-zinc-200' : active ? 'text-zinc-300' : 'text-zinc-300'
                   }`}>
                     {step.label}
                   </span>
@@ -115,7 +115,7 @@ export default function StartupScreen({ onReady }: Props) {
         )}
 
         {!failed && stepIndex === 0 && (
-          <p className="text-zinc-700 text-xs font-mono text-center">
+          <p className="text-zinc-300 text-xs font-mono text-center">
             Waiting for backend to start…
           </p>
         )}
@@ -124,7 +124,7 @@ export default function StartupScreen({ onReady }: Props) {
           <div className="w-full bg-red-500/5 border border-red-500/25 rounded-md p-5 text-center space-y-3">
             <AlertCircle className="w-7 h-7 text-red-500 mx-auto" />
             <p className="text-red-300 text-sm font-medium">Connection failed</p>
-            <p className="text-zinc-500 text-xs font-mono">
+            <p className="text-zinc-300 text-xs font-mono">
               Make sure Docker Desktop is running, then restart the app.
             </p>
             <button

@@ -35,7 +35,9 @@ plus on Windows the [WebView2 runtime](https://developer.microsoft.com/microsoft
 
 ```bash
 # one-time
-cd audio-intel-ui && npm install && cd ..
+cd audio-intel-ui
+npm install
+cd ..
 
 # every run
 npm run dev:ml
@@ -60,6 +62,41 @@ locally. Use `npm run dev` instead if you don't need the ML service yet.
 |---------|------------|------------|-------------------------------------|
 | Admin   | `admin`    | `Aa!12345` | Full access                         |
 | Analyst | `analyst`  | `1234`     | Must change password on first login |
+
+### Shared state — snapshot & restore
+
+Your local uploads, speakers, groups, alerts, etc. live in a SQLite DB +
+audio files inside the backend container's volume — none of which are
+committed by default. To share that state with teammates:
+
+```bash
+# On your machine, with the backend running:
+docker compose exec backend python -m scripts.snapshot
+
+git add Backend/snapshot/
+git commit -m "snapshot: <what changed>"
+git push
+```
+
+`snapshot.py` exports every Speaker / Audio / Segment / SpeakerEmbedding /
+Relation / SpeakerGroup / Alert / DangerousWord into
+`Backend/snapshot/state.json`, and copies the actual audio files into
+`Backend/snapshot/audios/`. Users are **not** included — each contributor
+keeps their own login. Project Assignments are also excluded (they reference
+user IDs that don't exist on a teammate's machine); re-assign analysts via
+the `/projects/<id>` page after restore.
+
+Teammates after `git pull` — stop the backend first so SQLite is unlocked:
+
+```bash
+docker compose stop backend
+docker compose run --rm backend python -m scripts.restore
+docker compose start backend
+```
+
+This wipes their snapshot-covered tables and replays your captured state into
+their backend volume — same audio files, transcripts, speakers, untracked
+flags, group memberships you had.
 
 ---
 

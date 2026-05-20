@@ -1,5 +1,6 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { setApiUser } from './lib/api';
 import Login from './components/Login';
 import Dashboard from './components/Dashboard';
 import AudioUpload from './components/AudioUpload';
@@ -13,6 +14,9 @@ import Layout from './components/Layout';
 import WaveformAnalysis from './components/WaveformAnalysis';
 import ProfileSearch from './components/ProfileSearch';
 import RelatedSpeakers from './components/RelatedSpeakers';
+import Alerts from './components/Alerts';
+import Projects from './components/Projects';
+import ProjectDetail from './components/ProjectDetail';
 import AllUploads from './components/AllUploads';
 import UserManagement from './components/UserManagement';
 import ForcePasswordChange from './components/ForcePasswordChange';
@@ -23,6 +27,11 @@ import type { AuthUser } from './lib/api';
 export default function App() {
   const [ready, setReady] = useState(false);
   const [user, setUser] = useState<AuthUser | null>(null);
+
+  // Keep api.ts's identity in sync — every list endpoint reads this to add user_id.
+  useEffect(() => {
+    setApiUser(user ? { id: user.id, role: user.role } : null);
+  }, [user]);
 
   if (!ready) return <StartupScreen onReady={() => setReady(true)} />;
 
@@ -81,6 +90,9 @@ export default function App() {
           <Route path="transcript/:id" element={<TranscriptView />} />
           <Route path="speaker/:id" element={<SpeakerProfile />} />
           <Route path="network" element={<NetworkGraph isAdmin={user?.role === 'Admin'} />} />
+          <Route path="projects" element={<Projects isAdmin={user?.role === 'Admin'} currentUserId={user?.id ?? 0} />} />
+          <Route path="projects/:id" element={<ProjectDetail isAdmin={user?.role === 'Admin'} />} />
+          <Route path="alerts" element={<Alerts />} />
           <Route path="identity" element={<IdentityMatching />} />
           <Route path="settings" element={<Settings isAdmin={user?.role === 'Admin'} />} />
           <Route path="profile-search" element={<ProfileSearch />} />

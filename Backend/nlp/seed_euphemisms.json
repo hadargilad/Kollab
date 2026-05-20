@@ -1,0 +1,64 @@
+{
+  "drugs": [
+    "candy",
+    "the goods",
+    "white horse",
+    "snow",
+    "powder",
+    "weed",
+    "the green",
+    "blow",
+    "molly",
+    "ice",
+    "horse",
+    "crystal",
+    "rocks",
+    "tina"
+  ],
+  "violence": [
+    "take care of him",
+    "take care of it",
+    "send a message",
+    "make him disappear",
+    "handle him",
+    "do the job",
+    "pay him a visit",
+    "settle the score",
+    "deal with him",
+    "silence him"
+  ],
+  "illicit_goods": [
+    "the package",
+    "make a delivery",
+    "the merchandise",
+    "the shipment",
+    "the load",
+    "the box",
+    "the cargo",
+    "the drop",
+    "the parcel"
+  ],
+  "money_launder": [
+    "wash it",
+    "clean it up",
+    "clean money",
+    "the books",
+    "off the books",
+    "under the table",
+    "the laundry",
+    "make it clean",
+    "move the funds",
+    "structure it"
+  ],
+  "people_coercion": [
+    "the friend",
+    "our guy",
+    "the man",
+    "the boss",
+    "the contact",
+    "the asset",
+    "the source",
+    "the supplier",
+    "the customer"
+  ]
+}
