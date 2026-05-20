@@ -15,23 +15,19 @@ backend + ML services.
 ### First-time setup after a fresh clone
 
 ```bash
-# 1. Build the backend image (installs Python deps incl. transformers + torch
-#    for the coded-language NLP pipeline). ~5 min on first build, cached after.
-docker compose build backend
-
-# 2. Bring up backend + ML
-docker compose up backend ml -d
-
-# 3. (Optional but recommended) Replay the shared demo dataset so you see
-#    the same Formula 1 audios, speakers, groups, and alerts everyone else has.
-#    Backend must be stopped while restore runs so SQLite is unlocked.
-docker compose stop backend
-docker compose run --rm backend python -m scripts.restore
-docker compose start backend
+# Build + start backend & ML in one go (~5 min on first build, cached after).
+docker compose up backend ml -d --build
 ```
 
-Step 3 only needs to run once (and again after a teammate pushes a fresh
-snapshot). Skip it if you'd rather start with an empty DB.
+To replay the shared demo dataset (same Formula 1 audios, speakers, groups,
+and alerts everyone else has) — one chained line:
+
+```bash
+docker compose stop backend && docker compose run --rm backend python -m scripts.restore && docker compose start backend
+```
+
+The restore needs the backend stopped so SQLite is unlocked; the `&&` chain
+restarts it for you. Skip it if you'd rather start with an empty DB.
 
 ### Day-to-day — web mode (everything in Docker)
 
