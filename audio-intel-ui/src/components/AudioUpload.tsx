@@ -21,13 +21,20 @@ interface Props {
   userId: number;
 }
 
+// <input type="datetime-local"> expects 'YYYY-MM-DDTHH:MM' in local time (no TZ).
+const nowLocalIso = () => {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
+
 export default function AudioUpload({ userId }: Props) {
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [dragActive, setDragActive] = useState(false);
   const { ready: mlReady } = useMlStatus();
   const [showFileDetailsModal, setShowFileDetailsModal] = useState(false);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
-  const [fileDetails, setFileDetails] = useState({ name: '', description: '', source: '', recordedAt: '' });
+  const [fileDetails, setFileDetails] = useState({ name: '', description: '', source: '', recordedAt: nowLocalIso() });
 
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
@@ -52,7 +59,7 @@ export default function AudioUpload({ userId }: Props) {
     setShowFileDetailsModal(true);
     setFileDetails({
       name: fileList.length === 1 ? fileList[0].name.replace(/\.[^/.]+$/, '') : '',
-      description: '', source: '', recordedAt: '',
+      description: '', source: '', recordedAt: nowLocalIso(),
     });
   };
 
@@ -125,14 +132,14 @@ export default function AudioUpload({ userId }: Props) {
     return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
   };
 
-  const inputCls = 'w-full bg-black border border-zinc-800 rounded px-3 py-2.5 text-white text-sm placeholder-zinc-700 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 transition-all';
+  const inputCls = 'w-full bg-black border border-zinc-800 rounded px-3 py-2.5 text-white text-sm placeholder-zinc-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 transition-all';
 
   return (
     <div className="p-6 space-y-5">
       <div>
-        <div className="text-zinc-600 text-[10px] font-mono uppercase tracking-widest mb-1">Ingest</div>
+        <div className="text-zinc-200 text-[10px] font-mono uppercase tracking-widest mb-1">Ingest</div>
         <h1 className="text-white text-2xl font-bold tracking-tight">Audio Upload</h1>
-        <p className="text-zinc-500 text-sm mt-0.5">Upload audio recordings for intelligence analysis</p>
+        <p className="text-zinc-300 text-sm mt-0.5">Upload audio recordings for intelligence analysis</p>
       </div>
 
       {/* File details modal */}
@@ -141,13 +148,13 @@ export default function AudioUpload({ userId }: Props) {
           <div className="bg-zinc-950 border border-zinc-800 rounded-md w-full max-w-lg shadow-2xl">
             <div className="px-5 py-4 border-b border-zinc-800">
               <h2 className="text-white font-semibold">File Details</h2>
-              <p className="text-zinc-500 text-xs mt-0.5">
+              <p className="text-zinc-300 text-xs mt-0.5">
                 Metadata for {pendingFiles.length} file{pendingFiles.length > 1 ? 's' : ''}
               </p>
             </div>
             <div className="p-5 space-y-4">
               <div>
-                <label className="text-zinc-500 text-[10px] font-mono uppercase tracking-widest block mb-1.5">
+                <label className="text-zinc-300 text-[10px] font-mono uppercase tracking-widest block mb-1.5">
                   File Name <span className="text-red-400">*</span>
                 </label>
                 <input
@@ -159,7 +166,7 @@ export default function AudioUpload({ userId }: Props) {
                 />
               </div>
               <div>
-                <label className="text-zinc-500 text-[10px] font-mono uppercase tracking-widest block mb-1.5">Description</label>
+                <label className="text-zinc-300 text-[10px] font-mono uppercase tracking-widest block mb-1.5">Description</label>
                 <textarea
                   value={fileDetails.description}
                   onChange={(e) => setFileDetails({ ...fileDetails, description: e.target.value })}
@@ -169,7 +176,7 @@ export default function AudioUpload({ userId }: Props) {
                 />
               </div>
               <div>
-                <label className="text-zinc-500 text-[10px] font-mono uppercase tracking-widest block mb-1.5">
+                <label className="text-zinc-300 text-[10px] font-mono uppercase tracking-widest block mb-1.5">
                   Recorded At <span className="text-red-400">*</span>
                 </label>
                 <input
@@ -179,10 +186,10 @@ export default function AudioUpload({ userId }: Props) {
                   max={new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16)}
                   className={inputCls + ' scheme-dark font-mono'}
                 />
-                <p className="text-zinc-700 text-xs font-mono mt-1">Used for temporal filtering.</p>
+                <p className="text-zinc-300 text-xs font-mono mt-1">Used for temporal filtering.</p>
               </div>
               <div>
-                <label className="text-zinc-500 text-[10px] font-mono uppercase tracking-widest block mb-1.5">Source / Origin</label>
+                <label className="text-zinc-300 text-[10px] font-mono uppercase tracking-widest block mb-1.5">Source / Origin</label>
                 <input
                   type="text"
                   value={fileDetails.source}
@@ -192,13 +199,13 @@ export default function AudioUpload({ userId }: Props) {
                 />
               </div>
               <div className="bg-black border border-zinc-900 rounded p-3">
-                <p className="text-zinc-600 text-xs font-mono mb-2">FILES TO UPLOAD</p>
+                <p className="text-zinc-200 text-xs font-mono mb-2">FILES TO UPLOAD</p>
                 <div className="space-y-1">
                   {pendingFiles.map((file, idx) => (
                     <div key={idx} className="flex items-center gap-2 text-xs font-mono">
-                      <FileAudio className="w-3.5 h-3.5 text-zinc-600" />
-                      <span className="text-zinc-400">{file.name}</span>
-                      <span className="text-zinc-700">({formatFileSize(file.size)})</span>
+                      <FileAudio className="w-3.5 h-3.5 text-zinc-200" />
+                      <span className="text-zinc-200">{file.name}</span>
+                      <span className="text-zinc-300">({formatFileSize(file.size)})</span>
                     </div>
                   ))}
                 </div>
@@ -245,19 +252,19 @@ export default function AudioUpload({ userId }: Props) {
         >
           <div className="flex flex-col items-center">
             <div className="w-12 h-12 bg-zinc-800 border border-zinc-700 rounded-md flex items-center justify-center mb-4">
-              <Upload className="w-6 h-6 text-zinc-500" />
+              <Upload className="w-6 h-6 text-zinc-300" />
             </div>
             <h3 className="text-white font-semibold mb-1">Drop audio files here</h3>
-            <p className="text-zinc-500 text-sm mb-4">or click to browse files</p>
+            <p className="text-zinc-300 text-sm mb-4">or click to browse files</p>
             <label className={`inline-flex items-center gap-2 px-5 py-2.5 rounded text-sm font-medium transition-colors cursor-pointer ${
-              mlReady ? 'bg-blue-600 hover:bg-blue-500 text-white' : 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
+              mlReady ? 'bg-blue-600 hover:bg-blue-500 text-white' : 'bg-zinc-800 text-zinc-300 cursor-not-allowed'
             }`}>
               <FileAudio className="w-4 h-4" />
               Select Files
               <input type="file" multiple accept="audio/*,.mp3,.wav,.m4a,.ogg"
                 onChange={handleFileInput} disabled={!mlReady} className="hidden" />
             </label>
-            <p className="text-zinc-700 text-xs font-mono mt-4">MP3 · WAV · M4A · OGG</p>
+            <p className="text-zinc-300 text-xs font-mono mt-4">MP3 · WAV · M4A · OGG</p>
           </div>
         </div>
       </div>
@@ -271,7 +278,7 @@ export default function AudioUpload({ userId }: Props) {
             const active    = files.filter(f => f.status === 'uploading' || f.status === 'processing').length;
             return (
               <div className="flex items-center justify-between px-5 py-3.5 border-b border-zinc-800">
-                <span className="text-zinc-400 text-xs font-mono uppercase tracking-widest">
+                <span className="text-zinc-200 text-xs font-mono uppercase tracking-widest">
                   Uploads ({files.length})
                 </span>
                 <div className="flex items-center gap-3 text-xs font-mono">
@@ -288,16 +295,16 @@ export default function AudioUpload({ userId }: Props) {
               <div key={file.id} className="px-5 py-4">
                 <div className="flex items-start gap-3">
                   <div className="w-8 h-8 bg-zinc-800 border border-zinc-700 rounded flex items-center justify-center shrink-0">
-                    <FileAudio className="w-4 h-4 text-zinc-500" />
+                    <FileAudio className="w-4 h-4 text-zinc-300" />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start justify-between mb-1">
                       <div className="min-w-0">
                         <h4 className="text-white text-sm font-medium truncate">{file.name}</h4>
-                        <p className="text-zinc-600 text-xs font-mono truncate">{file.filename}</p>
-                        <p className="text-zinc-600 text-xs font-mono">{formatFileSize(file.size)}</p>
+                        <p className="text-zinc-200 text-xs font-mono truncate">{file.filename}</p>
+                        <p className="text-zinc-200 text-xs font-mono">{formatFileSize(file.size)}</p>
                       </div>
-                      <button onClick={() => removeFile(file.id)} className="text-zinc-600 hover:text-white p-1 shrink-0 ml-2">
+                      <button onClick={() => removeFile(file.id)} className="text-zinc-200 hover:text-white p-1 shrink-0 ml-2">
                         <X className="w-4 h-4" />
                       </button>
                     </div>

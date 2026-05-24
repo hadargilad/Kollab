@@ -120,30 +120,30 @@ export default function WaveformAnalysis() {
     <div className="p-6 space-y-5">
       <div>
         <Link to={`/analysis/${id}`}
-          className="inline-flex items-center gap-1.5 text-zinc-500 hover:text-zinc-300 text-sm mb-3 transition-colors">
+          className="inline-flex items-center gap-1.5 text-zinc-300 hover:text-zinc-100 text-sm mb-3 transition-colors">
           <ArrowLeft className="w-3.5 h-3.5" /> Back to Analysis
         </Link>
-        <div className="text-zinc-600 text-[10px] font-mono uppercase tracking-widest mb-1">Visualization</div>
+        <div className="text-zinc-200 text-[10px] font-mono uppercase tracking-widest mb-1">Visualization</div>
         <h1 className="text-white text-2xl font-bold tracking-tight">Waveform Analysis</h1>
-        <p className="text-zinc-500 text-sm mt-0.5">Speaker diarization and waveform visualization</p>
+        <p className="text-zinc-300 text-sm mt-0.5">Speaker diarization and waveform visualization</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-5">
         <div className="lg:col-span-3 space-y-4">
           <div className="bg-zinc-900 border border-zinc-800 rounded-md">
             <div className="flex items-center justify-between px-5 py-3.5 border-b border-zinc-800">
-              <span className="text-zinc-400 text-xs font-mono uppercase tracking-widest">Waveform</span>
+              <span className="text-zinc-200 text-xs font-mono uppercase tracking-widest">Waveform</span>
               <div className="flex items-center gap-1.5">
                 <button onClick={() => setZoom(Math.max(1, zoom - 0.5))}
-                  className="p-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-400 rounded transition-colors">
+                  className="p-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 rounded transition-colors">
                   <ZoomOut className="w-3.5 h-3.5" />
                 </button>
-                <span className="text-zinc-500 text-xs font-mono min-w-[44px] text-center">{Math.round(zoom * 100)}%</span>
+                <span className="text-zinc-300 text-xs font-mono min-w-[44px] text-center">{Math.round(zoom * 100)}%</span>
                 <button onClick={() => setZoom(Math.min(3, zoom + 0.5))}
-                  className="p-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-400 rounded transition-colors">
+                  className="p-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 rounded transition-colors">
                   <ZoomIn className="w-3.5 h-3.5" />
                 </button>
-                <button className="p-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-400 rounded transition-colors">
+                <button className="p-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 rounded transition-colors">
                   <Download className="w-3.5 h-3.5" />
                 </button>
               </div>
@@ -152,7 +152,7 @@ export default function WaveformAnalysis() {
               <div className="bg-black border border-zinc-900 rounded overflow-x-auto mb-3">
                 <canvas ref={canvasRef} width={1200 * zoom} height={120} className="rounded" />
               </div>
-              <div className="flex justify-between text-zinc-600 text-xs font-mono mb-3">
+              <div className="flex justify-between text-zinc-200 text-xs font-mono mb-3">
                 <span>{formatTime(currentTime)}</span>
                 <span>{formatTime(duration)}</span>
               </div>
@@ -165,7 +165,7 @@ export default function WaveformAnalysis() {
                   onChange={(e) => setCurrentTime(parseFloat(e.target.value))}
                   className="flex-1 h-1 accent-blue-500" />
                 {currentSegment && (
-                  <div className="flex items-center gap-2 text-zinc-400 text-xs font-mono shrink-0">
+                  <div className="flex items-center gap-2 text-zinc-200 text-xs font-mono shrink-0">
                     <div className="w-2 h-2 rounded-full" style={{ backgroundColor: currentSegment.color }} />
                     <span>{currentSegment.speakerName}</span>
                   </div>
@@ -176,7 +176,7 @@ export default function WaveformAnalysis() {
 
           <div className="bg-zinc-900 border border-zinc-800 rounded-md">
             <div className="px-5 py-3.5 border-b border-zinc-800">
-              <span className="text-zinc-400 text-xs font-mono uppercase tracking-widest">Segment Timeline</span>
+              <span className="text-zinc-200 text-xs font-mono uppercase tracking-widest">Segment Timeline</span>
             </div>
             <div className="p-5 space-y-2">
               {segments.map((segment, index) => (
@@ -193,7 +193,7 @@ export default function WaveformAnalysis() {
                       <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: segment.color }} />
                       <span className="text-zinc-300 text-sm">{segment.speakerName}</span>
                     </div>
-                    <span className="text-zinc-600 text-xs font-mono">
+                    <span className="text-zinc-200 text-xs font-mono">
                       {formatTime(segment.startTime)} – {formatTime(segment.endTime)}
                     </span>
                   </div>
@@ -212,7 +212,7 @@ export default function WaveformAnalysis() {
         <div className="space-y-4">
           <div className="bg-zinc-900 border border-zinc-800 rounded-md">
             <div className="px-5 py-3.5 border-b border-zinc-800">
-              <span className="text-zinc-400 text-xs font-mono uppercase tracking-widest">Speaker Stats</span>
+              <span className="text-zinc-200 text-xs font-mono uppercase tracking-widest">Speaker Stats</span>
             </div>
             <div className="p-5 space-y-4">
               {speakerStats.map((speaker) => (
@@ -222,13 +222,13 @@ export default function WaveformAnalysis() {
                       <div className="w-2 h-2 rounded-full" style={{ backgroundColor: speaker.color }} />
                       <span className="text-zinc-300 text-xs">{speaker.name}</span>
                     </div>
-                    <span className="text-zinc-500 text-xs font-mono">{speaker.percentage.toFixed(1)}%</span>
+                    <span className="text-zinc-300 text-xs font-mono">{speaker.percentage.toFixed(1)}%</span>
                   </div>
                   <div className="bg-zinc-800 rounded-full h-1 overflow-hidden">
                     <div className="h-full transition-all duration-300"
                       style={{ width: `${speaker.percentage}%`, backgroundColor: speaker.color }} />
                   </div>
-                  <div className="flex justify-between text-[10px] text-zinc-600 font-mono mt-1">
+                  <div className="flex justify-between text-[10px] text-zinc-200 font-mono mt-1">
                     <span>{speaker.segmentCount} segments</span>
                     <span>{formatTime(speaker.totalTime)}</span>
                   </div>
@@ -239,7 +239,7 @@ export default function WaveformAnalysis() {
 
           <div className="bg-zinc-900 border border-zinc-800 rounded-md">
             <div className="px-5 py-3.5 border-b border-zinc-800">
-              <span className="text-zinc-400 text-xs font-mono uppercase tracking-widest">File Info</span>
+              <span className="text-zinc-200 text-xs font-mono uppercase tracking-widest">File Info</span>
             </div>
             <div className="p-5 space-y-3">
               {[
@@ -250,7 +250,7 @@ export default function WaveformAnalysis() {
                 ['Sample Rate', '44.1 kHz'],
               ].map(([label, value]) => (
                 <div key={label} className="flex items-center justify-between">
-                  <span className="text-zinc-600 text-xs uppercase tracking-wider">{label}</span>
+                  <span className="text-zinc-200 text-xs uppercase tracking-wider">{label}</span>
                   <span className="text-zinc-300 text-xs font-mono">{value}</span>
                 </div>
               ))}

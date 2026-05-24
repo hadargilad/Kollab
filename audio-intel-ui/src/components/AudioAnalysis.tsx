@@ -1,12 +1,15 @@
 import { useState, useRef, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { Play, Pause, Volume2, FileText, Network, Clock, Waves, Loader2, AlertCircle, RefreshCw, UserX, Merge, UserCheck, X, Scissors } from 'lucide-react';
-import { audios, speakers as speakersApi, suggestions as suggestionsApi, alerts as alertsApi, type AudioRecord, type SegmentRecord, type SpeakerRecord, type SpeakerSuggestion, type AlertRecord } from '../lib/api';
+import { Play, Pause, Volume2, FileText, Network, Clock, Waves, Loader2, AlertCircle, RefreshCw, UserX, Merge, UserCheck, X, Scissors, EyeOff, Eye, Wand2 } from 'lucide-react';
+import { audios, speakers as speakersApi, suggestions as suggestionsApi, alerts as alertsApi, type AudioRecord, type SegmentRecord, type SpeakerRecord, type SpeakerSuggestion, type AlertRecord, type MatchSuggestion } from '../lib/api';
+import SpeakerAvatar from './SpeakerAvatar';
 
 interface Speaker {
   id: number;
   name: string;
   color: string;
+  imagePath?: string | null;
+  isUntracked?: boolean;
 }
 
 export default function AudioAnalysis() {
@@ -36,6 +39,60 @@ export default function AudioAnalysis() {
   const [splitting, setSplitting] = useState(false);
   const [splitError, setSplitError] = useState('');
   const [audioAlerts, setAudioAlerts] = useState<AlertRecord[]>([]);
+  const [trackingBusyIds, setTrackingBusyIds] = useState<Set<number>>(new Set());
+  const [matchSuggestions, setMatchSuggestions] = useState<MatchSuggestion[]>([]);
+  const [matchSuggestionsLoading, setMatchSuggestionsLoading] = useState(false);
+
+  // Fetch ranked co-occurring matches whenever the reassign modal opens — but
+  // only for unrecognized "Speaker N" speakers. For an already-named speaker,
+  // surfacing 40%-similar candidates is noise.
+  useEffect(() => {
+    if (!reassignTarget) { setMatchSuggestions([]); return; }
+    if (!/^Speaker \d+$/i.test(reassignTarget.name.trim())) {
+      setMatchSuggestions([]);
+      setMatchSuggestionsLoading(false);
+      return;
+    }
+    setMatchSuggestionsLoading(true);
+    speakersApi.matchSuggestions(reassignTarget.id, 5)
+      .then(setMatchSuggestions)
+      .catch(() => setMatchSuggestions([]))
+      .finally(() => setMatchSuggestionsLoading(false));
+  }, [reassignTarget]);
+
+  const acceptReassignSuggestion = async (s: MatchSuggestion) => {
+    if (!reassignTarget || !audio) return;
+    setReassignName(s.name);
+    setReassigning(true);
+    try {
+      await speakersApi.reassign(audioId, reassignTarget.id, s.name, false);
+      const [newSegs, newKnown] = await Promise.all([audios.getSegments(audioId), speakersApi.list()]);
+      setSegments(newSegs);
+      setKnownSpeakers(newKnown);
+      await refreshSuggestions();
+      setReassignTarget(null);
+      setReassignName('');
+      setMatchSuggestions([]);
+      setMergeNotice(`Reassigned as "${s.name}". Voice samples merged.`);
+      setTimeout(() => setMergeNotice(null), 6000);
+    } catch (e: any) {
+      alert(e?.message ?? 'Reassign failed.');
+    } finally {
+      setReassigning(false);
+    }
+  };
+
+  const toggleUntracked = async (sid: number, currentlyUntracked: boolean) => {
+    setTrackingBusyIds(prev => new Set(prev).add(sid));
+    try {
+      const updated = await speakersApi.setUntracked(sid, !currentlyUntracked);
+      setKnownSpeakers(prev => prev.map(s => (s.id === sid ? updated : s)));
+    } catch (e: any) {
+      alert(e.message ?? 'Failed to update tracking.');
+    } finally {
+      setTrackingBusyIds(prev => { const s = new Set(prev); s.delete(sid); return s; });
+    }
+  };
 
   const refreshSuggestions = async () => {
     try {
@@ -140,7 +197,12 @@ export default function AudioAnalysis() {
   for (const seg of segments) {
     if (!seenSpeakers.has(seg.speakerId)) {
       seenSpeakers.add(seg.speakerId);
-      speakers.push({ id: seg.speakerId, name: seg.speakerName, color: seg.speakerColor });
+      const k = knownSpeakers.find(s => s.id === seg.speakerId);
+      speakers.push({
+        id: seg.speakerId, name: seg.speakerName, color: seg.speakerColor,
+        imagePath: seg.speakerImagePath ?? null,
+        isUntracked: k?.isUntracked ?? false,
+      });
     }
   }
 
@@ -208,13 +270,13 @@ export default function AudioAnalysis() {
   return (
     <div className="p-6 space-y-5">
       <div>
-        <div className="text-zinc-600 text-[10px] font-mono uppercase tracking-widest mb-1">Analysis</div>
+        <div className="text-zinc-200 text-[10px] font-mono uppercase tracking-widest mb-1">Analysis</div>
         <h1 className="text-white text-2xl font-bold tracking-tight">{audio.name}</h1>
-        <div className="flex items-center gap-4 text-zinc-500 text-xs font-mono mt-1 flex-wrap">
+        <div className="flex items-center gap-4 text-zinc-300 text-xs font-mono mt-1 flex-wrap">
           <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{formatTime(duration)}</span>
           <span>{speakers.length} speaker{speakers.length !== 1 ? 's' : ''}</span>
           {audio.uploadedBy && <span>by {audio.uploadedBy}</span>}
-          <span className="font-mono text-zinc-700">ID:{id}</span>
+          <span className="font-mono text-zinc-300">ID:{id}</span>
         </div>
       </div>
 
@@ -223,7 +285,7 @@ export default function AudioAnalysis() {
           <RefreshCw className="w-4 h-4 text-amber-400 animate-spin shrink-0" />
           <div>
             <p className="text-amber-200 text-sm font-medium">ML pipeline running</p>
-            <p className="text-zinc-500 text-xs">Segments will appear when analysis completes.</p>
+            <p className="text-zinc-300 text-xs">Segments will appear when analysis completes.</p>
           </div>
         </div>
       )}
@@ -246,9 +308,9 @@ export default function AudioAnalysis() {
                 <div className="flex-1 min-w-0">
                   <p className="text-amber-100 text-sm">
                     <span className="font-mono text-amber-300">{sg.unknownSpeaker.name}</span>
-                    <span className="text-zinc-400"> might be </span>
+                    <span className="text-zinc-200"> might be </span>
                     <span className="text-white font-medium">{sg.suggestedSpeaker.name}</span>
-                    <span className="text-zinc-500 font-mono"> ({pct}%)</span>
+                    <span className="text-zinc-300 font-mono"> ({pct}%)</span>
                   </p>
                 </div>
                 <button onClick={() => handleAcceptSuggestion(sg)} disabled={busy}
@@ -305,7 +367,55 @@ export default function AudioAnalysis() {
                   <div className="absolute top-0 bottom-0 w-px bg-white z-10"
                     style={{ left: `${(currentTime / duration) * 100}%` }} />
                 </div>
-                <div className="flex justify-between text-zinc-600 text-xs font-mono mt-1">
+
+                {/* Suspicion heatmap — only when at least one segment was scored */}
+                {segments.some(s => s.suspicionScore != null) && (
+                  <div className="mt-2">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-zinc-200 text-[10px] font-mono uppercase tracking-widest">
+                        Coded-Language Heatmap
+                      </span>
+                      <span className="text-zinc-300 text-[10px] font-mono">
+                        click to jump · {segments.filter(s => (s.suspicionScore ?? 0) > 0.65).length} flagged
+                      </span>
+                    </div>
+                    <div className="bg-black border border-zinc-900 rounded h-4 relative overflow-hidden">
+                      {segments.map(seg => {
+                        const left = (seg.startTime / duration) * 100;
+                        const width = ((seg.endTime - seg.startTime) / duration) * 100;
+                        const score = seg.suspicionScore ?? 0;
+                        let color = 'rgba(82, 82, 91, 0.35)'; // zinc fade for low scores
+                        if (score > 0.80) color = 'rgba(239, 68, 68, 0.85)';   // red-500
+                        else if (score > 0.65) color = 'rgba(249, 115, 22, 0.8)'; // orange-500
+                        else if (score > 0.45) color = 'rgba(245, 158, 11, 0.65)'; // amber-500
+                        else if (score > 0.25) color = 'rgba(132, 204, 22, 0.4)'; // lime-500
+                        return (
+                          <div
+                            key={seg.id}
+                            className="absolute top-0 bottom-0 cursor-pointer hover:ring-1 hover:ring-white/40 transition-shadow"
+                            style={{ left: `${left}%`, width: `${Math.max(width, 0.3)}%`, background: color }}
+                            onClick={() => {
+                              if (audioRef.current) audioRef.current.currentTime = seg.startTime;
+                              setCurrentTime(seg.startTime);
+                            }}
+                            title={`${seg.speakerName}: ${(seg.suspicionScore ?? 0).toFixed(2)} — ${seg.text.slice(0, 80)}`}
+                          />
+                        );
+                      })}
+                      <div className="absolute top-0 bottom-0 w-px bg-white z-10"
+                        style={{ left: `${(currentTime / duration) * 100}%` }} />
+                    </div>
+                    <div className="flex items-center gap-3 mt-1 text-[10px] font-mono text-zinc-300">
+                      <span className="inline-flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-sm bg-zinc-700" />idle</span>
+                      <span className="inline-flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-sm bg-lime-500/50" />0.25+</span>
+                      <span className="inline-flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-sm bg-amber-500/70" />0.45+</span>
+                      <span className="inline-flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-sm bg-orange-500/80" />0.65+</span>
+                      <span className="inline-flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-sm bg-red-500/85" />0.80+</span>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex justify-between text-zinc-200 text-xs font-mono mt-1">
                   <span>{formatTime(currentTime)}</span>
                   <span>{formatTime(duration)}</span>
                 </div>
@@ -326,22 +436,28 @@ export default function AudioAnalysis() {
                 {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
               </button>
               <div className="flex items-center gap-2 flex-1">
-                <Volume2 className="w-3.5 h-3.5 text-zinc-600 shrink-0" />
+                <Volume2 className="w-3.5 h-3.5 text-zinc-200 shrink-0" />
                 <input type="range" min="0" max="1" step="0.05" value={volume}
                   onChange={(e) => setVolume(parseFloat(e.target.value))}
                   className="flex-1 accent-blue-500" />
               </div>
               {currentSegment && (
-                <span className="text-zinc-400 text-xs font-mono shrink-0">{currentSegment.speakerName}</span>
+                <span className="text-zinc-200 text-xs font-mono shrink-0">{currentSegment.speakerName}</span>
               )}
             </div>
 
             {currentSegment && (
               <div className="mt-4 p-3 bg-black border border-zinc-900 rounded">
                 <div className="flex items-center gap-2 mb-1.5">
-                  <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: currentSegment.speakerColor }} />
+                  <SpeakerAvatar
+                    speakerId={currentSegment.speakerId}
+                    name={currentSegment.speakerName}
+                    color={currentSegment.speakerColor}
+                    imagePath={currentSegment.speakerImagePath}
+                    size={22}
+                  />
                   <span className="text-white text-sm font-medium">{currentSegment.speakerName}</span>
-                  <span className="text-zinc-600 text-xs font-mono">
+                  <span className="text-zinc-200 text-xs font-mono">
                     [{formatTime(currentSegment.startTime)}–{formatTime(currentSegment.endTime)}]
                   </span>
                 </div>
@@ -353,7 +469,7 @@ export default function AudioAnalysis() {
           {/* Segments */}
           <div className="bg-zinc-900 border border-zinc-800 rounded-md">
             <div className="flex items-center justify-between px-5 py-3.5 border-b border-zinc-800">
-              <span className="text-zinc-400 text-xs font-mono uppercase tracking-widest">Speaker Segments</span>
+              <span className="text-zinc-200 text-xs font-mono uppercase tracking-widest">Speaker Segments</span>
               {segments.length > 0 && (
                 splitMode ? (
                   <button onClick={exitSplitMode}
@@ -376,7 +492,7 @@ export default function AudioAnalysis() {
             )}
 
             {segments.length === 0 ? (
-              <p className="text-zinc-600 text-sm px-5 py-6">No segments found.</p>
+              <p className="text-zinc-200 text-sm px-5 py-6">No segments found.</p>
             ) : (
               <div className="divide-y divide-zinc-800">
                 {segments.map((seg) => {
@@ -403,13 +519,19 @@ export default function AudioAnalysis() {
                             onClick={e => e.stopPropagation()}
                             className="w-3.5 h-3.5 accent-amber-500" />
                         )}
-                        <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: seg.speakerColor }} />
+                        <SpeakerAvatar
+                          speakerId={seg.speakerId}
+                          name={seg.speakerName}
+                          color={seg.speakerColor}
+                          imagePath={seg.speakerImagePath}
+                          size={22}
+                        />
                         <span className="text-white text-sm font-medium">{seg.speakerName}</span>
-                        <span className="text-zinc-600 text-xs font-mono ml-auto">
+                        <span className="text-zinc-200 text-xs font-mono ml-auto">
                           {formatTime(seg.startTime)}–{formatTime(seg.endTime)}
                         </span>
                       </div>
-                      <p className="text-zinc-400 text-sm leading-relaxed">{seg.text}</p>
+                      <p className="text-zinc-200 text-sm leading-relaxed">{seg.text}</p>
                     </div>
                   );
                 })}
@@ -423,26 +545,48 @@ export default function AudioAnalysis() {
           {/* Speakers */}
           <div className="bg-zinc-900 border border-zinc-800 rounded-md">
             <div className="px-5 py-3.5 border-b border-zinc-800">
-              <span className="text-zinc-400 text-xs font-mono uppercase tracking-widest">Speakers</span>
+              <span className="text-zinc-200 text-xs font-mono uppercase tracking-widest">Speakers</span>
             </div>
             {speakers.length === 0 ? (
-              <p className="text-zinc-600 text-sm px-5 py-4">None identified.</p>
+              <p className="text-zinc-200 text-sm px-5 py-4">None identified.</p>
             ) : (
               <div className="divide-y divide-zinc-800">
                 {speakers.map((spk) => {
                   const spkSegs = segments.filter(s => s.speakerId === spk.id);
                   const totalTime = spkSegs.reduce((acc, s) => acc + (s.endTime - s.startTime), 0);
+                  const busy = trackingBusyIds.has(spk.id);
                   return (
-                    <div key={spk.id} className="px-5 py-3 flex items-center gap-3">
-                      <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: spk.color }} />
+                    <div key={spk.id} className={`px-5 py-3 flex items-center gap-3 ${spk.isUntracked ? 'opacity-60' : ''}`}>
+                      <SpeakerAvatar
+                        speakerId={spk.id}
+                        name={spk.name}
+                        color={spk.color}
+                        imagePath={spk.imagePath}
+                        size={28}
+                      />
                       <div className="flex-1 min-w-0">
-                        <Link to={`/speaker/${spk.id}`} className="text-white text-sm hover:text-blue-400 transition-colors truncate block">
-                          {spk.name}
-                        </Link>
-                        <div className="text-zinc-600 text-xs font-mono">{spkSegs.length} seg · {formatTime(totalTime)}</div>
+                        <div className="flex items-center gap-1.5">
+                          <Link to={`/speaker/${spk.id}`} className="text-white text-sm hover:text-blue-400 transition-colors truncate">
+                            {spk.name}
+                          </Link>
+                          {spk.isUntracked && (
+                            <span className="text-[9px] font-mono uppercase tracking-wider px-1 py-0.5 rounded border border-zinc-700 bg-zinc-800/50 text-zinc-200" title="Hidden from connection graph">
+                              <EyeOff className="w-2.5 h-2.5 inline" />
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-zinc-200 text-xs font-mono">{spkSegs.length} seg · {formatTime(totalTime)}</div>
                       </div>
+                      <button onClick={() => toggleUntracked(spk.id, !!spk.isUntracked)}
+                        disabled={busy}
+                        title={spk.isUntracked ? 'Re-track this speaker' : 'Untrack — hide from graph'}
+                        className="text-zinc-300 hover:text-blue-300 transition-colors p-1 shrink-0">
+                        {busy
+                          ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          : spk.isUntracked ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                      </button>
                       <button onClick={() => { setReassignTarget(spk); setReassignName(''); }}
-                        className="text-zinc-700 hover:text-red-400 transition-colors p-1 shrink-0">
+                        className="text-zinc-300 hover:text-red-400 transition-colors p-1 shrink-0">
                         <UserX className="w-3.5 h-3.5" />
                       </button>
                     </div>
@@ -457,8 +601,8 @@ export default function AudioAnalysis() {
             <div className="bg-zinc-900 border border-zinc-800 rounded-md">
               <div className="flex items-center gap-2 px-5 py-3.5 border-b border-zinc-800">
                 <AlertCircle className="w-4 h-4 text-red-400" />
-                <span className="text-zinc-400 text-xs font-mono uppercase tracking-widest">Alerts</span>
-                <span className="ml-auto text-zinc-600 text-xs font-mono">{audioAlerts.length}</span>
+                <span className="text-zinc-200 text-xs font-mono uppercase tracking-widest">Alerts</span>
+                <span className="ml-auto text-zinc-200 text-xs font-mono">{audioAlerts.length}</span>
               </div>
               <div className="divide-y divide-zinc-800">
                 {audioAlerts.map(alert => {
@@ -478,7 +622,7 @@ export default function AudioAnalysis() {
           {/* Metadata */}
           <div className="bg-zinc-900 border border-zinc-800 rounded-md">
             <div className="px-5 py-3.5 border-b border-zinc-800">
-              <span className="text-zinc-400 text-xs font-mono uppercase tracking-widest">File Metadata</span>
+              <span className="text-zinc-200 text-xs font-mono uppercase tracking-widest">File Metadata</span>
             </div>
             <div className="px-5 py-4 space-y-3">
               {[
@@ -488,13 +632,13 @@ export default function AudioAnalysis() {
                 { label: 'By', value: audio.uploadedBy || '—' },
               ].map(({ label, value }) => (
                 <div key={label} className="flex items-center justify-between gap-2">
-                  <span className="text-zinc-600 text-xs uppercase tracking-wider">{label}</span>
+                  <span className="text-zinc-200 text-xs uppercase tracking-wider">{label}</span>
                   <span className="text-zinc-300 text-xs font-mono">{value}</span>
                 </div>
               ))}
               {audio.description && (
                 <div className="pt-2 border-t border-zinc-800">
-                  <p className="text-zinc-500 text-xs">{audio.description}</p>
+                  <p className="text-zinc-300 text-xs">{audio.description}</p>
                 </div>
               )}
             </div>
@@ -522,16 +666,16 @@ export default function AudioAnalysis() {
           <div className={modalCard}>
             <div className="p-5 border-b border-zinc-800">
               <h2 className="text-white font-semibold">Split selected segments</h2>
-              <p className="text-zinc-500 text-xs mt-1">
+              <p className="text-zinc-300 text-xs mt-1">
                 {selectedSegmentIds.size} segment{selectedSegmentIds.size !== 1 ? 's' : ''} will be reassigned. Voice samples re-extracted from the selected audio.
               </p>
             </div>
             <div className="p-5 space-y-3">
               <div>
-                <label className="text-zinc-500 text-[10px] font-mono uppercase tracking-widest block mb-1.5">New Speaker Name (optional)</label>
+                <label className="text-zinc-300 text-[10px] font-mono uppercase tracking-widest block mb-1.5">New Speaker Name (optional)</label>
                 <input type="text" value={splitNewName} onChange={e => setSplitNewName(e.target.value)}
                   placeholder="Leave blank to auto-name"
-                  className="w-full bg-black border border-zinc-800 rounded px-3 py-2.5 text-white text-sm placeholder-zinc-700 focus:outline-none focus:border-amber-500 transition-all font-mono"
+                  className="w-full bg-black border border-zinc-800 rounded px-3 py-2.5 text-white text-sm placeholder-zinc-400 focus:outline-none focus:border-amber-500 transition-all font-mono"
                   autoFocus onKeyDown={e => e.key === 'Enter' && handleSplitConfirm()} />
               </div>
               {splitError && (
@@ -557,21 +701,46 @@ export default function AudioAnalysis() {
           <div className={modalCard}>
             <div className="p-5 border-b border-zinc-800">
               <h2 className="text-white font-semibold">Wrong identification?</h2>
-              <p className="text-zinc-500 text-xs mt-1">
+              <p className="text-zinc-300 text-xs mt-1">
                 System identified this as <span className="text-zinc-300 font-mono">{reassignTarget.name}</span>. Enter the correct name — existing profiles will be merged.
               </p>
             </div>
             <div className="p-5 space-y-3">
+              {(matchSuggestionsLoading || matchSuggestions.length > 0) && (
+                <div>
+                  <div className="flex items-center gap-1.5 text-zinc-200 text-[10px] font-mono uppercase tracking-widest mb-1.5">
+                    <Wand2 className="w-3 h-3 text-blue-300" />
+                    Likely matches from voice
+                  </div>
+                  {matchSuggestionsLoading ? (
+                    <div className="flex items-center gap-2 text-zinc-300 text-xs"><Loader2 className="w-3 h-3 animate-spin" /> Scanning…</div>
+                  ) : (
+                    <div className="space-y-1">
+                      {matchSuggestions.filter(s => s.confidence >= 0.2).map(s => (
+                        <button
+                          key={s.id}
+                          onClick={() => acceptReassignSuggestion(s)}
+                          disabled={reassigning}
+                          className="flex w-full items-center gap-2.5 px-2 py-1.5 bg-black hover:bg-zinc-800 border border-zinc-800 hover:border-blue-500/40 disabled:opacity-50 rounded transition-colors text-left"
+                        >
+                          <SpeakerAvatar speakerId={s.id} name={s.name} color={s.color} imagePath={s.imagePath} size={24} />
+                          <span className="text-zinc-200 text-sm flex-1 truncate">{s.name}</span>
+                          <span className="text-blue-300 text-[11px] font-mono">{Math.round(s.confidence * 100)}%</span>
+                        </button>
+                      ))}
+                      {matchSuggestions.filter(s => s.confidence >= 0.2).length === 0 && (
+                        <div className="text-zinc-300 text-[11px] font-mono italic">No confident matches in shared recordings.</div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
               <div>
-                <label className="text-zinc-500 text-[10px] font-mono uppercase tracking-widest block mb-1.5">Name</label>
+                <label className="text-zinc-300 text-[10px] font-mono uppercase tracking-widest block mb-1.5">Or type a name</label>
                 <input type="text" value={reassignName} onChange={e => setReassignName(e.target.value)}
                   placeholder="e.g. Ofir, Unknown Person…"
-                  className="w-full bg-black border border-zinc-800 rounded px-3 py-2.5 text-white text-sm placeholder-zinc-700 focus:outline-none focus:border-blue-500 transition-all font-mono"
-                  autoFocus onKeyDown={e => e.key === 'Enter' && handleReassign(false)}
-                  list="known-speaker-names" />
-                <datalist id="known-speaker-names">
-                  {knownSpeakers.filter(s => s.id !== reassignTarget.id).map(s => <option key={s.id} value={s.name} />)}
-                </datalist>
+                  className="w-full bg-black border border-zinc-800 rounded px-3 py-2.5 text-white text-sm placeholder-zinc-400 focus:outline-none focus:border-blue-500 transition-all font-mono"
+                  autoFocus onKeyDown={e => e.key === 'Enter' && handleReassign(false)} />
                 {reassignMatch && (
                   <div className="mt-2.5 flex items-start gap-2 bg-blue-500/8 border border-blue-500/25 rounded px-3 py-2 text-blue-200 text-xs">
                     <Merge className="w-3.5 h-3.5 mt-0.5 shrink-0" />

@@ -76,7 +76,10 @@ export default function UserManagement({ currentUser }: Props) {
     const cleanFirstName = formatName(formData.firstName);
     const cleanLastName = formatName(formData.lastName);
     if (!/^\d{9}$/.test(formData.idNumber)) { setFormError('ID Number must be exactly 9 digits.'); return; }
-    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
+    // Must match the UI checklist below: lowercase, uppercase, AND
+    // (digit OR special). The previous regex required *both* a digit and a
+    // special character even though the UI showed a single "Number/special" check.
+    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*[\d@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
     if (!isEditMode || formData.password) {
       if (!passwordRegex.test(formData.password)) { setFormError('Security Violation: Password requirement not met.'); return; }
     }
@@ -100,7 +103,7 @@ export default function UserManagement({ currentUser }: Props) {
     u.lastName.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const inputCls = 'w-full bg-black border border-zinc-800 rounded px-3 py-2.5 text-white text-sm placeholder-zinc-700 focus:outline-none focus:border-blue-500 transition-all font-mono';
+  const inputCls = 'w-full bg-black border border-zinc-800 rounded px-3 py-2.5 text-white text-sm placeholder-zinc-400 focus:outline-none focus:border-blue-500 transition-all font-mono';
   const selectCls = 'w-full bg-black border border-zinc-800 rounded px-3 py-2.5 text-white text-sm focus:outline-none focus:border-blue-500 appearance-none transition-all font-mono';
 
   const modalCls = 'fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4';
@@ -110,19 +113,19 @@ export default function UserManagement({ currentUser }: Props) {
     <div className="p-6 space-y-5">
       <div className="flex items-start justify-between">
         <div>
-          <div className="text-zinc-600 text-[10px] font-mono uppercase tracking-widest mb-1">Admin</div>
+          <div className="text-zinc-200 text-[10px] font-mono uppercase tracking-widest mb-1">Admin</div>
           <h1 className="text-white text-2xl font-bold tracking-tight">User Management</h1>
-          <p className="text-zinc-500 text-sm mt-0.5">Personnel access and security roles</p>
+          <p className="text-zinc-300 text-sm mt-0.5">Personnel access and security roles</p>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={fetchUsers}
-            className="p-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 rounded transition-colors">
+            className="p-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-200 rounded transition-colors">
             <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
           </button>
           <div className="relative">
             <input type="text" placeholder="Search users…" value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
-              className="bg-black border border-zinc-800 rounded px-3 py-2 text-white text-sm placeholder-zinc-700 focus:outline-none focus:border-blue-500 transition-all w-44" />
+              className="bg-black border border-zinc-800 rounded px-3 py-2 text-white text-sm placeholder-zinc-400 focus:outline-none focus:border-blue-500 transition-all w-44" />
           </div>
           <button
             onClick={() => {
@@ -142,10 +145,10 @@ export default function UserManagement({ currentUser }: Props) {
         <table className="w-full text-left">
           <thead>
             <tr className="border-b border-zinc-800">
-              <th className="px-5 py-3 text-zinc-600 text-[10px] font-mono uppercase tracking-widest">User</th>
-              <th className="px-5 py-3 text-zinc-600 text-[10px] font-mono uppercase tracking-widest">Role</th>
-              <th className="px-5 py-3 text-zinc-600 text-[10px] font-mono uppercase tracking-widest">Joined</th>
-              <th className="px-5 py-3 text-right text-zinc-600 text-[10px] font-mono uppercase tracking-widest">Actions</th>
+              <th className="px-5 py-3 text-zinc-200 text-[10px] font-mono uppercase tracking-widest">User</th>
+              <th className="px-5 py-3 text-zinc-200 text-[10px] font-mono uppercase tracking-widest">Role</th>
+              <th className="px-5 py-3 text-zinc-200 text-[10px] font-mono uppercase tracking-widest">Joined</th>
+              <th className="px-5 py-3 text-right text-zinc-200 text-[10px] font-mono uppercase tracking-widest">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-800">
@@ -153,7 +156,7 @@ export default function UserManagement({ currentUser }: Props) {
               <tr key={user.id} className="hover:bg-zinc-800/40 transition-colors group">
                 <td className="px-5 py-4">
                   <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded bg-zinc-800 border border-zinc-700 flex items-center justify-center text-zinc-400 text-xs font-mono font-bold shrink-0">
+                    <div className="w-8 h-8 rounded bg-zinc-800 border border-zinc-700 flex items-center justify-center text-zinc-200 text-xs font-mono font-bold shrink-0">
                       {user.firstName?.charAt(0)}{user.lastName?.charAt(0)}
                     </div>
                     <div>
@@ -165,7 +168,7 @@ export default function UserManagement({ currentUser }: Props) {
                           </span>
                         )}
                       </div>
-                      <div className="text-zinc-600 text-xs font-mono mt-0.5">
+                      <div className="text-zinc-200 text-xs font-mono mt-0.5">
                         {user.idNumber} · @{user.username}
                       </div>
                     </div>
@@ -181,19 +184,19 @@ export default function UserManagement({ currentUser }: Props) {
                   </span>
                 </td>
                 <td className="px-5 py-4">
-                  <span className="text-zinc-600 text-xs font-mono">
+                  <span className="text-zinc-200 text-xs font-mono">
                     {new Date(user.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
                   </span>
                 </td>
                 <td className="px-5 py-4 text-right">
                   <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button onClick={() => triggerSecureAction('EDIT', user)}
-                      className="p-1.5 text-zinc-600 hover:text-white hover:bg-zinc-700 rounded transition-colors">
+                      className="p-1.5 text-zinc-200 hover:text-white hover:bg-zinc-700 rounded transition-colors">
                       <Edit2 className="w-3.5 h-3.5" />
                     </button>
                     {user.username !== currentUser?.username && (
                       <button onClick={() => triggerSecureAction('DELETE', user)}
-                        className="p-1.5 text-zinc-600 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors">
+                        className="p-1.5 text-zinc-200 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors">
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     )}
@@ -214,13 +217,13 @@ export default function UserManagement({ currentUser }: Props) {
                 <ShieldAlert className="w-5 h-5 text-red-400" />
               </div>
               <h2 className="text-white font-semibold">Security Verification</h2>
-              <p className="text-zinc-500 text-xs mt-1">
+              <p className="text-zinc-300 text-xs mt-1">
                 Re-enter your admin password to authorize the {pendingAction?.type.toLowerCase()} of this account.
               </p>
             </div>
             <form onSubmit={confirmSecureAction} className="p-5 space-y-3">
               <div className="relative">
-                <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-600" />
+                <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-200" />
                 <input type="password" autoFocus required placeholder="Admin password"
                   className={inputCls + ' pl-9'}
                   value={adminPassword} onChange={e => setAdminPassword(e.target.value)} />
@@ -250,7 +253,7 @@ export default function UserManagement({ currentUser }: Props) {
                 {isEditMode ? <Edit2 className="w-4 h-4 text-blue-400" /> : <UserPlus className="w-4 h-4 text-blue-400" />}
                 {isEditMode ? 'Edit User' : 'New User'}
               </h2>
-              <button onClick={() => setIsModalOpen(false)} className="text-zinc-600 hover:text-white transition-colors">
+              <button onClick={() => setIsModalOpen(false)} className="text-zinc-200 hover:text-white transition-colors">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -258,19 +261,19 @@ export default function UserManagement({ currentUser }: Props) {
             <form onSubmit={handleSaveUser} className="p-5 space-y-4">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-zinc-600 text-[10px] font-mono uppercase tracking-widest block mb-1.5">First Name</label>
+                  <label className="text-zinc-200 text-[10px] font-mono uppercase tracking-widest block mb-1.5">First Name</label>
                   <input placeholder="First name" className={inputCls} value={formData.firstName}
                     onChange={e => setFormData({ ...formData, firstName: e.target.value })} required />
                 </div>
                 <div>
-                  <label className="text-zinc-600 text-[10px] font-mono uppercase tracking-widest block mb-1.5">Last Name</label>
+                  <label className="text-zinc-200 text-[10px] font-mono uppercase tracking-widest block mb-1.5">Last Name</label>
                   <input placeholder="Last name" className={inputCls} value={formData.lastName}
                     onChange={e => setFormData({ ...formData, lastName: e.target.value })} required />
                 </div>
               </div>
 
               <div>
-                <label className="text-zinc-600 text-[10px] font-mono uppercase tracking-widest block mb-1.5">ID Number (9 digits)</label>
+                <label className="text-zinc-200 text-[10px] font-mono uppercase tracking-widest block mb-1.5">ID Number (9 digits)</label>
                 <input placeholder="012345678" maxLength={9}
                   className={`${inputCls} ${formError.includes('ID') ? 'border-red-500' : ''}`}
                   value={formData.idNumber}
@@ -279,14 +282,14 @@ export default function UserManagement({ currentUser }: Props) {
               </div>
 
               <div>
-                <label className="text-zinc-600 text-[10px] font-mono uppercase tracking-widest block mb-1.5">Username</label>
+                <label className="text-zinc-200 text-[10px] font-mono uppercase tracking-widest block mb-1.5">Username</label>
                 <input placeholder="username" className={`${inputCls} disabled:opacity-50 disabled:cursor-not-allowed`}
                   value={formData.username} onChange={e => setFormData({ ...formData, username: e.target.value })}
                   required disabled={isEditMode} />
               </div>
 
               <div>
-                <label className="text-zinc-600 text-[10px] font-mono uppercase tracking-widest block mb-1.5">
+                <label className="text-zinc-200 text-[10px] font-mono uppercase tracking-widest block mb-1.5">
                   {isEditMode ? 'New Password (blank = keep current)' : 'Temporary Password'}
                 </label>
                 <input type="password" placeholder="••••••••" className={inputCls}
@@ -299,7 +302,7 @@ export default function UserManagement({ currentUser }: Props) {
                     [/[a-z]/.test(formData.password), 'Lowercase'],
                     [/[0-9@$!%*?&]/.test(formData.password), 'Number/special'],
                   ].map(([ok, label]) => (
-                    <span key={label as string} className={`text-[10px] font-mono flex items-center gap-1 ${ok ? 'text-emerald-400' : 'text-zinc-700'}`}>
+                    <span key={label as string} className={`text-[10px] font-mono flex items-center gap-1 ${ok ? 'text-emerald-400' : 'text-zinc-300'}`}>
                       {ok ? '✓' : '○'} {label as string}
                     </span>
                   ))}
@@ -307,14 +310,14 @@ export default function UserManagement({ currentUser }: Props) {
               </div>
 
               <div>
-                <label className="text-zinc-600 text-[10px] font-mono uppercase tracking-widest block mb-1.5">Security Role</label>
+                <label className="text-zinc-200 text-[10px] font-mono uppercase tracking-widest block mb-1.5">Security Role</label>
                 <div className="relative">
                   <select className={selectCls + ' cursor-pointer'} value={formData.role}
                     onChange={e => setFormData({ ...formData, role: e.target.value })}>
                     <option value="Analyst">Intelligence Analyst</option>
                     <option value="Admin">System Administrator</option>
                   </select>
-                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-600 pointer-events-none" />
+                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-200 pointer-events-none" />
                 </div>
               </div>
 

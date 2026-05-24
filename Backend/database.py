@@ -70,6 +70,14 @@ def init_db():
         existing_cols = {row[1] for row in conn.execute("PRAGMA table_info(Speakers)").fetchall()}
         if "WikidataId" not in existing_cols:
             conn.execute("ALTER TABLE Speakers ADD COLUMN WikidataId TEXT")
+        if "ImagePath" not in existing_cols:
+            conn.execute("ALTER TABLE Speakers ADD COLUMN ImagePath TEXT")
+        if "IsUntracked" not in existing_cols:
+            # Untracked = interviewer / one-shot guest / anyone you don't want
+            # cluttering the connection graph. They still appear in transcripts
+            # but no Relations rows are inserted for them and the network view
+            # filters them out.
+            conn.execute("ALTER TABLE Speakers ADD COLUMN IsUntracked INTEGER NOT NULL DEFAULT 0")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS Audios (
                 Id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -165,6 +173,72 @@ def init_db():
                 PRIMARY KEY (GroupId, SpeakerId)
             )
         """)
+
+        # ─── NLP migrations (Ofir — coded-language detection) ──────────────
+        # SQLite cannot drop CHECK constraints via ALTER, and cannot add FK refs
+        # via ALTER ADD COLUMN. We probe table_info() and ADD COLUMN only if
+        # missing — same pattern as the WikidataId migration above.
+        seg_cols = {row[1] for row in conn.execute("PRAGMA table_info(Segments)").fetchall()}
+        if "Embedding" not in seg_cols:
+            conn.execute("ALTER TABLE Segments ADD COLUMN Embedding BLOB")
+        if "EmbeddingModel" not in seg_cols:
+            conn.execute("ALTER TABLE Segments ADD COLUMN EmbeddingModel TEXT")
+        if "SuspicionScore" not in seg_cols:
+            conn.execute("ALTER TABLE Segments ADD COLUMN SuspicionScore REAL")
+        if "SubScores" not in seg_cols:
+            conn.execute("ALTER TABLE Segments ADD COLUMN SubScores TEXT")
+
+        alert_cols = {row[1] for row in conn.execute("PRAGMA table_info(Alerts)").fetchall()}
+        if "Category" not in alert_cols:
+            conn.execute("ALTER TABLE Alerts ADD COLUMN Category TEXT")
+        if "SegmentId" not in alert_cols:
+            # NOTE: FK ref cannot be added via ALTER; column is a plain INTEGER.
+            # Join manually with ON Alerts.SegmentId = Segments.Id.
+            conn.execute("ALTER TABLE Alerts ADD COLUMN SegmentId INTEGER")
+        if "SubScores" not in alert_cols:
+            conn.execute("ALTER TABLE Alerts ADD COLUMN SubScores TEXT")
+        if "LlmExplanation" not in alert_cols:
+            conn.execute("ALTER TABLE Alerts ADD COLUMN LlmExplanation TEXT")
+
+        dw_cols = {row[1] for row in conn.execute("PRAGMA table_info(DangerousWords)").fetchall()}
+        if "IsEuphemism" not in dw_cols:
+            conn.execute("ALTER TABLE DangerousWords ADD COLUMN IsEuphemism INTEGER NOT NULL DEFAULT 0")
+        if "AutoLearned" not in dw_cols:
+            conn.execute("ALTER TABLE DangerousWords ADD COLUMN AutoLearned INTEGER NOT NULL DEFAULT 0")
+        if "Confidence" not in dw_cols:
+            conn.execute("ALTER TABLE DangerousWords ADD COLUMN Confidence REAL")
+        if "Embedding" not in dw_cols:
+            conn.execute("ALTER TABLE DangerousWords ADD COLUMN Embedding BLOB")
+        if "EmbeddingModel" not in dw_cols:
+            conn.execute("ALTER TABLE DangerousWords ADD COLUMN EmbeddingModel TEXT")
+        # ─── NLP migrations reserved for Hadar / Ofek (do not add here yet) ───
+        # Hadar: reuse Segments.Embedding above (no new column needed).
+        # Ofek:  CREATE TABLE Entities (...); CREATE TABLE EntityMentions (...);
+        #        ALTER TABLE Speakers ADD COLUMN IsGhost ... / PromotedFromEntityId ...
+        # ─────────────────────────────────────────────────────────────────────
+
+        # ─── Groups / Projects migrations ──────────────────────────────────
+        # Top-level group (ParentGroupId IS NULL) IS the "project".
+        # Subgroups have ParentGroupId set to a top-level row. Two levels max —
+        # enforced in CRUD (SQLite can't express it as a constraint).
+        sg_cols = {row[1] for row in conn.execute("PRAGMA table_info(SpeakerGroups)").fetchall()}
+        if "ParentGroupId" not in sg_cols:
+            conn.execute("ALTER TABLE SpeakerGroups ADD COLUMN ParentGroupId INTEGER")
+        if "Description" not in sg_cols:
+            conn.execute("ALTER TABLE SpeakerGroups ADD COLUMN Description TEXT")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS ProjectAssignments (
+                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                AnalystUserId INTEGER NOT NULL REFERENCES Users(Id) ON DELETE CASCADE,
+                GroupId INTEGER NOT NULL REFERENCES SpeakerGroups(Id) ON DELETE CASCADE,
+                CreatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(AnalystUserId, GroupId)
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS IX_ProjectAssignments_User  ON ProjectAssignments(AnalystUserId)")
+        conn.execute("CREATE INDEX IF NOT EXISTS IX_ProjectAssignments_Group ON ProjectAssignments(GroupId)")
+        # ───────────────────────────────────────────────────────────────────
+
         conn.execute("PRAGMA foreign_keys = ON")
         # Mark any records left in 'processing' from a previous crashed/restarted run.
         # Runs after CREATE TABLE so it works on a fresh DB too.
@@ -485,7 +559,8 @@ def get_or_create_speaker(voice_identifier: str, name: str) -> tuple[int, bool]:
 def get_speaker(speaker_id: int) -> Optional[dict]:
     with _get_conn() as conn:
         row = conn.execute(
-            """SELECT s.Id, s.VoiceIdentifier, s.Name, s.Color, s.RiskLevel, s.FirstDetected, s.WikidataId,
+            """SELECT s.Id, s.VoiceIdentifier, s.Name, s.Color, s.RiskLevel, s.FirstDetected,
+                      s.WikidataId, s.ImagePath, s.IsUntracked,
                       COUNT(DISTINCT sg.AudioId) AS RecordingCount,
                       (SELECT COUNT(*) FROM SpeakerEmbeddings WHERE SpeakerId = s.Id) AS SampleCount
                FROM Speakers s
@@ -504,9 +579,22 @@ def get_speaker(speaker_id: int) -> Optional[dict]:
         "riskLevel": row["RiskLevel"],
         "firstDetected": row["FirstDetected"],
         "wikidataId": row["WikidataId"],
+        "imagePath": row["ImagePath"],
+        "isUntracked": bool(row["IsUntracked"]),
         "recordingCount": row["RecordingCount"],
         "sampleCount": row["SampleCount"],
     }
+
+
+def set_speaker_image_path(speaker_id: int, image_path: Optional[str]) -> bool:
+    """Set or clear the ImagePath for a speaker. Returns True if a row updated."""
+    with _get_conn() as conn:
+        result = conn.execute(
+            "UPDATE Speakers SET ImagePath = ? WHERE Id = ?",
+            (image_path, speaker_id),
+        )
+        conn.commit()
+    return result.rowcount > 0
 
 
 def get_audios_for_speaker(speaker_id: int) -> list[dict]:
@@ -547,7 +635,8 @@ def get_audios_for_speaker(speaker_id: int) -> list[dict]:
 def get_all_speakers() -> list[dict]:
     with _get_conn() as conn:
         rows = conn.execute(
-            """SELECT s.Id, s.VoiceIdentifier, s.Name, s.Color, s.RiskLevel, s.FirstDetected, s.WikidataId,
+            """SELECT s.Id, s.VoiceIdentifier, s.Name, s.Color, s.RiskLevel, s.FirstDetected,
+                      s.WikidataId, s.ImagePath, s.IsUntracked,
                       COUNT(DISTINCT sg.AudioId) AS RecordingCount,
                       (SELECT COUNT(*) FROM SpeakerEmbeddings WHERE SpeakerId = s.Id) AS SampleCount
                FROM Speakers s
@@ -564,11 +653,51 @@ def get_all_speakers() -> list[dict]:
             "riskLevel": r["RiskLevel"],
             "firstDetected": r["FirstDetected"],
             "wikidataId": r["WikidataId"],
+            "imagePath": r["ImagePath"],
+            "isUntracked": bool(r["IsUntracked"]),
             "recordingCount": r["RecordingCount"],
             "sampleCount": r["SampleCount"],
         }
         for r in rows
     ]
+
+
+def set_speaker_untracked(speaker_id: int, untracked: bool) -> bool:
+    with _get_conn() as conn:
+        result = conn.execute(
+            "UPDATE Speakers SET IsUntracked = ? WHERE Id = ?",
+            (1 if untracked else 0, speaker_id),
+        )
+        # If we're marking as untracked, prune their relations so the graph
+        # cleans up immediately. Re-tracking won't recreate them — they'll
+        # rebuild when the next audio with that speaker is processed.
+        if untracked:
+            conn.execute(
+                "DELETE FROM Relations WHERE SpeakerAId = ? OR SpeakerBId = ?",
+                (speaker_id, speaker_id),
+            )
+        conn.commit()
+    return result.rowcount > 0
+
+
+def get_cooccurring_named_speaker_ids(speaker_id: int) -> list[int]:
+    """Distinct speakers sharing at least one audio with `speaker_id`, excluding
+    the speaker itself and any auto-generated 'Speaker N' rows. SQLite's GLOB
+    `'Speaker [0-9]*'` is loose (matches 'Speaker 5x' too) — fine for filtering
+    out auto-names, which always have the strict suffix."""
+    with _get_conn() as conn:
+        rows = conn.execute(
+            """SELECT DISTINCT s2.SpeakerId
+               FROM Segments s1
+               JOIN Segments s2 ON s2.AudioId = s1.AudioId
+               JOIN Speakers sp ON sp.Id = s2.SpeakerId
+               WHERE s1.SpeakerId = ?
+                 AND s2.SpeakerId != ?
+                 AND s2.SpeakerId IS NOT NULL
+                 AND sp.Name NOT GLOB 'Speaker [0-9]*'""",
+            (speaker_id, speaker_id),
+        ).fetchall()
+    return [r["SpeakerId"] for r in rows]
 
 
 def _distinct_audio_speakers(conn: sqlite3.Connection, audio_id: int) -> set[int]:
@@ -897,36 +1026,56 @@ def delete_embeddings_for_speaker_and_audio(speaker_id: int, audio_id: int) -> i
 
 
 def get_segments_by_audio(audio_id: int) -> list[dict]:
+    import json
     with _get_conn() as conn:
         rows = conn.execute(
             """SELECT sg.Id, sg.SpeakerId, sg.Text, sg.StartTime, sg.EndTime,
-                      sp.Name AS SpeakerName, sp.Color AS SpeakerColor
+                      sg.SuspicionScore, sg.SubScores,
+                      sp.Name AS SpeakerName, sp.Color AS SpeakerColor,
+                      sp.ImagePath AS SpeakerImagePath
                FROM Segments sg
                LEFT JOIN Speakers sp ON sp.Id = sg.SpeakerId
                WHERE sg.AudioId = ?
                ORDER BY sg.StartTime""",
             (audio_id,),
         ).fetchall()
-    return [
-        {
+    out = []
+    for r in rows:
+        sub = None
+        if r["SubScores"]:
+            try:
+                sub = json.loads(r["SubScores"])
+            except Exception:
+                sub = None
+        out.append({
             "id": r["Id"],
             "speakerId": r["SpeakerId"],
             "speakerName": r["SpeakerName"] or "Unknown",
             "speakerColor": r["SpeakerColor"] or "#6366f1",
+            "speakerImagePath": r["SpeakerImagePath"],
             "text": r["Text"],
             "startTime": r["StartTime"],
             "endTime": r["EndTime"],
-        }
-        for r in rows
-    ]
+            "suspicionScore": r["SuspicionScore"],
+            "subScores": sub,
+        })
+    return out
 
 
 # ─── Relations ────────────────────────────────────────────────────────────────
 
 def upsert_relation(speaker_a_id: int, speaker_b_id: int, topic: str = "") -> None:
-    """Increment interaction count if pair exists, insert otherwise. Enforces a < b."""
+    """Increment interaction count if pair exists, insert otherwise. Enforces a < b.
+    Untracked speakers are silently skipped — the relation row never gets created,
+    so the connection graph stays clean."""
     a, b = (speaker_a_id, speaker_b_id) if speaker_a_id < speaker_b_id else (speaker_b_id, speaker_a_id)
     with _get_conn() as conn:
+        row = conn.execute(
+            "SELECT Id FROM Speakers WHERE Id IN (?, ?) AND IsUntracked = 1 LIMIT 1",
+            (a, b),
+        ).fetchone()
+        if row is not None:
+            return
         conn.execute(
             """INSERT INTO Relations (SpeakerAId, SpeakerBId, Topic, InteractionCount, LastContact)
                VALUES (?, ?, ?, 1, CURRENT_TIMESTAMP)
@@ -948,6 +1097,7 @@ def get_all_relations() -> list[dict]:
                FROM Relations r
                JOIN Speakers sa ON sa.Id = r.SpeakerAId
                JOIN Speakers sb ON sb.Id = r.SpeakerBId
+               WHERE sa.IsUntracked = 0 AND sb.IsUntracked = 0
                ORDER BY r.InteractionCount DESC"""
         ).fetchall()
     return [
@@ -965,20 +1115,47 @@ def get_all_relations() -> list[dict]:
 
 # ─── Speaker Groups ───────────────────────────────────────────────────────────
 
+class GroupHierarchyError(ValueError):
+    """Raised when a group create/update would break the 2-level invariant."""
+
+
+def _validate_parent(conn: sqlite3.Connection, parent_group_id: Optional[int],
+                     self_group_id: Optional[int] = None) -> None:
+    """parent_group_id must point to a top-level group (its own ParentGroupId IS NULL).
+    A group can't be its own parent."""
+    if parent_group_id is None:
+        return
+    if self_group_id is not None and parent_group_id == self_group_id:
+        raise GroupHierarchyError("A group cannot be its own parent.")
+    row = conn.execute(
+        "SELECT ParentGroupId FROM SpeakerGroups WHERE Id = ?", (parent_group_id,)
+    ).fetchone()
+    if not row:
+        raise GroupHierarchyError(f"Parent group {parent_group_id} does not exist.")
+    if row["ParentGroupId"] is not None:
+        raise GroupHierarchyError(
+            "Selected parent is itself a subgroup — only two levels of hierarchy are supported."
+        )
+
+
 def get_all_groups() -> list[dict]:
     with _get_conn() as conn:
         groups = conn.execute(
-            "SELECT Id, Name, Color, CreatedAt FROM SpeakerGroups ORDER BY CreatedAt ASC"
+            """SELECT g.Id, g.Name, g.Color, g.CreatedAt, g.ParentGroupId, g.Description,
+                      p.Name AS ParentGroupName
+               FROM SpeakerGroups g
+               LEFT JOIN SpeakerGroups p ON p.Id = g.ParentGroupId
+               ORDER BY g.ParentGroupId IS NOT NULL, g.CreatedAt ASC"""
         ).fetchall()
         members = conn.execute(
-            """SELECT sgm.GroupId, s.Id, s.Name, s.Color
+            """SELECT sgm.GroupId, s.Id, s.Name, s.Color, s.ImagePath
                FROM SpeakerGroupMembers sgm
                JOIN Speakers s ON s.Id = sgm.SpeakerId"""
         ).fetchall()
     by_group: dict[int, list[dict]] = {}
     for m in members:
         by_group.setdefault(m["GroupId"], []).append(
-            {"id": m["Id"], "name": m["Name"], "color": m["Color"]}
+            {"id": m["Id"], "name": m["Name"], "color": m["Color"], "imagePath": m["ImagePath"]}
         )
     return [
         {
@@ -986,26 +1163,52 @@ def get_all_groups() -> list[dict]:
             "name": g["Name"],
             "color": g["Color"],
             "createdAt": g["CreatedAt"],
+            "parentGroupId": g["ParentGroupId"],
+            "parentGroupName": g["ParentGroupName"],
+            "description": g["Description"],
             "members": by_group.get(g["Id"], []),
         }
         for g in groups
     ]
 
 
-def create_group(name: str, color: str = "#6366f1") -> int:
+def get_group(group_id: int) -> Optional[dict]:
+    for g in get_all_groups():
+        if g["id"] == group_id:
+            return g
+    return None
+
+
+def create_group(name: str, color: str = "#6366f1",
+                 parent_group_id: Optional[int] = None,
+                 description: Optional[str] = None) -> int:
     with _get_conn() as conn:
+        _validate_parent(conn, parent_group_id)
         cursor = conn.execute(
-            "INSERT INTO SpeakerGroups (Name, Color) VALUES (?, ?)", (name, color)
+            "INSERT INTO SpeakerGroups (Name, Color, ParentGroupId, Description) VALUES (?, ?, ?, ?)",
+            (name, color, parent_group_id, description),
         )
         conn.commit()
     return cursor.lastrowid
 
 
-def update_group(group_id: int, name: str, color: str) -> bool:
+def update_group(group_id: int, name: str, color: str,
+                 parent_group_id: Optional[int] = None,
+                 description: Optional[str] = None) -> bool:
     with _get_conn() as conn:
+        _validate_parent(conn, parent_group_id, self_group_id=group_id)
+        # If this group has children, refuse to make it a subgroup.
+        if parent_group_id is not None:
+            kid_count = conn.execute(
+                "SELECT COUNT(*) FROM SpeakerGroups WHERE ParentGroupId = ?", (group_id,)
+            ).fetchone()[0]
+            if kid_count:
+                raise GroupHierarchyError(
+                    "Cannot demote a group with children to a subgroup. Move its children first."
+                )
         result = conn.execute(
-            "UPDATE SpeakerGroups SET Name = ?, Color = ? WHERE Id = ?",
-            (name, color, group_id),
+            "UPDATE SpeakerGroups SET Name = ?, Color = ?, ParentGroupId = ?, Description = ? WHERE Id = ?",
+            (name, color, parent_group_id, description, group_id),
         )
         conn.commit()
     return result.rowcount > 0
@@ -1072,7 +1275,7 @@ def get_bridges(group_a_id: int, group_b_id: int) -> list[dict]:
         placeholders = ",".join("?" * len(bridges))
         rows = conn.execute(
             f"""SELECT s.Id, s.Name, s.Color, s.RiskLevel, s.FirstDetected,
-                       s.VoiceIdentifier, s.WikidataId,
+                       s.VoiceIdentifier, s.WikidataId, s.ImagePath,
                        COUNT(DISTINCT seg.AudioId) AS RecordingCount,
                        COUNT(se.Id) AS SampleCount
                 FROM Speakers s
@@ -1091,6 +1294,7 @@ def get_bridges(group_a_id: int, group_b_id: int) -> list[dict]:
             "firstDetected": r["FirstDetected"],
             "voiceIdentifier": r["VoiceIdentifier"],
             "wikidataId": r["WikidataId"],
+            "imagePath": r["ImagePath"],
             "recordingCount": r["RecordingCount"],
             "sampleCount": r["SampleCount"],
         }
@@ -1120,49 +1324,122 @@ def get_system_stats() -> dict:
 
 # ─── Alerts ───────────────────────────────────────────────────────────────────
 
+def _row_to_alert(r) -> dict:
+    """Common alert-row → dict converter. Parses SubScores JSON defensively."""
+    import json
+    sub = None
+    raw_sub = r["SubScores"] if "SubScores" in r.keys() else None
+    if raw_sub:
+        try:
+            sub = json.loads(raw_sub)
+        except Exception:
+            sub = None
+    return {
+        "id": r["Id"],
+        "type": r["Type"],
+        "category": r["Category"] if "Category" in r.keys() else None,
+        "message": r["Message"],
+        "createdAt": r["CreatedAt"],
+        "speakerName": r["SpeakerName"] if "SpeakerName" in r.keys() else None,
+        "audioName": r["AudioName"] if "AudioName" in r.keys() else None,
+        "audioId": r["RelatedAudioId"] if "RelatedAudioId" in r.keys() else None,
+        "segmentId": r["SegmentId"] if "SegmentId" in r.keys() else None,
+        "subScores": sub,
+        "llmExplanation": r["LlmExplanation"] if "LlmExplanation" in r.keys() else None,
+    }
+
+
 def create_alert(alert_type: str, message: str,
                  related_speaker_id: Optional[int] = None,
-                 related_audio_id: Optional[int] = None) -> int:
+                 related_audio_id: Optional[int] = None,
+                 category: Optional[str] = None) -> int:
     with _get_conn() as conn:
         cursor = conn.execute(
-            """INSERT INTO Alerts (Type, Message, RelatedSpeakerId, RelatedAudioId)
-               VALUES (?, ?, ?, ?)""",
-            (alert_type, message, related_speaker_id, related_audio_id),
+            """INSERT INTO Alerts (Type, Message, RelatedSpeakerId, RelatedAudioId, Category)
+               VALUES (?, ?, ?, ?, ?)""",
+            (alert_type, message, related_speaker_id, related_audio_id, category),
         )
         conn.commit()
     return cursor.lastrowid
 
 
-def get_all_alerts() -> list[dict]:
+def create_coded_language_alert(
+    severity: str,
+    message: str,
+    audio_id: int,
+    segment_id: int,
+    sub_scores: dict,
+    llm_explanation: Optional[str] = None,
+) -> int:
+    """Insert a coded_language alert with sub-score breakdown JSON.
+
+    Type is the standard severity ('low'|'medium'|'high') so the CHECK constraint
+    is satisfied. Category='coded_language' is the discriminator.
+    """
+    import json
+    with _get_conn() as conn:
+        cursor = conn.execute(
+            """INSERT INTO Alerts
+               (Type, Message, RelatedAudioId, SegmentId, Category, SubScores, LlmExplanation)
+               VALUES (?, ?, ?, ?, 'coded_language', ?, ?)""",
+            (severity, message, audio_id, segment_id,
+             json.dumps(sub_scores), llm_explanation),
+        )
+        conn.commit()
+    return cursor.lastrowid
+
+
+def get_all_alerts(category: Optional[str] = None) -> list[dict]:
+    """Return every alert, newest first. Optional category filter
+    ('coded_language' | 'dangerous_word' | None for all)."""
+    sql = """SELECT a.Id, a.Type, a.Category, a.Message, a.CreatedAt,
+                    a.RelatedAudioId, a.SegmentId, a.SubScores, a.LlmExplanation,
+                    sp.Name AS SpeakerName, au.Name AS AudioName
+             FROM Alerts a
+             LEFT JOIN Speakers sp ON sp.Id = a.RelatedSpeakerId
+             LEFT JOIN Audios au ON au.Id = a.RelatedAudioId"""
+    params: tuple = ()
+    if category:
+        sql += " WHERE a.Category = ?"
+        params = (category,)
+    sql += " ORDER BY a.CreatedAt DESC"
+    with _get_conn() as conn:
+        rows = conn.execute(sql, params).fetchall()
+    return [_row_to_alert(r) for r in rows]
+
+
+def get_alerts_for_audio(audio_id: int) -> list[dict]:
     with _get_conn() as conn:
         rows = conn.execute(
-            """SELECT a.Id, a.Type, a.Message, a.CreatedAt,
-                      sp.Name AS SpeakerName, au.Name AS AudioName
+            """SELECT a.Id, a.Type, a.Category, a.Message, a.CreatedAt,
+                      a.RelatedAudioId, a.SegmentId, a.SubScores, a.LlmExplanation,
+                      sp.Name AS SpeakerName, NULL AS AudioName
                FROM Alerts a
                LEFT JOIN Speakers sp ON sp.Id = a.RelatedSpeakerId
-               LEFT JOIN Audios au ON au.Id = a.RelatedAudioId
-               ORDER BY a.CreatedAt DESC"""
+               WHERE a.RelatedAudioId = ?
+               ORDER BY a.CreatedAt DESC""",
+            (audio_id,),
         ).fetchall()
-    return [
-        {
-            "id": r["Id"],
-            "type": r["Type"],
-            "message": r["Message"],
-            "createdAt": r["CreatedAt"],
-            "speakerName": r["SpeakerName"],
-            "audioName": r["AudioName"],
-        }
-        for r in rows
-    ]
+    return [_row_to_alert(r) for r in rows]
 
 
 # ─── Dangerous Words ──────────────────────────────────────────────────────────
 
-def get_dangerous_words() -> list[dict]:
+def get_dangerous_words(include_euphemisms: bool = False) -> list[dict]:
+    """Default returns only plain dangerous words (IsEuphemism=0). Ofir's
+    substring scanner uses this — we don't want euphemism phrases triggering
+    literal substring alerts on top of the coded-language detector.
+
+    NOTE for Ofek: if you ever need to scan over euphemisms too, pass
+    include_euphemisms=True. The list_euphemisms() function below returns the
+    other side of the split.
+    """
+    sql = "SELECT Id, Word, Severity, CreatedAt FROM DangerousWords"
+    if not include_euphemisms:
+        sql += " WHERE IsEuphemism = 0"
+    sql += " ORDER BY CreatedAt DESC"
     with _get_conn() as conn:
-        rows = conn.execute(
-            "SELECT Id, Word, Severity, CreatedAt FROM DangerousWords ORDER BY CreatedAt DESC"
-        ).fetchall()
+        rows = conn.execute(sql).fetchall()
     return [{"id": r["Id"], "word": r["Word"], "severity": r["Severity"], "createdAt": r["CreatedAt"]} for r in rows]
 
 
@@ -1187,27 +1464,203 @@ def delete_dangerous_word(word_id: int) -> bool:
     return result.rowcount > 0
 
 
-def get_alerts_for_audio(audio_id: int) -> list[dict]:
+# ─── NLP: Segments & Euphemisms (Ofir) ────────────────────────────────────────
+
+EMBED_DIM_DEFAULT = 384  # BAAI/bge-small-en-v1.5
+
+
+def set_segment_embedding(segment_id: int, vec: "np.ndarray", model_name: str) -> None:
+    arr = np.asarray(vec, dtype=np.float32).reshape(-1)
+    with _get_conn() as conn:
+        conn.execute(
+            "UPDATE Segments SET Embedding = ?, EmbeddingModel = ? WHERE Id = ?",
+            (arr.tobytes(), model_name, segment_id),
+        )
+        conn.commit()
+
+
+def set_segment_suspicion(segment_id: int, score: float, sub_scores: dict) -> None:
+    import json
+    with _get_conn() as conn:
+        conn.execute(
+            "UPDATE Segments SET SuspicionScore = ?, SubScores = ? WHERE Id = ?",
+            (float(score), json.dumps(sub_scores), segment_id),
+        )
+        conn.commit()
+
+
+def _decode_emb(blob: Optional[bytes]) -> Optional["np.ndarray"]:
+    if not blob:
+        return None
+    try:
+        return np.frombuffer(blob, dtype=np.float32).copy()
+    except Exception:
+        return None
+
+
+def get_segments_with_embeddings(audio_id: int) -> list[dict]:
+    """Returns rows ordered by StartTime, with embedding decoded (or None)."""
     with _get_conn() as conn:
         rows = conn.execute(
-            """SELECT a.Id, a.Type, a.Message, a.CreatedAt,
-                      sp.Name AS SpeakerName
-               FROM Alerts a
-               LEFT JOIN Speakers sp ON sp.Id = a.RelatedSpeakerId
-               WHERE a.RelatedAudioId = ?
-               ORDER BY a.CreatedAt DESC""",
+            """SELECT Id, SpeakerId, Text, StartTime, EndTime, Embedding, EmbeddingModel
+               FROM Segments
+               WHERE AudioId = ?
+               ORDER BY StartTime""",
             (audio_id,),
         ).fetchall()
     return [
         {
             "id": r["Id"],
-            "type": r["Type"],
-            "message": r["Message"],
-            "createdAt": r["CreatedAt"],
-            "speakerName": r["SpeakerName"],
+            "speakerId": r["SpeakerId"],
+            "text": r["Text"] or "",
+            "startTime": r["StartTime"],
+            "endTime": r["EndTime"],
+            "embedding": _decode_emb(r["Embedding"]),
+            "embeddingModel": r["EmbeddingModel"],
         }
         for r in rows
     ]
+
+
+def get_all_segments_with_embeddings() -> list[dict]:
+    with _get_conn() as conn:
+        rows = conn.execute(
+            """SELECT Id, AudioId, SpeakerId, Text, Embedding, EmbeddingModel
+               FROM Segments"""
+        ).fetchall()
+    return [
+        {
+            "id": r["Id"],
+            "audioId": r["AudioId"],
+            "speakerId": r["SpeakerId"],
+            "text": r["Text"] or "",
+            "embedding": _decode_emb(r["Embedding"]),
+            "embeddingModel": r["EmbeddingModel"],
+        }
+        for r in rows
+    ]
+
+
+def get_all_segment_texts() -> list[str]:
+    with _get_conn() as conn:
+        rows = conn.execute("SELECT Text FROM Segments").fetchall()
+    return [(r["Text"] or "") for r in rows]
+
+
+def count_segments_global() -> int:
+    with _get_conn() as conn:
+        row = conn.execute("SELECT COUNT(*) FROM Segments").fetchone()
+    return int(row[0]) if row else 0
+
+
+# Euphemism CRUD — sits on top of DangerousWords with IsEuphemism=1
+
+def list_euphemisms() -> list[dict]:
+    with _get_conn() as conn:
+        rows = conn.execute(
+            """SELECT Id, Word, Severity, IsEuphemism, AutoLearned, Confidence, CreatedAt
+               FROM DangerousWords
+               WHERE IsEuphemism = 1
+               ORDER BY AutoLearned ASC, CreatedAt DESC"""
+        ).fetchall()
+    return [
+        {
+            "id": r["Id"],
+            "phrase": r["Word"],
+            "severity": r["Severity"],
+            "isEuphemism": bool(r["IsEuphemism"]),
+            "autoLearned": bool(r["AutoLearned"]),
+            "confidence": r["Confidence"],
+            "createdAt": r["CreatedAt"],
+        }
+        for r in rows
+    ]
+
+
+def add_euphemism(
+    phrase: str,
+    severity: str = "high",
+    auto_learned: bool = False,
+    confidence: Optional[float] = None,
+    embedding: Optional["np.ndarray"] = None,
+    embedding_model: Optional[str] = None,
+    created_by: Optional[int] = None,
+) -> Optional[dict]:
+    """Insert a euphemism (IsEuphemism=1). Returns the new row, or None if the
+    phrase already exists (UNIQUE COLLATE NOCASE on Word)."""
+    blob = None
+    if embedding is not None:
+        blob = np.asarray(embedding, dtype=np.float32).reshape(-1).tobytes()
+    try:
+        with _get_conn() as conn:
+            cursor = conn.execute(
+                """INSERT INTO DangerousWords
+                   (Word, Severity, CreatedBy, IsEuphemism, AutoLearned, Confidence,
+                    Embedding, EmbeddingModel)
+                   VALUES (?, ?, ?, 1, ?, ?, ?, ?)""",
+                (phrase.strip(), severity, created_by, 1 if auto_learned else 0,
+                 confidence, blob, embedding_model),
+            )
+            new_id = cursor.lastrowid
+            conn.commit()
+            row = conn.execute(
+                """SELECT Id, Word, Severity, IsEuphemism, AutoLearned, Confidence, CreatedAt
+                   FROM DangerousWords WHERE Id = ?""",
+                (new_id,),
+            ).fetchone()
+    except sqlite3.IntegrityError:
+        return None
+    return {
+        "id": row["Id"],
+        "phrase": row["Word"],
+        "severity": row["Severity"],
+        "isEuphemism": bool(row["IsEuphemism"]),
+        "autoLearned": bool(row["AutoLearned"]),
+        "confidence": row["Confidence"],
+        "createdAt": row["CreatedAt"],
+    }
+
+
+def delete_euphemism(euph_id: int) -> bool:
+    """Defensive delete — only removes if IsEuphemism=1 so a stray DELETE here
+    cannot wipe a plain dangerous word."""
+    with _get_conn() as conn:
+        result = conn.execute(
+            "DELETE FROM DangerousWords WHERE Id = ? AND IsEuphemism = 1",
+            (euph_id,),
+        )
+        conn.commit()
+    return result.rowcount > 0
+
+
+def get_euphemisms_with_embeddings() -> list[dict]:
+    with _get_conn() as conn:
+        rows = conn.execute(
+            """SELECT Id, Word, Severity, Confidence, Embedding, EmbeddingModel
+               FROM DangerousWords
+               WHERE IsEuphemism = 1"""
+        ).fetchall()
+    return [
+        {
+            "id": r["Id"],
+            "phrase": r["Word"],
+            "severity": r["Severity"],
+            "confidence": r["Confidence"],
+            "embedding": _decode_emb(r["Embedding"]),
+            "embeddingModel": r["EmbeddingModel"],
+        }
+        for r in rows
+    ]
+
+
+def set_euphemism_embedding(euph_id: int, vec: "np.ndarray", model_name: str) -> None:
+    arr = np.asarray(vec, dtype=np.float32).reshape(-1)
+    with _get_conn() as conn:
+        conn.execute(
+            "UPDATE DangerousWords SET Embedding = ?, EmbeddingModel = ? WHERE Id = ?",
+            (arr.tobytes(), model_name, euph_id),
+        )
+        conn.commit()
 
 
 # ─── Speaker Embeddings ───────────────────────────────────────────────────────
@@ -1386,3 +1839,282 @@ def delete_suggestion(suggestion_id: int) -> bool:
         )
         conn.commit()
     return result.rowcount > 0
+
+
+# ─── Projects (top-level groups) ──────────────────────────────────────────────
+
+def list_projects(user_id: Optional[int] = None, is_admin: bool = True) -> list[dict]:
+    """Top-level groups. For analysts (is_admin=False, user_id given), only
+    projects whose subgroup tree they have at least one assignment in."""
+    visible: Optional[set[int]] = None
+    if not is_admin and user_id is not None:
+        visible = get_visible_group_ids(user_id)
+    with _get_conn() as conn:
+        rows = conn.execute(
+            """SELECT g.Id, g.Name, g.Color, g.Description, g.CreatedAt,
+                      (SELECT COUNT(*) FROM SpeakerGroups c WHERE c.ParentGroupId = g.Id) AS SubgroupCount,
+                      (SELECT COUNT(DISTINCT sgm.SpeakerId)
+                         FROM SpeakerGroupMembers sgm
+                         JOIN SpeakerGroups c ON c.Id = sgm.GroupId
+                         WHERE c.Id = g.Id OR c.ParentGroupId = g.Id) AS MemberCount,
+                      (SELECT COUNT(DISTINCT pa.AnalystUserId)
+                         FROM ProjectAssignments pa
+                         JOIN SpeakerGroups c ON c.Id = pa.GroupId
+                         WHERE c.Id = g.Id OR c.ParentGroupId = g.Id) AS AssignedAnalystCount
+               FROM SpeakerGroups g
+               WHERE g.ParentGroupId IS NULL
+               ORDER BY g.CreatedAt ASC"""
+        ).fetchall()
+    out = []
+    for r in rows:
+        if visible is not None and r["Id"] not in visible:
+            # Top-level group itself isn't assigned — include only if a child is.
+            subgroup_ids = [c["Id"] for c in _children_of(r["Id"])]
+            if not any(s in visible for s in subgroup_ids):
+                continue
+        out.append({
+            "id": r["Id"],
+            "name": r["Name"],
+            "color": r["Color"],
+            "description": r["Description"],
+            "createdAt": r["CreatedAt"],
+            "subgroupCount": r["SubgroupCount"],
+            "memberCount": r["MemberCount"],
+            "assignedAnalystCount": r["AssignedAnalystCount"],
+        })
+    return out
+
+
+def _children_of(parent_group_id: int) -> list[dict]:
+    with _get_conn() as conn:
+        rows = conn.execute(
+            "SELECT Id, Name, Color, Description, CreatedAt, ParentGroupId FROM SpeakerGroups WHERE ParentGroupId = ?",
+            (parent_group_id,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_project_detail(project_id: int) -> Optional[dict]:
+    project = get_group(project_id)
+    if not project or project["parentGroupId"] is not None:
+        return None
+    children = [g for g in get_all_groups() if g["parentGroupId"] == project_id]
+    # Attach assigned analysts per subgroup
+    with _get_conn() as conn:
+        rows = conn.execute(
+            """SELECT pa.GroupId, u.Id AS UserId, u.Username, u.FirstName, u.LastName
+               FROM ProjectAssignments pa
+               JOIN Users u ON u.Id = pa.AnalystUserId
+               WHERE pa.GroupId = ? OR pa.GroupId IN (
+                   SELECT Id FROM SpeakerGroups WHERE ParentGroupId = ?
+               )""",
+            (project_id, project_id),
+        ).fetchall()
+    by_group: dict[int, list[dict]] = {}
+    for r in rows:
+        by_group.setdefault(r["GroupId"], []).append({
+            "id": r["UserId"], "username": r["Username"],
+            "firstName": r["FirstName"], "lastName": r["LastName"],
+        })
+    return {
+        **project,
+        "assignedAnalysts": by_group.get(project_id, []),
+        "subgroups": [
+            {**c, "assignedAnalysts": by_group.get(c["id"], [])} for c in children
+        ],
+    }
+
+
+# ─── Project Assignments ──────────────────────────────────────────────────────
+
+def list_assignments(group_id: Optional[int] = None,
+                     user_id: Optional[int] = None,
+                     project_id: Optional[int] = None) -> list[dict]:
+    sql = """SELECT pa.Id, pa.AnalystUserId, pa.GroupId, pa.CreatedAt,
+                    u.Username AS AnalystUsername, u.FirstName AS AnalystFirstName, u.LastName AS AnalystLastName,
+                    g.Name AS GroupName, g.ParentGroupId,
+                    p.Name AS ParentGroupName
+             FROM ProjectAssignments pa
+             JOIN Users u ON u.Id = pa.AnalystUserId
+             JOIN SpeakerGroups g ON g.Id = pa.GroupId
+             LEFT JOIN SpeakerGroups p ON p.Id = g.ParentGroupId"""
+    clauses: list[str] = []
+    params: list = []
+    if group_id is not None:
+        clauses.append("pa.GroupId = ?")
+        params.append(group_id)
+    if user_id is not None:
+        clauses.append("pa.AnalystUserId = ?")
+        params.append(user_id)
+    if project_id is not None:
+        clauses.append("(g.Id = ? OR g.ParentGroupId = ?)")
+        params.extend([project_id, project_id])
+    if clauses:
+        sql += " WHERE " + " AND ".join(clauses)
+    sql += " ORDER BY pa.CreatedAt DESC"
+    with _get_conn() as conn:
+        rows = conn.execute(sql, params).fetchall()
+    return [
+        {
+            "id": r["Id"],
+            "analystUserId": r["AnalystUserId"],
+            "analystUsername": r["AnalystUsername"],
+            "analystFirstName": r["AnalystFirstName"] or "",
+            "analystLastName": r["AnalystLastName"] or "",
+            "groupId": r["GroupId"],
+            "groupName": r["GroupName"],
+            "parentGroupId": r["ParentGroupId"],
+            "parentGroupName": r["ParentGroupName"],
+            "createdAt": r["CreatedAt"],
+        }
+        for r in rows
+    ]
+
+
+class AssignmentError(ValueError):
+    """Raised when an assignment can't be created (admin user, missing rows, etc.)."""
+
+
+def add_assignment(analyst_user_id: int, group_id: int) -> Optional[dict]:
+    with _get_conn() as conn:
+        user = conn.execute("SELECT Role FROM Users WHERE Id = ?", (analyst_user_id,)).fetchone()
+        if not user:
+            raise AssignmentError("User not found.")
+        if user["Role"] != "Analyst":
+            raise AssignmentError("Only Analyst users can be assigned to a project.")
+        group = conn.execute("SELECT Id FROM SpeakerGroups WHERE Id = ?", (group_id,)).fetchone()
+        if not group:
+            raise AssignmentError("Group not found.")
+        # Idempotent: respect the UNIQUE(AnalystUserId, GroupId)
+        conn.execute(
+            "INSERT OR IGNORE INTO ProjectAssignments (AnalystUserId, GroupId) VALUES (?, ?)",
+            (analyst_user_id, group_id),
+        )
+        conn.commit()
+    rows = list_assignments(user_id=analyst_user_id, group_id=group_id)
+    return rows[0] if rows else None
+
+
+def remove_assignment(assignment_id: int) -> bool:
+    with _get_conn() as conn:
+        result = conn.execute(
+            "DELETE FROM ProjectAssignments WHERE Id = ?", (assignment_id,)
+        )
+        conn.commit()
+    return result.rowcount > 0
+
+
+def get_assignments_for_user(user_id: int) -> list[dict]:
+    return list_assignments(user_id=user_id)
+
+
+# ─── Visibility (project scoping) ─────────────────────────────────────────────
+
+def get_visible_group_ids(user_id: int) -> set[int]:
+    """Set of GroupIds the analyst has access to: directly-assigned groups + any
+    children of assigned top-level groups."""
+    with _get_conn() as conn:
+        rows = conn.execute(
+            """SELECT pa.GroupId, g.ParentGroupId
+               FROM ProjectAssignments pa
+               JOIN SpeakerGroups g ON g.Id = pa.GroupId
+               WHERE pa.AnalystUserId = ?""",
+            (user_id,),
+        ).fetchall()
+        assigned_ids = {r["GroupId"] for r in rows}
+        top_level_assigned = {r["GroupId"] for r in rows if r["ParentGroupId"] is None}
+        if not top_level_assigned:
+            return assigned_ids
+        placeholders = ",".join("?" * len(top_level_assigned))
+        children = conn.execute(
+            f"SELECT Id FROM SpeakerGroups WHERE ParentGroupId IN ({placeholders})",
+            tuple(top_level_assigned),
+        ).fetchall()
+    return assigned_ids | {r["Id"] for r in children}
+
+
+def get_visible_speaker_ids(user_id: int) -> set[int]:
+    visible_groups = get_visible_group_ids(user_id)
+    if not visible_groups:
+        return set()
+    placeholders = ",".join("?" * len(visible_groups))
+    with _get_conn() as conn:
+        rows = conn.execute(
+            f"SELECT DISTINCT SpeakerId FROM SpeakerGroupMembers WHERE GroupId IN ({placeholders})",
+            tuple(visible_groups),
+        ).fetchall()
+    return {r["SpeakerId"] for r in rows}
+
+
+def get_visible_audio_ids(user_id: int) -> set[int]:
+    visible_speakers = get_visible_speaker_ids(user_id)
+    if not visible_speakers:
+        return set()
+    placeholders = ",".join("?" * len(visible_speakers))
+    with _get_conn() as conn:
+        rows = conn.execute(
+            f"""SELECT DISTINCT AudioId FROM Segments
+                WHERE SpeakerId IN ({placeholders}) AND AudioId IS NOT NULL""",
+            tuple(visible_speakers),
+        ).fetchall()
+    return {r["AudioId"] for r in rows}
+
+
+def user_can_see_audio(user_id: int, is_admin: bool, audio_id: int) -> bool:
+    if is_admin:
+        return True
+    return audio_id in get_visible_audio_ids(user_id)
+
+
+def get_audios_for_user(user_id: Optional[int], is_admin: bool) -> list[dict]:
+    if is_admin or user_id is None:
+        return get_all_audios()
+    visible = get_visible_audio_ids(user_id)
+    return [a for a in get_all_audios() if a["id"] in visible]
+
+
+def get_speakers_for_user(user_id: Optional[int], is_admin: bool) -> list[dict]:
+    if is_admin or user_id is None:
+        return get_all_speakers()
+    visible = get_visible_speaker_ids(user_id)
+    return [s for s in get_all_speakers() if s["id"] in visible]
+
+
+def get_alerts_for_user(user_id: Optional[int], is_admin: bool,
+                        category: Optional[str] = None) -> list[dict]:
+    base = get_all_alerts(category=category)
+    if is_admin or user_id is None:
+        return base
+    visible = get_visible_audio_ids(user_id)
+    return [a for a in base if a.get("audioId") in visible]
+
+
+# ─── User helpers (analyst list, role lookup) ─────────────────────────────────
+
+def list_users_by_role(role: Optional[str] = None) -> list[dict]:
+    sql = "SELECT Id, Username, Role, FirstName, LastName, IDNumber, CreatedAt FROM Users"
+    params: tuple = ()
+    if role is not None:
+        sql += " WHERE Role = ?"
+        params = (role,)
+    sql += " ORDER BY Username"
+    with _get_conn() as conn:
+        rows = conn.execute(sql, params).fetchall()
+    return [
+        {
+            "id": r["Id"],
+            "username": r["Username"],
+            "role": r["Role"],
+            "firstName": r["FirstName"] or "",
+            "lastName": r["LastName"] or "",
+            "idNumber": r["IDNumber"] or "",
+            "createdAt": r["CreatedAt"],
+        }
+        for r in rows
+    ]
+
+
+def get_user_role(user_id: int) -> Optional[str]:
+    with _get_conn() as conn:
+        row = conn.execute("SELECT Role FROM Users WHERE Id = ?", (user_id,)).fetchone()
+    return row["Role"] if row else None

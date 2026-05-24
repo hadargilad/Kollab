@@ -39,19 +39,14 @@ export default function Login({ onLogin }: LoginProps) {
       />
 
       <div className="relative w-full max-w-sm">
-        {/* Access warning */}
         <div className="text-center mb-8">
-          <div className="flex items-center justify-center gap-2 text-zinc-700 text-[10px] font-mono uppercase tracking-widest mb-6">
-            <span className="w-8 h-px bg-zinc-800" />
-            <span>Authorized Personnel Only</span>
-            <span className="w-8 h-px bg-zinc-800" />
+          <div className="flex justify-center">
+            <KolLabLogo size={80} />
           </div>
-
-          <KolLabLogo size={56} />
           <h1 className="text-white text-2xl font-bold tracking-tight mt-4">
             Kol<span className="text-blue-400">L</span>ab
           </h1>
-          <p className="text-zinc-600 text-xs font-mono mt-1 uppercase tracking-widest">
+          <p className="text-zinc-200 text-xs font-mono mt-1 uppercase tracking-widest">
             Intelligence Management Platform
           </p>
         </div>
@@ -67,16 +62,16 @@ export default function Login({ onLogin }: LoginProps) {
             )}
 
             <div>
-              <label className="block text-zinc-500 text-xs font-mono uppercase tracking-widest mb-1.5">
+              <label className="block text-zinc-300 text-xs font-mono uppercase tracking-widest mb-1.5">
                 Username
               </label>
               <div className="relative">
-                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-600" />
+                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-200" />
                 <input
                   type="text"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  className="w-full bg-black border border-zinc-800 rounded px-3 pl-9 py-2.5 text-white text-sm placeholder-zinc-700 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/30 transition-all font-mono"
+                  className="w-full bg-black border border-zinc-800 rounded px-3 pl-9 py-2.5 text-white text-sm placeholder-zinc-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/30 transition-all font-mono"
                   placeholder="username"
                   required
                 />
@@ -84,16 +79,16 @@ export default function Login({ onLogin }: LoginProps) {
             </div>
 
             <div>
-              <label className="block text-zinc-500 text-xs font-mono uppercase tracking-widest mb-1.5">
+              <label className="block text-zinc-300 text-xs font-mono uppercase tracking-widest mb-1.5">
                 Password
               </label>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-600" />
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-200" />
                 <input
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-black border border-zinc-800 rounded px-3 pl-9 py-2.5 text-white text-sm placeholder-zinc-700 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/30 transition-all font-mono"
+                  className="w-full bg-black border border-zinc-800 rounded px-3 pl-9 py-2.5 text-white text-sm placeholder-zinc-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/30 transition-all font-mono"
                   placeholder="••••••••"
                   required
                 />
@@ -105,7 +100,7 @@ export default function Login({ onLogin }: LoginProps) {
               disabled={isLoading}
               className={`w-full py-2.5 rounded font-semibold text-sm tracking-wide transition-all mt-2 ${
                 isLoading
-                  ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
+                  ? 'bg-zinc-800 text-zinc-300 cursor-not-allowed'
                   : 'bg-blue-600 hover:bg-blue-500 text-white active:scale-[0.98]'
               }`}
             >
@@ -115,7 +110,7 @@ export default function Login({ onLogin }: LoginProps) {
 
           <div className="mt-5 pt-4 border-t border-zinc-900 flex items-center justify-center gap-2">
             <span className="w-1.5 h-1.5 rounded-full bg-red-600 animate-pulse" />
-            <span className="text-zinc-700 font-mono text-[10px] uppercase tracking-widest">
+            <span className="text-zinc-300 font-mono text-[10px] uppercase tracking-widest">
               Classified Access Only
             </span>
           </div>
