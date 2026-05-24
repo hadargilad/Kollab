@@ -465,10 +465,6 @@ export default function SpeakerProfile() {
                     </button>
                   </>
                 )}
-                <Link to="/identity"
-                  className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded transition-colors">
-                  Match Identity
-                </Link>
               </div>
             </div>
 

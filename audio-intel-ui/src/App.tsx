@@ -8,7 +8,6 @@ import AudioAnalysis from './components/AudioAnalysis';
 import TranscriptView from './components/TranscriptView';
 import SpeakerProfile from './components/SpeakerProfile';
 import NetworkGraph from './components/NetworkGraph';
-import IdentityMatching from './components/IdentityMatching';
 import Settings from './components/Settings';
 import Layout from './components/Layout';
 import WaveformAnalysis from './components/WaveformAnalysis';
@@ -93,7 +92,6 @@ export default function App() {
           <Route path="projects" element={<Projects isAdmin={user?.role === 'Admin'} currentUserId={user?.id ?? 0} />} />
           <Route path="projects/:id" element={<ProjectDetail isAdmin={user?.role === 'Admin'} />} />
           <Route path="alerts" element={<Alerts />} />
-          <Route path="identity" element={<IdentityMatching />} />
           <Route path="settings" element={<Settings isAdmin={user?.role === 'Admin'} />} />
           <Route path="profile-search" element={<ProfileSearch />} />
           <Route path="related-speakers" element={<RelatedSpeakers />} />
