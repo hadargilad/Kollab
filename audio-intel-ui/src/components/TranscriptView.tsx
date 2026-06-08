@@ -1,9 +1,19 @@
 import { useState, useEffect } from 'react';
 import { useParams, useLocation, Link } from 'react-router-dom';
 import { Download, Search, FileText, User, Loader2, AlertCircle, ShieldAlert, Sparkles } from 'lucide-react';
-import { audios, dangerousWords, type AudioRecord, type SegmentRecord, type SubScores } from '../lib/api';
+import { audios, dangerousWords, entities, type AudioRecord, type SegmentRecord, type SubScores, type SegmentMentionRecord } from '../lib/api';
 import SubScoresBar, { SUB_LEGEND } from './SubScoresBar';
 import SpeakerAvatar from './SpeakerAvatar';
+
+const ENTITY_COLORS: Record<string, string> = {
+  PERSON:  'bg-blue-500/25 text-blue-200 border-b border-blue-400/50',
+  ORG:     'bg-purple-500/25 text-purple-200 border-b border-purple-400/50',
+  LOC:     'bg-green-500/25 text-green-200 border-b border-green-400/50',
+  MISC:    'bg-zinc-500/20 text-zinc-200 border-b border-zinc-400/50',
+  PHONE:   'bg-amber-500/25 text-amber-200 border-b border-amber-400/50',
+  EMAIL:   'bg-cyan-500/25 text-cyan-200 border-b border-cyan-400/50',
+  MONEY:   'bg-emerald-500/25 text-emerald-200 border-b border-emerald-400/50',
+};
 
 function suspicionRowClass(score: number | null | undefined): string {
   if (score == null) return '';
@@ -35,6 +45,7 @@ export default function TranscriptView() {
   const [error, setError] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [flaggedWords, setFlaggedWords] = useState<string[]>([]);
+  const [mentionsBySegment, setMentionsBySegment] = useState<Map<number, SegmentMentionRecord[]>>(new Map());
 
   useEffect(() => {
     dangerousWords.list().then(ws => setFlaggedWords(ws.map(w => w.word))).catch(() => {});
@@ -46,6 +57,15 @@ export default function TranscriptView() {
       .then(([audioData, segsData]) => { setAudio(audioData); setSegments(segsData); })
       .catch(() => setError('Failed to load transcript.'))
       .finally(() => setLoading(false));
+    entities.segmentMentions(audioId).then(mentions => {
+      const map = new Map<number, SegmentMentionRecord[]>();
+      for (const m of mentions) {
+        const arr = map.get(m.segmentId) ?? [];
+        arr.push(m);
+        map.set(m.segmentId, arr);
+      }
+      setMentionsBySegment(map);
+    }).catch(() => {});
   }, [audioId]);
 
   // Scroll to anchored segment (e.g. /transcript/12#seg-345 from the Alerts page)
@@ -62,10 +82,10 @@ export default function TranscriptView() {
 
   const escapeRx = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-  const highlightText = (text: string, query: string) => {
-    if (!query && flaggedWords.length === 0) return <>{text}</>;
+  const highlightTextWithEntities = (text: string, query: string, segMentions: SegmentMentionRecord[]) => {
+    type Span = { start: number; end: number; red: boolean; entityType?: string; rawText?: string };
+    const intervals: Span[] = [];
 
-    const intervals: { start: number; end: number; red: boolean }[] = [];
     const addMatches = (needle: string, red: boolean) => {
       if (!needle.trim()) return;
       const rx = new RegExp(escapeRx(needle), 'gi');
@@ -75,10 +95,19 @@ export default function TranscriptView() {
     };
     if (query) addMatches(query, false);
     for (const w of flaggedWords) addMatches(w, true);
+    for (const mention of segMentions) {
+      intervals.push({
+        start: mention.offset,
+        end: mention.offset + mention.length,
+        red: false,
+        entityType: mention.entityType,
+        rawText: mention.rawText,
+      });
+    }
 
     intervals.sort((a, b) => a.start - b.start || (a.red ? -1 : 1));
 
-    const merged: { start: number; end: number; red: boolean }[] = [];
+    const merged: Span[] = [];
     for (const iv of intervals) {
       const last = merged[merged.length - 1];
       if (!last || last.end <= iv.start) { merged.push({ ...iv }); continue; }
@@ -88,14 +117,26 @@ export default function TranscriptView() {
 
     const nodes: React.ReactNode[] = [];
     let pos = 0;
-    for (const { start, end, red } of merged) {
-      if (start > pos) nodes.push(text.slice(pos, start));
-      nodes.push(
-        <mark key={start} className={red ? 'bg-red-500/25 text-red-300 rounded-sm' : 'bg-yellow-500/30 text-yellow-200 rounded-sm'}>
-          {text.slice(start, end)}
-        </mark>
-      );
-      pos = end;
+    for (const span of merged) {
+      if (span.start > pos) nodes.push(text.slice(pos, span.start));
+      const slice = text.slice(span.start, span.end);
+      if (span.red) {
+        nodes.push(<mark key={span.start} className="bg-red-500/25 text-red-300 rounded-sm">{slice}</mark>);
+      } else if (span.entityType) {
+        const cls = ENTITY_COLORS[span.entityType] ?? ENTITY_COLORS.MISC;
+        nodes.push(
+          <span
+            key={span.start}
+            title={`${span.entityType}: ${span.rawText}`}
+            className={`rounded-sm px-0.5 cursor-default ${cls}`}
+          >
+            {slice}
+          </span>
+        );
+      } else {
+        nodes.push(<mark key={span.start} className="bg-yellow-500/30 text-yellow-200 rounded-sm">{slice}</mark>);
+      }
+      pos = span.end;
     }
     if (pos < text.length) nodes.push(text.slice(pos));
     return <>{nodes}</>;
@@ -239,7 +280,7 @@ export default function TranscriptView() {
                           )}
                         </div>
                         <p className="text-zinc-200 text-sm leading-relaxed">
-                          {highlightText(seg.text, searchQuery)}
+                          {highlightTextWithEntities(seg.text, searchQuery, mentionsBySegment.get(seg.id) ?? [])}
                         </p>
                         {hasScore && seg.subScores && (
                           <div className="mt-2 max-w-md">

@@ -10,3 +10,7 @@ transformers           # distilgpt2 for Signal C (perplexity)
 torch                  # backend for transformers + sentence-transformers
 sentence-transformers  # BAAI/bge-small-en-v1.5 segment embeddings (shared infra; Hadar will reuse)
 scikit-learn           # TfidfVectorizer + CountVectorizer + cosine
+
+# NLP (Ofek — NER + Entity Resolution)
+phonetics              # Double Metaphone for phonetic name matching
+jellyfish              # Jaro-Winkler string similarity

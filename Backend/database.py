@@ -211,10 +211,56 @@ def init_db():
             conn.execute("ALTER TABLE DangerousWords ADD COLUMN Embedding BLOB")
         if "EmbeddingModel" not in dw_cols:
             conn.execute("ALTER TABLE DangerousWords ADD COLUMN EmbeddingModel TEXT")
-        # ─── NLP migrations reserved for Hadar / Ofek (do not add here yet) ───
-        # Hadar: reuse Segments.Embedding above (no new column needed).
-        # Ofek:  CREATE TABLE Entities (...); CREATE TABLE EntityMentions (...);
-        #        ALTER TABLE Speakers ADD COLUMN IsGhost ... / PromotedFromEntityId ...
+        # ─── NLP migrations: Ofek — NER / Ghost Nodes / Entity Resolution ───
+        spk_cols = {row[1] for row in conn.execute("PRAGMA table_info(Speakers)").fetchall()}
+        if "IsGhost" not in spk_cols:
+            conn.execute("ALTER TABLE Speakers ADD COLUMN IsGhost INTEGER NOT NULL DEFAULT 0")
+        if "PromotedFromEntityId" not in spk_cols:
+            conn.execute("ALTER TABLE Speakers ADD COLUMN PromotedFromEntityId INTEGER")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS Entities (
+                Id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+                Type                TEXT NOT NULL,
+                RawText             TEXT NOT NULL,
+                NormalizedText      TEXT NOT NULL,
+                PhoneticKey         TEXT,
+                WikidataId          TEXT,
+                GhostSpeakerId      INTEGER REFERENCES Speakers(Id) ON DELETE SET NULL,
+                MentionCount        INTEGER NOT NULL DEFAULT 0,
+                DistinctSpeakerCount INTEGER NOT NULL DEFAULT 0,
+                DistinctAudioCount  INTEGER NOT NULL DEFAULT 0,
+                FirstSeen           DATETIME DEFAULT CURRENT_TIMESTAMP,
+                LastSeen            DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS IX_Entities_NormalizedText
+                ON Entities(NormalizedText)
+        """)
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS IX_Entities_PhoneticKey
+                ON Entities(PhoneticKey)
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS EntityMentions (
+                Id                INTEGER PRIMARY KEY AUTOINCREMENT,
+                EntityId          INTEGER NOT NULL REFERENCES Entities(Id) ON DELETE CASCADE,
+                SegmentId         INTEGER NOT NULL REFERENCES Segments(Id) ON DELETE CASCADE,
+                Offset            INTEGER NOT NULL,
+                Length            INTEGER NOT NULL,
+                Confidence        REAL NOT NULL DEFAULT 1.0,
+                ResolvedSpeakerId INTEGER REFERENCES Speakers(Id) ON DELETE SET NULL,
+                ResolutionMethod  TEXT
+            )
+        """)
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS IX_EntityMentions_EntityId
+                ON EntityMentions(EntityId)
+        """)
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS IX_EntityMentions_SegmentId
+                ON EntityMentions(SegmentId)
+        """)
         # ─────────────────────────────────────────────────────────────────────
 
         # ─── Groups / Projects migrations ──────────────────────────────────
@@ -560,7 +606,7 @@ def get_speaker(speaker_id: int) -> Optional[dict]:
     with _get_conn() as conn:
         row = conn.execute(
             """SELECT s.Id, s.VoiceIdentifier, s.Name, s.Color, s.RiskLevel, s.FirstDetected,
-                      s.WikidataId, s.ImagePath, s.IsUntracked,
+                      s.WikidataId, s.ImagePath, s.IsUntracked, s.IsGhost,
                       COUNT(DISTINCT sg.AudioId) AS RecordingCount,
                       (SELECT COUNT(*) FROM SpeakerEmbeddings WHERE SpeakerId = s.Id) AS SampleCount
                FROM Speakers s
@@ -581,6 +627,7 @@ def get_speaker(speaker_id: int) -> Optional[dict]:
         "wikidataId": row["WikidataId"],
         "imagePath": row["ImagePath"],
         "isUntracked": bool(row["IsUntracked"]),
+        "isGhost": bool(row["IsGhost"]),
         "recordingCount": row["RecordingCount"],
         "sampleCount": row["SampleCount"],
     }
@@ -636,7 +683,7 @@ def get_all_speakers() -> list[dict]:
     with _get_conn() as conn:
         rows = conn.execute(
             """SELECT s.Id, s.VoiceIdentifier, s.Name, s.Color, s.RiskLevel, s.FirstDetected,
-                      s.WikidataId, s.ImagePath, s.IsUntracked,
+                      s.WikidataId, s.ImagePath, s.IsUntracked, s.IsGhost,
                       COUNT(DISTINCT sg.AudioId) AS RecordingCount,
                       (SELECT COUNT(*) FROM SpeakerEmbeddings WHERE SpeakerId = s.Id) AS SampleCount
                FROM Speakers s
@@ -655,6 +702,7 @@ def get_all_speakers() -> list[dict]:
             "wikidataId": r["WikidataId"],
             "imagePath": r["ImagePath"],
             "isUntracked": bool(r["IsUntracked"]),
+            "isGhost": bool(r["IsGhost"]),
             "recordingCount": r["RecordingCount"],
             "sampleCount": r["SampleCount"],
         }
@@ -1030,7 +1078,7 @@ def get_segments_by_audio(audio_id: int) -> list[dict]:
     with _get_conn() as conn:
         rows = conn.execute(
             """SELECT sg.Id, sg.SpeakerId, sg.Text, sg.StartTime, sg.EndTime,
-                      sg.SuspicionScore, sg.SubScores,
+                      sg.SuspicionScore, sg.SubScores, sg.Embedding,
                       sp.Name AS SpeakerName, sp.Color AS SpeakerColor,
                       sp.ImagePath AS SpeakerImagePath
                FROM Segments sg
@@ -1060,6 +1108,263 @@ def get_segments_by_audio(audio_id: int) -> list[dict]:
             "subScores": sub,
         })
     return out
+
+
+def get_all_segment_embeddings() -> list[dict]:
+    """Return (id, speaker_id, embedding blob) for every segment that has an embedding."""
+    with _get_conn() as conn:
+        rows = conn.execute(
+            "SELECT Id, SpeakerId, Embedding FROM Segments WHERE Embedding IS NOT NULL"
+        ).fetchall()
+    return [{"id": r["Id"], "speaker_id": r["SpeakerId"], "embedding": r["Embedding"]} for r in rows]
+
+
+# ─── Entities ─────────────────────────────────────────────────────────────────
+
+def _row_to_entity(r) -> dict:
+    return {
+        "id": r["Id"],
+        "type": r["Type"],
+        "raw_text": r["RawText"],
+        "normalized_text": r["NormalizedText"],
+        "phonetic_key": r["PhoneticKey"],
+        "wikidata_id": r["WikidataId"],
+        "ghost_speaker_id": r["GhostSpeakerId"],
+        "mention_count": r["MentionCount"],
+        "distinct_speaker_count": r["DistinctSpeakerCount"],
+        "distinct_audio_count": r["DistinctAudioCount"],
+        "first_seen": r["FirstSeen"],
+        "last_seen": r["LastSeen"],
+    }
+
+
+def get_all_entities() -> list[dict]:
+    with _get_conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM Entities ORDER BY MentionCount DESC"
+        ).fetchall()
+    return [_row_to_entity(r) for r in rows]
+
+
+def get_entity(entity_id: int) -> Optional[dict]:
+    with _get_conn() as conn:
+        row = conn.execute("SELECT * FROM Entities WHERE Id = ?", (entity_id,)).fetchone()
+    return _row_to_entity(row) if row else None
+
+
+def upsert_entity(
+    entity_type: str,
+    raw_text: str,
+    normalized_text: str,
+    phonetic_key: Optional[str] = None,
+    existing_id: Optional[int] = None,
+) -> int:
+    """Insert a new entity or update counts on an existing one. Returns the entity id."""
+    with _get_conn() as conn:
+        if existing_id is not None:
+            conn.execute(
+                """UPDATE Entities
+                   SET MentionCount = MentionCount + 1,
+                       LastSeen = CURRENT_TIMESTAMP
+                   WHERE Id = ?""",
+                (existing_id,),
+            )
+            conn.commit()
+            return existing_id
+        cursor = conn.execute(
+            """INSERT INTO Entities
+               (Type, RawText, NormalizedText, PhoneticKey, MentionCount,
+                DistinctSpeakerCount, DistinctAudioCount)
+               VALUES (?, ?, ?, ?, 1, 0, 0)""",
+            (entity_type, raw_text, normalized_text, phonetic_key),
+        )
+        conn.commit()
+        return cursor.lastrowid
+
+
+def insert_entity_mention(
+    entity_id: int,
+    segment_id: int,
+    offset: int,
+    length: int,
+    confidence: float,
+    resolved_speaker_id: Optional[int],
+    resolution_method: Optional[str],
+) -> int:
+    with _get_conn() as conn:
+        cursor = conn.execute(
+            """INSERT OR IGNORE INTO EntityMentions
+               (EntityId, SegmentId, Offset, Length, Confidence,
+                ResolvedSpeakerId, ResolutionMethod)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (entity_id, segment_id, offset, length, confidence,
+             resolved_speaker_id, resolution_method),
+        )
+        conn.commit()
+        # Keep aggregate counts fresh on the entity row
+        conn.execute(
+            """UPDATE Entities SET
+               DistinctSpeakerCount = (
+                   SELECT COUNT(DISTINCT ResolvedSpeakerId)
+                   FROM EntityMentions
+                   WHERE EntityId = ? AND ResolvedSpeakerId IS NOT NULL
+               ),
+               DistinctAudioCount = (
+                   SELECT COUNT(DISTINCT sg.AudioId)
+                   FROM EntityMentions em
+                   JOIN Segments sg ON sg.Id = em.SegmentId
+                   WHERE em.EntityId = ?
+               )
+               WHERE Id = ?""",
+            (entity_id, entity_id, entity_id),
+        )
+        conn.commit()
+    return cursor.lastrowid or 0
+
+
+def get_entity_mentions(entity_id: int) -> list[dict]:
+    with _get_conn() as conn:
+        rows = conn.execute(
+            """SELECT em.Id, em.EntityId, em.SegmentId, em.Offset, em.Length,
+                      em.Confidence, em.ResolvedSpeakerId, em.ResolutionMethod,
+                      sg.Text AS SegmentText, sg.AudioId,
+                      sg.StartTime, sg.EndTime,
+                      sp.Name AS SpeakerName
+               FROM EntityMentions em
+               JOIN Segments sg ON sg.Id = em.SegmentId
+               LEFT JOIN Speakers sp ON sp.Id = em.ResolvedSpeakerId
+               WHERE em.EntityId = ?
+               ORDER BY sg.StartTime""",
+            (entity_id,),
+        ).fetchall()
+    return [
+        {
+            "id": r["Id"],
+            "entityId": r["EntityId"],
+            "segmentId": r["SegmentId"],
+            "offset": r["Offset"],
+            "length": r["Length"],
+            "confidence": r["Confidence"],
+            "resolvedSpeakerId": r["ResolvedSpeakerId"],
+            "resolutionMethod": r["ResolutionMethod"],
+            "segmentText": r["SegmentText"],
+            "audioId": r["AudioId"],
+            "startTime": r["StartTime"],
+            "endTime": r["EndTime"],
+            "speakerName": r["SpeakerName"],
+        }
+        for r in rows
+    ]
+
+
+def get_mentions_for_segments(segment_ids: list[int]) -> list[dict]:
+    """Return all EntityMentions for a list of segment ids (used by TranscriptView)."""
+    if not segment_ids:
+        return []
+    placeholders = ",".join("?" for _ in segment_ids)
+    with _get_conn() as conn:
+        rows = conn.execute(
+            f"""SELECT em.Id, em.EntityId, em.SegmentId, em.Offset, em.Length,
+                       em.Confidence, em.ResolutionMethod,
+                       e.Type AS EntityType, e.RawText, e.NormalizedText
+                FROM EntityMentions em
+                JOIN Entities e ON e.Id = em.EntityId
+                WHERE em.SegmentId IN ({placeholders})""",
+            segment_ids,
+        ).fetchall()
+    return [
+        {
+            "id": r["Id"],
+            "entityId": r["EntityId"],
+            "segmentId": r["SegmentId"],
+            "offset": r["Offset"],
+            "length": r["Length"],
+            "confidence": r["Confidence"],
+            "resolutionMethod": r["ResolutionMethod"],
+            "entityType": r["EntityType"],
+            "rawText": r["RawText"],
+            "normalizedText": r["NormalizedText"],
+        }
+        for r in rows
+    ]
+
+
+def get_entity_related_speakers(entity_id: int) -> list[dict]:
+    """Return distinct speakers that have mentioned this entity."""
+    with _get_conn() as conn:
+        rows = conn.execute(
+            """SELECT DISTINCT sp.Id, sp.Name, sp.Color, sp.RiskLevel,
+                      COUNT(*) AS MentionCount
+               FROM EntityMentions em
+               JOIN Speakers sp ON sp.Id = em.ResolvedSpeakerId
+               WHERE em.EntityId = ?
+               GROUP BY sp.Id
+               ORDER BY MentionCount DESC""",
+            (entity_id,),
+        ).fetchall()
+    return [
+        {
+            "id": r["Id"],
+            "name": r["Name"],
+            "color": r["Color"],
+            "riskLevel": r["RiskLevel"],
+            "mentionCount": r["MentionCount"],
+        }
+        for r in rows
+    ]
+
+
+def get_ghost_promotion_candidates(min_audios: int, min_speakers: int) -> list[dict]:
+    """Return PERSON entities that haven't been promoted yet and cross the ghost threshold."""
+    with _get_conn() as conn:
+        rows = conn.execute(
+            """SELECT * FROM Entities
+               WHERE Type = 'PERSON'
+                 AND GhostSpeakerId IS NULL
+                 AND (DistinctAudioCount >= ? OR DistinctSpeakerCount >= ?)""",
+            (min_audios, min_speakers),
+        ).fetchall()
+    return [_row_to_entity(r) for r in rows]
+
+
+def create_ghost_speaker(entity_id: int, name: str) -> Optional[int]:
+    """Create a ghost Speaker row and link it back to the Entity. Returns new speaker id."""
+    voice_id = f"ghost_entity_{entity_id}"
+    with _get_conn() as conn:
+        existing = conn.execute(
+            "SELECT Id FROM Speakers WHERE VoiceIdentifier = ?", (voice_id,)
+        ).fetchone()
+        if existing:
+            ghost_id = existing["Id"]
+        else:
+            cursor = conn.execute(
+                """INSERT INTO Speakers
+                   (VoiceIdentifier, Name, RiskLevel, IsGhost, PromotedFromEntityId)
+                   VALUES (?, ?, 'low', 1, ?)""",
+                (voice_id, name, entity_id),
+            )
+            ghost_id = cursor.lastrowid
+        conn.execute(
+            "UPDATE Entities SET GhostSpeakerId = ? WHERE Id = ?",
+            (ghost_id, entity_id),
+        )
+        conn.commit()
+    return ghost_id
+
+
+def upsert_mention_relation(speaker_id: int, ghost_speaker_id: int) -> None:
+    """Upsert a 'mentioned' relation between a real speaker and a ghost speaker."""
+    upsert_relation(speaker_id, ghost_speaker_id, topic="mentioned")
+
+
+def link_entity_wikidata(entity_id: int, wikidata_id: str) -> bool:
+    with _get_conn() as conn:
+        result = conn.execute(
+            "UPDATE Entities SET WikidataId = ? WHERE Id = ?",
+            (wikidata_id, entity_id),
+        )
+        conn.commit()
+    return result.rowcount > 0
 
 
 # ─── Relations ────────────────────────────────────────────────────────────────

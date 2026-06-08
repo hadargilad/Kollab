@@ -7,3 +7,4 @@ share the model singletons in `models.py`.
 
 from .coded_language import score_coded_language  # noqa: F401
 from .euphemism_expansion import expand_euphemisms  # noqa: F401
+from .entity_resolution import extract_and_resolve_entities  # noqa: F401

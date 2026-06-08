@@ -12,6 +12,7 @@ import json
 import os
 import shutil
 import tempfile
+import threading
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -23,6 +24,9 @@ from pipeline import (
 )
 
 app = FastAPI(title="AudioIntel ML API", version="3.0.0")
+
+# Only one heavy analysis at a time — Whisper+pyannote are RAM-hungry
+_analyze_lock = threading.Semaphore(1)
 
 app.add_middleware(
     CORSMiddleware,
@@ -78,6 +82,14 @@ def analyze_audio(file: UploadFile = File(...)):
         shutil.copyfileobj(file.file, tmp)
         tmp_path = tmp.name
 
+    acquired = _analyze_lock.acquire(blocking=True, timeout=600)
+    if not acquired:
+        try:
+            os.unlink(tmp_path)
+        except Exception:
+            pass
+        raise HTTPException(status_code=503, detail="ML busy — try again shortly")
+
     try:
         result = process_audio(tmp_path)
 
@@ -91,6 +103,7 @@ def analyze_audio(file: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     finally:
+        _analyze_lock.release()
         try:
             os.unlink(tmp_path)
         except Exception:

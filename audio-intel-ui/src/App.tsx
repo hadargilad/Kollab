@@ -22,6 +22,7 @@ import UserManagement from './components/UserManagement';
 import ForcePasswordChange from './components/ForcePasswordChange';
 import Profile from './components/Profile';
 import StartupScreen from './components/StartupScreen';
+import Entities from './components/Entities';
 import type { AuthUser } from './lib/api';
 
 export default function App() {
@@ -97,6 +98,7 @@ export default function App() {
           <Route path="settings" element={<Settings isAdmin={user?.role === 'Admin'} />} />
           <Route path="profile-search" element={<ProfileSearch />} />
           <Route path="related-speakers" element={<RelatedSpeakers />} />
+          <Route path="entities" element={<Entities />} />
           <Route path="profile" element={<Profile currentUser={user} onUpdateSuccess={handleUpdate} />} />
         </Route>
       </Routes>
