@@ -9,6 +9,7 @@ import {
   type SpeakerRecord, type RelationRecord, type GroupRecord,
   API_BASE,
 } from '../lib/api';
+import SpeakerAvatar from './SpeakerAvatar';
 
 interface Node {
   id: number;
@@ -878,10 +879,14 @@ export default function NetworkGraph({ isAdmin = false }: { isAdmin?: boolean })
             <div className="bg-zinc-900 border border-zinc-800 rounded-md px-4 py-3">
               <div className="flex items-center justify-between gap-4">
                 <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-9 h-9 rounded flex items-center justify-center shrink-0"
-                    style={{ backgroundColor: `${selectedNode.color}18` }}>
-                    <User className="w-4 h-4" style={{ color: selectedNode.color }} />
-                  </div>
+                  <SpeakerAvatar
+                    speakerId={selectedNode.id}
+                    name={selectedNode.label}
+                    color={selectedNode.color}
+                    imagePath={selectedNode.imagePath}
+                    size={36}
+                    bust={selectedNode.imagePath ?? undefined}
+                  />
                   <div className="min-w-0">
                     <div className="text-white text-sm font-medium">{selectedNode.label}</div>
                     <div className="text-zinc-300 text-xs font-mono capitalize">

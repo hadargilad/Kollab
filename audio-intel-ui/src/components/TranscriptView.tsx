@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useLocation, Link } from 'react-router-dom';
-import { Download, Search, FileText, User, Loader2, AlertCircle, ShieldAlert, Sparkles } from 'lucide-react';
+import { Copy, Check, Search, FileText, User, Loader2, AlertCircle, ShieldAlert, Sparkles } from 'lucide-react';
 import { audios, dangerousWords, entities, type AudioRecord, type SegmentRecord, type SubScores, type SegmentMentionRecord } from '../lib/api';
 import SubScoresBar, { SUB_LEGEND } from './SubScoresBar';
 import SpeakerAvatar from './SpeakerAvatar';
@@ -46,6 +46,7 @@ export default function TranscriptView() {
   const [searchQuery, setSearchQuery] = useState('');
   const [flaggedWords, setFlaggedWords] = useState<string[]>([]);
   const [mentionsBySegment, setMentionsBySegment] = useState<Map<number, SegmentMentionRecord[]>>(new Map());
+  const [exportCopied, setExportCopied] = useState(false);
 
   useEffect(() => {
     dangerousWords.list().then(ws => setFlaggedWords(ws.map(w => w.word))).catch(() => {});
@@ -144,17 +145,46 @@ export default function TranscriptView() {
 
   const exportTranscript = () => {
     if (!audio || segments.length === 0) return;
-    const lines = segments.map(seg =>
-      `[${formatTime(seg.startTime)} – ${formatTime(seg.endTime)}] ${seg.speakerName}:\n${seg.text}`
+
+    const speakerMap = new Map<number, { name: string; turns: number; totalSec: number }>();
+    for (const seg of segments) {
+      const e = speakerMap.get(seg.speakerId);
+      const dur = seg.endTime - seg.startTime;
+      if (e) { e.turns++; e.totalSec += dur; }
+      else speakerMap.set(seg.speakerId, { name: seg.speakerName, turns: 1, totalSec: dur });
+    }
+    const speakerLines = Array.from(speakerMap.values())
+      .map(s => `  • ${s.name} — ${s.turns} turns, ${formatTime(s.totalSec)} speaking time`)
+      .join('\n');
+
+    const transcriptLines = segments.map(seg =>
+      `[${formatTime(seg.startTime)} – ${formatTime(seg.endTime)}]  ${seg.speakerName}\n${seg.text}`
     );
-    const content = `${audio.name}\n${'─'.repeat(60)}\n\n${lines.join('\n\n')}`;
-    const blob = new Blob([content], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `transcript-${id}.txt`;
-    a.click();
-    URL.revokeObjectURL(url);
+
+    const recordedAt = audio.recordedAt ? new Date(audio.recordedAt).toLocaleString() : 'Unknown';
+    const content = [
+      `TRANSCRIPT REPORT`,
+      `${'═'.repeat(60)}`,
+      ``,
+      `File:      ${audio.name}`,
+      `Recorded:  ${recordedAt}`,
+      `Duration:  ${formatTime(audio.duration ?? 0)}`,
+      `Segments:  ${segments.length}`,
+      ``,
+      `PARTICIPANTS`,
+      `${'─'.repeat(60)}`,
+      speakerLines,
+      ``,
+      `TRANSCRIPT`,
+      `${'─'.repeat(60)}`,
+      ``,
+      ...transcriptLines.map((l, i) => (i > 0 ? '\n' : '') + l),
+    ].join('\n');
+
+    navigator.clipboard.writeText(content).then(() => {
+      setExportCopied(true);
+      setTimeout(() => setExportCopied(false), 2500);
+    });
   };
 
   const participantMap = new Map<number, { id: number; name: string; color: string; imagePath: string | null; turns: number }>();
@@ -215,9 +245,13 @@ export default function TranscriptView() {
               />
             </div>
             <button onClick={exportTranscript}
-              className="flex items-center gap-1.5 px-3 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-xs rounded transition-colors shrink-0">
-              <Download className="w-3.5 h-3.5" />
-              Export
+              className={`flex items-center gap-1.5 px-3 py-2 border text-xs rounded transition-colors shrink-0 ${
+                exportCopied
+                  ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-400'
+                  : 'bg-zinc-800 hover:bg-zinc-700 border-zinc-700 text-zinc-300'
+              }`}>
+              {exportCopied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+              {exportCopied ? 'Copied!' : 'Copy'}
             </button>
             {searchQuery && (
               <span className="text-zinc-200 text-xs font-mono shrink-0">{filtered.length}/{segments.length}</span>

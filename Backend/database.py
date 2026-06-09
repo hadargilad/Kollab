@@ -1125,16 +1125,16 @@ def _row_to_entity(r) -> dict:
     return {
         "id": r["Id"],
         "type": r["Type"],
-        "raw_text": r["RawText"],
-        "normalized_text": r["NormalizedText"],
-        "phonetic_key": r["PhoneticKey"],
-        "wikidata_id": r["WikidataId"],
-        "ghost_speaker_id": r["GhostSpeakerId"],
-        "mention_count": r["MentionCount"],
-        "distinct_speaker_count": r["DistinctSpeakerCount"],
-        "distinct_audio_count": r["DistinctAudioCount"],
-        "first_seen": r["FirstSeen"],
-        "last_seen": r["LastSeen"],
+        "rawText": r["RawText"],
+        "normalizedText": r["NormalizedText"],
+        "phoneticKey": r["PhoneticKey"],
+        "wikidataId": r["WikidataId"],
+        "ghostSpeakerId": r["GhostSpeakerId"],
+        "mentionCount": r["MentionCount"],
+        "distinctSpeakerCount": r["DistinctSpeakerCount"],
+        "distinctAudioCount": r["DistinctAudioCount"],
+        "firstSeen": r["FirstSeen"],
+        "lastSeen": r["LastSeen"],
     }
 
 
@@ -1229,12 +1229,14 @@ def get_entity_mentions(entity_id: int) -> list[dict]:
                       em.Confidence, em.ResolvedSpeakerId, em.ResolutionMethod,
                       sg.Text AS SegmentText, sg.AudioId,
                       sg.StartTime, sg.EndTime,
-                      sp.Name AS SpeakerName
+                      sp.Name AS SpeakerName,
+                      au.Name AS AudioName
                FROM EntityMentions em
                JOIN Segments sg ON sg.Id = em.SegmentId
                LEFT JOIN Speakers sp ON sp.Id = em.ResolvedSpeakerId
+               LEFT JOIN Audios au ON au.Id = sg.AudioId
                WHERE em.EntityId = ?
-               ORDER BY sg.StartTime""",
+               ORDER BY sg.AudioId, sg.StartTime""",
             (entity_id,),
         ).fetchall()
     return [
@@ -1252,6 +1254,7 @@ def get_entity_mentions(entity_id: int) -> list[dict]:
             "startTime": r["StartTime"],
             "endTime": r["EndTime"],
             "speakerName": r["SpeakerName"],
+            "audioName": r["AudioName"],
         }
         for r in rows
     ]

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { Play, Pause, Volume2, FileText, Network, Clock, Waves, Loader2, AlertCircle, RefreshCw, UserX, Merge, UserCheck, X, Scissors, EyeOff, Eye, Wand2 } from 'lucide-react';
+import { Play, Pause, Volume2, FileText, Network, Clock, Loader2, AlertCircle, RefreshCw, UserX, Merge, UserCheck, X, Scissors, EyeOff, Eye, Wand2, Camera } from 'lucide-react';
 import { audios, speakers as speakersApi, suggestions as suggestionsApi, alerts as alertsApi, type AudioRecord, type SegmentRecord, type SpeakerRecord, type SpeakerSuggestion, type AlertRecord, type MatchSuggestion } from '../lib/api';
 import SpeakerAvatar from './SpeakerAvatar';
 
@@ -42,6 +42,11 @@ export default function AudioAnalysis() {
   const [trackingBusyIds, setTrackingBusyIds] = useState<Set<number>>(new Set());
   const [matchSuggestions, setMatchSuggestions] = useState<MatchSuggestion[]>([]);
   const [matchSuggestionsLoading, setMatchSuggestionsLoading] = useState(false);
+  const [waveformPeaks, setWaveformPeaks] = useState<{ amp: number; color: string }[]>([]);
+  const waveformRef = useRef<HTMLCanvasElement>(null);
+  const [imageUploadBusyId, setImageUploadBusyId] = useState<number | null>(null);
+  const [imageUploadTargetId, setImageUploadTargetId] = useState<number | null>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
 
   // Fetch ranked co-occurring matches whenever the reassign modal opens — but
   // only for unrecognized "Speaker N" speakers. For an already-named speaker,
@@ -207,8 +212,71 @@ export default function AudioAnalysis() {
   }
 
   const duration = audio?.duration ?? 0;
+
+  // Decode audio → waveform peaks colored by speaker
+  useEffect(() => {
+    if (!audio || segments.length === 0) return;
+    const url = audios.fileUrl(audioId);
+    const NUM_BARS = 400;
+    fetch(url)
+      .then(r => r.arrayBuffer())
+      .then(buf => new AudioContext().decodeAudioData(buf))
+      .then(decoded => {
+        const data = decoded.getChannelData(0);
+        const step = Math.floor(data.length / NUM_BARS);
+        const peaks = Array.from({ length: NUM_BARS }, (_, i) => {
+          let max = 0;
+          for (let j = 0; j < step; j++) max = Math.max(max, Math.abs(data[i * step + j] ?? 0));
+          const t = (i / NUM_BARS) * decoded.duration;
+          const seg = segments.find(s => t >= s.startTime && t < s.endTime);
+          return { amp: max, color: seg?.speakerColor ?? '#3f3f46' };
+        });
+        setWaveformPeaks(peaks);
+      })
+      .catch(() => {});
+  }, [audio?.id, segments.length]);
+
+  // Draw waveform canvas
+  useEffect(() => {
+    const canvas = waveformRef.current;
+    if (!canvas || waveformPeaks.length === 0) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const W = canvas.width, H = canvas.height;
+    ctx.clearRect(0, 0, W, H);
+    const barW = W / waveformPeaks.length;
+    const centerY = H / 2;
+    waveformPeaks.forEach(({ amp, color }, i) => {
+      const h = Math.max(2, amp * H * 0.9);
+      ctx.fillStyle = color;
+      ctx.fillRect(i * barW, centerY - h / 2, Math.max(barW - 0.5, 1), h);
+    });
+    // playhead
+    if (duration > 0) {
+      const x = (currentTime / duration) * W;
+      ctx.fillStyle = 'rgba(255,255,255,0.9)';
+      ctx.fillRect(x - 1, 0, 2, H);
+    }
+  }, [waveformPeaks, currentTime, duration]);
+
   const getCurrentSegment = () => segments.find(seg => currentTime >= seg.startTime && currentTime < seg.endTime);
   const formatTime = (seconds: number) => `${Math.floor(seconds / 60)}:${Math.floor(seconds % 60).toString().padStart(2, '0')}`;
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || imageUploadTargetId == null) return;
+    setImageUploadBusyId(imageUploadTargetId);
+    try {
+      await speakersApi.uploadImage(imageUploadTargetId, file);
+      const [audioData, segsData] = await Promise.all([audios.get(audioId), audios.getSegments(audioId)]);
+      setAudio(audioData);
+      setSegments(segsData);
+    } finally {
+      setImageUploadBusyId(null);
+      setImageUploadTargetId(null);
+      if (imageInputRef.current) imageInputRef.current.value = '';
+    }
+  };
 
   const reassignTrimmed = reassignName.trim();
   const reassignMatch = reassignTrimmed
@@ -267,7 +335,8 @@ export default function AudioAnalysis() {
   const modalCls = 'fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4';
   const modalCard = 'bg-zinc-950 border border-zinc-800 rounded-md w-full max-w-md shadow-2xl';
 
-  return (
+  return (<>
+    <input ref={imageInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
     <div className="p-6 space-y-5">
       <div>
         <div className="text-zinc-200 text-[10px] font-mono uppercase tracking-widest mb-1">Analysis</div>
@@ -335,10 +404,6 @@ export default function AudioAnalysis() {
           <div className="bg-zinc-900 border border-zinc-800 rounded-md p-5">
             {/* Action buttons */}
             <div className="flex gap-2 mb-5 flex-wrap">
-              <Link to={`/waveform/${id}`}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-xs rounded transition-colors">
-                <Waves className="w-3.5 h-3.5" />Waveform
-              </Link>
               <Link to={`/transcript/${id}`}
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-xs rounded transition-colors">
                 <FileText className="w-3.5 h-3.5" />Transcript
@@ -349,23 +414,18 @@ export default function AudioAnalysis() {
               </Link>
             </div>
 
-            {/* Timeline */}
+            {/* Waveform */}
             {duration > 0 && (
               <div className="mb-5">
-                <div className="bg-black border border-zinc-900 rounded h-16 relative overflow-hidden">
-                  {segments.map(seg => {
-                    const left = (seg.startTime / duration) * 100;
-                    const width = ((seg.endTime - seg.startTime) / duration) * 100;
-                    return (
-                      <div key={seg.id} className="absolute top-2 bottom-2 rounded-sm cursor-pointer hover:opacity-75 transition-opacity"
-                        style={{ left: `${left}%`, width: `${Math.max(width, 0.3)}%`, backgroundColor: seg.speakerColor }}
-                        onClick={() => { if (audioRef.current) audioRef.current.currentTime = seg.startTime; setCurrentTime(seg.startTime); }}
-                        title={`${seg.speakerName}: ${seg.text}`}
-                      />
-                    );
-                  })}
-                  <div className="absolute top-0 bottom-0 w-px bg-white z-10"
-                    style={{ left: `${(currentTime / duration) * 100}%` }} />
+                <div className="bg-black border border-zinc-900 rounded h-16 overflow-hidden cursor-pointer"
+                  onClick={e => {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const ratio = (e.clientX - rect.left) / rect.width;
+                    const t = ratio * duration;
+                    if (audioRef.current) audioRef.current.currentTime = t;
+                    setCurrentTime(t);
+                  }}>
+                  <canvas ref={waveformRef} width={800} height={64} className="w-full h-full" />
                 </div>
 
                 {/* Suspicion heatmap — only when at least one segment was scored */}
@@ -577,6 +637,15 @@ export default function AudioAnalysis() {
                         </div>
                         <div className="text-zinc-200 text-xs font-mono">{spkSegs.length} seg · {formatTime(totalTime)}</div>
                       </div>
+                      <button
+                        onClick={() => { setImageUploadTargetId(spk.id); imageInputRef.current?.click(); }}
+                        disabled={imageUploadBusyId === spk.id}
+                        title="Upload photo"
+                        className="text-zinc-300 hover:text-blue-300 transition-colors p-1 shrink-0">
+                        {imageUploadBusyId === spk.id
+                          ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          : <Camera className="w-3.5 h-3.5" />}
+                      </button>
                       <button onClick={() => toggleUntracked(spk.id, !!spk.isUntracked)}
                         disabled={busy}
                         title={spk.isUntracked ? 'Re-track this speaker' : 'Untrack — hide from graph'}
@@ -768,5 +837,5 @@ export default function AudioAnalysis() {
         </div>
       )}
     </div>
-  );
+  </>);
 }

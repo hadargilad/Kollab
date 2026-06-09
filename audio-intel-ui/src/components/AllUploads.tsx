@@ -16,6 +16,7 @@ export default function AllUploads() {
   const [deleting, setDeleting] = useState<Set<number>>(new Set());
   const [confirmDelete, setConfirmDelete] = useState<AudioRecord | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [selectMode, setSelectMode] = useState(false);
   const [batchConfirmOpen, setBatchConfirmOpen] = useState(false);
   const [batchBusy, setBatchBusy] = useState(false);
   const [batchError, setBatchError] = useState('');
@@ -80,7 +81,7 @@ export default function AllUploads() {
   };
 
   const formatDate = (dateString: string) =>
-    new Date(dateString).toLocaleDateString('he-IL', {
+    new Date(dateString).toLocaleDateString('en-GB', {
       year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
     });
 
@@ -246,54 +247,31 @@ export default function AllUploads() {
 
       {!loading && !error && (
         <div className="space-y-2">
-          {filteredUploads.length > 0 && (() => {
-            const visibleIds = filteredUploads.map(u => u.id);
-            const allVisibleSelected = visibleIds.length > 0 && visibleIds.every(id => selectedIds.has(id));
-            const someVisibleSelected = visibleIds.some(id => selectedIds.has(id));
-            return (
-              <div className="bg-zinc-900 border border-zinc-800 rounded-md px-4 py-2 flex items-center gap-3 flex-wrap">
-                <input
-                  type="checkbox"
-                  checked={allVisibleSelected}
-                  ref={el => { if (el) el.indeterminate = !allVisibleSelected && someVisibleSelected; }}
-                  onChange={() => {
-                    setSelectedIds(prev => {
-                      const next = new Set(prev);
-                      if (allVisibleSelected) visibleIds.forEach(id => next.delete(id));
-                      else visibleIds.forEach(id => next.add(id));
-                      return next;
-                    });
-                  }}
-                  className="w-4 h-4 accent-blue-500"
-                  title="Select all currently visible"
-                />
-                <span className="text-zinc-200 text-xs font-mono">
-                  {selectedIds.size === 0
-                    ? 'Select files to enable bulk actions'
-                    : `${selectedIds.size} selected`}
-                </span>
-                {selectedIds.size > 0 && (
-                  <>
-                    <button
-                      onClick={() => setBatchConfirmOpen(true)}
-                      className="ml-auto flex items-center gap-1.5 px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white text-xs rounded transition-colors"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" /> Delete {selectedIds.size}
-                    </button>
-                    <button
-                      onClick={clearSelection}
-                      className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 text-xs rounded transition-colors"
-                    >
-                      Clear
-                    </button>
-                  </>
-                )}
-                {batchError && (
-                  <span className="text-red-400 text-xs font-mono w-full">{batchError}</span>
-                )}
-              </div>
-            );
-          })()}
+          <div className="flex items-center justify-between">
+            <span className="text-zinc-200 text-xs font-mono">{filteredUploads.length} / {uploads.length} files</span>
+            <div className="flex items-center gap-2">
+              {selectMode && selectedIds.size > 0 && (
+                <>
+                  {batchError && <span className="text-red-400 text-xs font-mono">{batchError}</span>}
+                  <button onClick={() => setBatchConfirmOpen(true)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white text-xs rounded transition-colors">
+                    <Trash2 className="w-3.5 h-3.5" /> Delete {selectedIds.size}
+                  </button>
+                </>
+              )}
+              {selectMode ? (
+                <button onClick={() => { setSelectMode(false); setSelectedIds(new Set()); }}
+                  className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 text-xs rounded transition-colors">
+                  Cancel
+                </button>
+              ) : (
+                <button onClick={() => setSelectMode(true)}
+                  className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 text-xs rounded transition-colors">
+                  Select
+                </button>
+              )}
+            </div>
+          </div>
           {filteredUploads.length === 0 ? (
             <div className="bg-zinc-900 border border-zinc-800 rounded-md p-10 text-center">
               <FileAudio className="w-10 h-10 text-zinc-800 mx-auto mb-3" />
@@ -305,16 +283,18 @@ export default function AllUploads() {
             filteredUploads.map((upload) => (
               <div key={upload.id}
                 className={`bg-zinc-900 border rounded-md px-5 py-4 hover:border-zinc-700 transition-colors ${
-                  selectedIds.has(upload.id) ? 'border-blue-500/40 bg-blue-500/4' : 'border-zinc-800'
+                  selectMode && selectedIds.has(upload.id) ? 'border-blue-500/40 bg-blue-500/4' : 'border-zinc-800'
                 }`}>
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex items-start gap-3 flex-1 min-w-0">
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.has(upload.id)}
-                      onChange={() => toggleSelected(upload.id)}
-                      className="w-4 h-4 accent-blue-500 mt-2.5 shrink-0"
-                    />
+                    {selectMode && (
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(upload.id)}
+                        onChange={() => toggleSelected(upload.id)}
+                        className="w-4 h-4 accent-blue-500 mt-2.5 shrink-0"
+                      />
+                    )}
                     <div className="w-8 h-8 bg-zinc-800 border border-zinc-700 rounded flex items-center justify-center shrink-0 mt-0.5">
                       <FileAudio className="w-4 h-4 text-zinc-200" />
                     </div>

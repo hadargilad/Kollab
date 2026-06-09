@@ -627,6 +627,7 @@ export interface EntityMentionRecord {
   startTime: number;
   endTime: number;
   speakerName: string | null;
+  audioName: string | null;
 }
 
 export interface SegmentMentionRecord {

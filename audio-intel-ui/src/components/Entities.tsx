@@ -117,26 +117,42 @@ function EntityRow({ ent }: { ent: EntityRecord }) {
           ) : mentions.length === 0 ? (
             <p className="text-zinc-400 text-xs">No mentions found.</p>
           ) : (
-            <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
-              {mentions.map(m => (
-                <div key={m.id} className="bg-zinc-900 rounded px-3 py-2 text-xs space-y-1">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-mono text-zinc-300">{m.speakerName ?? 'Unknown'}</span>
-                    <Link
-                      to={`/transcript/${m.audioId}#seg-${m.segmentId}`}
-                      className="flex items-center gap-1 text-blue-400 hover:text-blue-300 font-mono"
-                    >
-                      {String(Math.floor(m.startTime / 60)).padStart(2, '0')}:{String(Math.floor(m.startTime % 60)).padStart(2, '0')}
-                      <ExternalLink className="w-3 h-3" />
-                    </Link>
-                  </div>
-                  <p className="text-zinc-200 leading-relaxed">
-                    {m.segmentText.slice(0, m.offset)}
-                    <mark className="bg-blue-500/30 text-blue-200 rounded-sm px-0.5">
-                      {m.segmentText.slice(m.offset, m.offset + m.length)}
-                    </mark>
-                    {m.segmentText.slice(m.offset + m.length)}
+            <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
+              {Object.entries(
+                mentions.reduce<Record<number, EntityMentionRecord[]>>((acc, m) => {
+                  (acc[m.audioId] ??= []).push(m);
+                  return acc;
+                }, {})
+              ).map(([audioIdStr, group]) => (
+                <div key={audioIdStr}>
+                  <p className="text-[10px] font-mono text-zinc-400 uppercase tracking-widest mb-1.5 px-1">
+                    {group[0].audioName ?? `Recording #${audioIdStr}`}
                   </p>
+                  <div className="space-y-1.5">
+                    {group.map(m => (
+                      <div key={m.id} className="bg-zinc-900 rounded px-3 py-2 text-xs">
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="text-zinc-200 leading-relaxed flex-1">
+                            <span className="inline-block font-mono text-[10px] bg-zinc-700 text-zinc-300 px-1.5 py-0.5 rounded mr-2 shrink-0 align-middle">
+                              {m.speakerName ?? 'Unknown'}
+                            </span>
+                            {m.segmentText.slice(0, m.offset)}
+                            <mark className="bg-blue-500/30 text-blue-200 rounded-sm px-0.5">
+                              {m.segmentText.slice(m.offset, m.offset + m.length)}
+                            </mark>
+                            {m.segmentText.slice(m.offset + m.length)}
+                          </p>
+                          <Link
+                            to={`/transcript/${m.audioId}#seg-${m.segmentId}`}
+                            className="flex items-center gap-1 text-blue-400 hover:text-blue-300 font-mono shrink-0"
+                          >
+                            {String(Math.floor(m.startTime / 60)).padStart(2, '0')}:{String(Math.floor(m.startTime % 60)).padStart(2, '0')}
+                            <ExternalLink className="w-3 h-3" />
+                          </Link>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               ))}
             </div>
@@ -162,6 +178,7 @@ export default function Entities() {
   }, []);
 
   const filtered = allEntities.filter(e => {
+    if (e.distinctAudioCount < 2) return false;
     if (typeFilter !== 'all' && e.type !== typeFilter) return false;
     if (search && !e.rawText.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
@@ -186,7 +203,7 @@ export default function Entities() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto px-6 py-6 space-y-5">
+    <div className="px-6 py-6 space-y-5">
       <div>
         <h1 className="text-white text-xl font-semibold">Entities</h1>
         <p className="text-zinc-300 text-sm mt-0.5">
