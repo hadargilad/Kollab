@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useLocation, Link } from 'react-router-dom';
 import { Copy, Check, Search, FileText, User, Loader2, AlertCircle, ShieldAlert, Sparkles } from 'lucide-react';
-import { audios, dangerousWords, entities, type AudioRecord, type SegmentRecord, type SubScores, type SegmentMentionRecord } from '../lib/api';
+import { audios, dangerousWords, search, entities, type AudioRecord, type SegmentRecord, type SubScores, type SearchResultItem, type SegmentMentionRecord } from '../lib/api';
 import SubScoresBar, { SUB_LEGEND } from './SubScoresBar';
 import SpeakerAvatar from './SpeakerAvatar';
 
@@ -44,6 +44,9 @@ export default function TranscriptView() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [semanticMode, setSemanticMode] = useState(false);
+  const [semanticResults, setSemanticResults] = useState<SearchResultItem[] | null>(null);
+  const [semanticLoading, setSemanticLoading] = useState(false);
   const [flaggedWords, setFlaggedWords] = useState<string[]>([]);
   const [mentionsBySegment, setMentionsBySegment] = useState<Map<number, SegmentMentionRecord[]>>(new Map());
   const [exportCopied, setExportCopied] = useState(false);
@@ -201,10 +204,40 @@ export default function TranscriptView() {
   }
   const participants = Array.from(participantMap.values());
 
-  const filtered = segments.filter(seg =>
-    seg.text.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    seg.speakerName.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  // In semantic mode the API returns ordered results; map back to SegmentRecord shape.
+  const semanticSegments: SegmentRecord[] = semanticResults
+    ? semanticResults
+        .map(r => segments.find(s => s.id === r.segmentId))
+        .filter((s): s is SegmentRecord => s !== undefined)
+    : [];
+
+  const filtered = semanticMode && semanticResults !== null
+    ? semanticSegments
+    : segments.filter(seg =>
+        !searchQuery ||
+        seg.text.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        seg.speakerName.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+
+  const handleSearchKey = async (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!semanticMode || e.key !== 'Enter' || !searchQuery.trim()) return;
+    setSemanticLoading(true);
+    setSemanticResults(null);
+    try {
+      const res = await search.semantic(searchQuery.trim(), { audioId });
+      setSemanticResults(res.results);
+    } catch {
+      setSemanticResults([]);
+    } finally {
+      setSemanticLoading(false);
+    }
+  };
+
+  const handleSearchChange = (value: string) => {
+    setSearchQuery(value);
+    if (semanticMode) return;      // keyword: filter live; semantic: wait for Enter
+    if (!value) setSemanticResults(null);
+  };
 
   if (loading) return (
     <div className="flex items-center justify-center py-20">
@@ -233,17 +266,33 @@ export default function TranscriptView() {
         {/* Main transcript */}
         <div className="lg:col-span-2 space-y-4">
           {/* Search bar */}
-          <div className="bg-zinc-900 border border-zinc-800 rounded-md p-3 flex items-center gap-3">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-md p-3 flex items-center gap-2">
             <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-200" />
+              {semanticLoading
+                ? <Loader2 className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-blue-400 animate-spin" />
+                : <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-200" />
+              }
               <input
                 type="text"
-                placeholder="Search transcript…"
+                placeholder={semanticMode ? 'Semantic search… (Enter to search)' : 'Search transcript…'}
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={e => handleSearchChange(e.target.value)}
+                onKeyDown={handleSearchKey}
                 className="w-full bg-black border border-zinc-800 rounded px-3 pl-9 py-2 text-white text-sm placeholder-zinc-400 focus:outline-none focus:border-blue-500 transition-all font-mono"
               />
             </div>
+            <button
+              type="button"
+              onClick={() => { setSemanticMode(m => !m); setSemanticResults(null); setSearchQuery(''); }}
+              title={semanticMode ? 'Switch to keyword search' : 'Switch to semantic search'}
+              className={`flex items-center gap-1.5 px-3 py-2 border text-xs rounded transition-colors shrink-0 ${
+                semanticMode
+                  ? 'bg-blue-500/15 border-blue-500/40 text-blue-300'
+                  : 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:text-zinc-200'
+              }`}
+            >
+              {semanticMode ? 'Semantic' : 'Keyword'}
+            </button>
             <button onClick={exportTranscript}
               className={`flex items-center gap-1.5 px-3 py-2 border text-xs rounded transition-colors shrink-0 ${
                 exportCopied
@@ -253,8 +302,11 @@ export default function TranscriptView() {
               {exportCopied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
               {exportCopied ? 'Copied!' : 'Copy'}
             </button>
-            {searchQuery && (
+            {searchQuery && !semanticMode && (
               <span className="text-zinc-200 text-xs font-mono shrink-0">{filtered.length}/{segments.length}</span>
+            )}
+            {semanticMode && semanticResults !== null && (
+              <span className="text-blue-300 text-xs font-mono shrink-0">{semanticResults.length} results</span>
             )}
           </div>
 

@@ -1971,6 +1971,70 @@ def set_euphemism_embedding(euph_id: int, vec: "np.ndarray", model_name: str) ->
         conn.commit()
 
 
+# ─── NLP: Semantic Search (Hadar) ─────────────────────────────────────────────
+
+def get_segment_details_bulk(
+    segment_ids: list[int],
+    audio_id: Optional[int] = None,
+    speaker_id: Optional[int] = None,
+    from_date: Optional[str] = None,
+    to_date: Optional[str] = None,
+) -> list[dict]:
+    """Fetch full segment metadata for a list of IDs (already ranked by the caller).
+    Joins Audios and Speakers. Optional filters narrow the result set.
+    Output preserves the input ordering so the caller's RRF rank is maintained."""
+    if not segment_ids:
+        return []
+    placeholders = ",".join("?" for _ in segment_ids)
+    params: list = list(segment_ids)
+
+    where = [f"sg.Id IN ({placeholders})"]
+    if audio_id is not None:
+        where.append("sg.AudioId = ?")
+        params.append(audio_id)
+    if speaker_id is not None:
+        where.append("sg.SpeakerId = ?")
+        params.append(speaker_id)
+    if from_date:
+        where.append("a.RecordedAt >= ?")
+        params.append(from_date)
+    if to_date:
+        where.append("a.RecordedAt <= ?")
+        params.append(to_date)
+
+    with _get_conn() as conn:
+        rows = conn.execute(
+            f"""SELECT sg.Id, sg.AudioId, sg.SpeakerId, sg.Text, sg.StartTime, sg.EndTime,
+                       a.Name AS AudioName, a.RecordedAt,
+                       sp.Name AS SpeakerName, sp.Color AS SpeakerColor
+                FROM Segments sg
+                JOIN Audios a ON a.Id = sg.AudioId
+                LEFT JOIN Speakers sp ON sp.Id = sg.SpeakerId
+                WHERE {" AND ".join(where)}""",
+            params,
+        ).fetchall()
+
+    row_map = {r["Id"]: r for r in rows}
+    out = []
+    for sid in segment_ids:
+        r = row_map.get(sid)
+        if r is None:
+            continue
+        out.append({
+            "segmentId": r["Id"],
+            "audioId": r["AudioId"],
+            "audioName": r["AudioName"],
+            "recordedAt": r["RecordedAt"],
+            "speakerId": r["SpeakerId"],
+            "speakerName": r["SpeakerName"] or "Unknown",
+            "speakerColor": r["SpeakerColor"] or "#6366f1",
+            "text": r["Text"] or "",
+            "startTime": r["StartTime"],
+            "endTime": r["EndTime"],
+        })
+    return out
+
+
 # ─── Speaker Embeddings ───────────────────────────────────────────────────────
 
 def insert_embeddings(

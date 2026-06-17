@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-const ML_URL = 'http://127.0.0.1:8000/';
+const ML_URL = 'http://localhost:8000/';
 const POLL_INTERVAL_MS = 3000;
 
 export function useMlStatus() {

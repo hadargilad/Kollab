@@ -1,5 +1,5 @@
-const BASE = "http://127.0.0.1:8001";
-const ML_BASE = "http://127.0.0.1:8000";
+const BASE = "http://localhost:8001";
+const ML_BASE = "http://localhost:8000";
 export const API_BASE = BASE;
 
 // Identity threading: filtered endpoints take ?user_id=. App.tsx calls
@@ -595,6 +595,47 @@ export const assignments = {
 // UserDirectoryRecord is an alias kept for new callers; the existing `users`
 // object further up handles listByRole / listAnalysts.
 export type UserDirectoryRecord = UserRecord;
+
+// ─── Semantic Search (Hadar) ──────────────────────────────────────────────────
+
+export interface SearchResultItem {
+  segmentId: number;
+  audioId: number;
+  audioName: string;
+  recordedAt: string | null;
+  speakerId: number | null;
+  speakerName: string;
+  speakerColor: string;
+  text: string;
+  startTime: number;
+  endTime: number;
+  score: number;
+  exactMatch: boolean;
+  relatedTerm: string | null;
+}
+
+export const search = {
+  semantic: (
+    q: string,
+    params?: {
+      audioId?: number;
+      speakerId?: number;
+      fromDate?: string;
+      toDate?: string;
+      top?: number;
+    }
+  ) => {
+    const qs = new URLSearchParams({ q });
+    if (params?.audioId != null) qs.set('audio_id', String(params.audioId));
+    if (params?.speakerId != null) qs.set('speaker_id', String(params.speakerId));
+    if (params?.fromDate) qs.set('from_date', params.fromDate);
+    if (params?.toDate) qs.set('to_date', params.toDate);
+    if (params?.top) qs.set('top', String(params.top));
+    return request<{ results: SearchResultItem[] }>('GET', `/search/semantic?${qs.toString()}`);
+  },
+
+  reindex: () => request<{ indexed: number }>('POST', '/search/reindex'),
+};
 
 // ─── Entities (NER / Ghost Nodes — Ofek) ─────────────────────────────────────
 

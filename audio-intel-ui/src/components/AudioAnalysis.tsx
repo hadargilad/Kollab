@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
-import { Play, Pause, Volume2, FileText, Network, Clock, Loader2, AlertCircle, RefreshCw, UserX, Merge, UserCheck, X, Scissors, EyeOff, Eye, Wand2, Camera } from 'lucide-react';
+import { useParams, Link, useNavigate } from 'react-router-dom';
+import { Play, Pause, Volume2, FileText, Network, Clock, Loader2, AlertCircle, RefreshCw, UserX, Merge, UserCheck, X, Scissors, EyeOff, Eye, Wand2, Search, Camera } from 'lucide-react';
 import { audios, speakers as speakersApi, suggestions as suggestionsApi, alerts as alertsApi, type AudioRecord, type SegmentRecord, type SpeakerRecord, type SpeakerSuggestion, type AlertRecord, type MatchSuggestion } from '../lib/api';
 import SpeakerAvatar from './SpeakerAvatar';
 
@@ -15,7 +15,9 @@ interface Speaker {
 export default function AudioAnalysis() {
   const { id } = useParams<{ id: string }>();
   const audioId = Number(id);
+  const navigate = useNavigate();
 
+  const [recSearchQuery, setRecSearchQuery] = useState('');
   const [audio, setAudio] = useState<AudioRecord | null>(null);
   const [segments, setSegments] = useState<SegmentRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -27,6 +29,7 @@ export default function AudioAnalysis() {
   const [reassignTarget, setReassignTarget] = useState<Speaker | null>(null);
   const [reassignName, setReassignName] = useState('');
   const [reassigning, setReassigning] = useState(false);
+  const [showSpeakerPicker, setShowSpeakerPicker] = useState(false);
   const [knownSpeakers, setKnownSpeakers] = useState<SpeakerRecord[]>([]);
   const [mergeNotice, setMergeNotice] = useState<string | null>(null);
   const [pendingSuggestions, setPendingSuggestions] = useState<SpeakerSuggestion[]>([]);
@@ -282,6 +285,10 @@ export default function AudioAnalysis() {
   const reassignMatch = reassignTrimmed
     ? knownSpeakers.find(s => s.id !== reassignTarget?.id && s.name.trim().toLowerCase() === reassignTrimmed.toLowerCase())
     : undefined;
+  const pickerMatches = knownSpeakers.filter(s =>
+    s.id !== reassignTarget?.id &&
+    (!reassignTrimmed || s.name.toLowerCase().includes(reassignTrimmed.toLowerCase()))
+  );
 
   const handleReassign = async (forceSeparate = false) => {
     if (!reassignTarget || !audio) return;
@@ -338,14 +345,33 @@ export default function AudioAnalysis() {
   return (<>
     <input ref={imageInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
     <div className="p-6 space-y-5">
-      <div>
-        <div className="text-zinc-200 text-[10px] font-mono uppercase tracking-widest mb-1">Analysis</div>
-        <h1 className="text-white text-2xl font-bold tracking-tight">{audio.name}</h1>
-        <div className="flex items-center gap-4 text-zinc-300 text-xs font-mono mt-1 flex-wrap">
-          <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{formatTime(duration)}</span>
-          <span>{speakers.length} speaker{speakers.length !== 1 ? 's' : ''}</span>
-          {audio.uploadedBy && <span>by {audio.uploadedBy}</span>}
-          <span className="font-mono text-zinc-300">ID:{id}</span>
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <div className="text-zinc-200 text-[10px] font-mono uppercase tracking-widest mb-1">Analysis</div>
+          <h1 className="text-white text-2xl font-bold tracking-tight">{audio.name}</h1>
+          <div className="flex items-center gap-4 text-zinc-300 text-xs font-mono mt-1 flex-wrap">
+            <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{formatTime(duration)}</span>
+            <span>{speakers.length} speaker{speakers.length !== 1 ? 's' : ''}</span>
+            {audio.uploadedBy && <span>by {audio.uploadedBy}</span>}
+            <span className="font-mono text-zinc-300">ID:{id}</span>
+          </div>
+        </div>
+        <div className="w-full sm:w-72">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-500" />
+            <input
+              type="text"
+              value={recSearchQuery}
+              onChange={e => setRecSearchQuery(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter' && recSearchQuery.trim()) {
+                  navigate(`/search?q=${encodeURIComponent(recSearchQuery.trim())}&audioId=${audioId}`);
+                }
+              }}
+              placeholder="Search this recording… (Enter)"
+              className="w-full bg-zinc-900 border border-zinc-800 rounded-md pl-9 pr-3 py-2 text-white text-sm placeholder-zinc-500 focus:outline-none focus:border-blue-500 transition-all"
+            />
+          </div>
         </div>
       </div>
 
@@ -804,12 +830,38 @@ export default function AudioAnalysis() {
                   )}
                 </div>
               )}
-              <div>
-                <label className="text-zinc-300 text-[10px] font-mono uppercase tracking-widest block mb-1.5">Or type a name</label>
+              <div className="relative">
+                <label className="text-zinc-300 text-[10px] font-mono uppercase tracking-widest block mb-1.5">Or search your speakers</label>
                 <input type="text" value={reassignName} onChange={e => setReassignName(e.target.value)}
                   placeholder="e.g. Ofir, Unknown Person…"
                   className="w-full bg-black border border-zinc-800 rounded px-3 py-2.5 text-white text-sm placeholder-zinc-400 focus:outline-none focus:border-blue-500 transition-all font-mono"
-                  autoFocus onKeyDown={e => e.key === 'Enter' && handleReassign(false)} />
+                  autoFocus
+                  onFocus={() => setShowSpeakerPicker(true)}
+                  onBlur={() => setShowSpeakerPicker(false)}
+                  onKeyDown={e => e.key === 'Enter' && handleReassign(false)} />
+                {showSpeakerPicker && (
+                  <div className="absolute left-0 right-0 mt-1 bg-zinc-950 border border-zinc-800 rounded-md shadow-xl z-10 max-h-48 overflow-y-auto">
+                    {pickerMatches.length === 0 ? (
+                      <div className="px-3 py-2 text-zinc-300 text-xs italic">No speakers found.</div>
+                    ) : (
+                      pickerMatches.map(s => (
+                        <button
+                          key={s.id}
+                          type="button"
+                          onMouseDown={e => e.preventDefault()}
+                          onClick={() => { setReassignName(s.name); setShowSpeakerPicker(false); }}
+                          className="flex w-full items-center gap-2.5 px-3 py-2 hover:bg-zinc-800 transition-colors text-left"
+                        >
+                          <SpeakerAvatar speakerId={s.id} name={s.name} color={s.color} imagePath={s.imagePath} size={22} />
+                          <span className="text-zinc-200 text-sm flex-1 truncate">{s.name}</span>
+                          {s.recordingCount > 0 && (
+                            <span className="text-zinc-200 text-[10px] font-mono">{s.recordingCount} rec</span>
+                          )}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
                 {reassignMatch && (
                   <div className="mt-2.5 flex items-start gap-2 bg-blue-500/8 border border-blue-500/25 rounded px-3 py-2 text-blue-200 text-xs">
                     <Merge className="w-3.5 h-3.5 mt-0.5 shrink-0" />

@@ -8,7 +8,6 @@ import AudioAnalysis from './components/AudioAnalysis';
 import TranscriptView from './components/TranscriptView';
 import SpeakerProfile from './components/SpeakerProfile';
 import NetworkGraph from './components/NetworkGraph';
-import IdentityMatching from './components/IdentityMatching';
 import Settings from './components/Settings';
 import Layout from './components/Layout';
 import WaveformAnalysis from './components/WaveformAnalysis';
@@ -21,6 +20,7 @@ import AllUploads from './components/AllUploads';
 import UserManagement from './components/UserManagement';
 import ForcePasswordChange from './components/ForcePasswordChange';
 import Profile from './components/Profile';
+import SearchResults from './components/SearchResults';
 import StartupScreen from './components/StartupScreen';
 import Entities from './components/Entities';
 import type { AuthUser } from './lib/api';
@@ -94,7 +94,7 @@ export default function App() {
           <Route path="projects" element={<Projects isAdmin={user?.role === 'Admin'} currentUserId={user?.id ?? 0} />} />
           <Route path="projects/:id" element={<ProjectDetail isAdmin={user?.role === 'Admin'} />} />
           <Route path="alerts" element={<Alerts />} />
-          <Route path="identity" element={<IdentityMatching />} />
+          <Route path="search" element={<SearchResults />} />
           <Route path="settings" element={<Settings isAdmin={user?.role === 'Admin'} />} />
           <Route path="profile-search" element={<ProfileSearch />} />
           <Route path="related-speakers" element={<RelatedSpeakers />} />
