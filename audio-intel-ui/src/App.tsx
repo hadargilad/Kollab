@@ -20,6 +20,7 @@ import AllUploads from './components/AllUploads';
 import UserManagement from './components/UserManagement';
 import ForcePasswordChange from './components/ForcePasswordChange';
 import Profile from './components/Profile';
+import SearchResults from './components/SearchResults';
 import StartupScreen from './components/StartupScreen';
 import type { AuthUser } from './lib/api';
 
@@ -92,6 +93,7 @@ export default function App() {
           <Route path="projects" element={<Projects isAdmin={user?.role === 'Admin'} currentUserId={user?.id ?? 0} />} />
           <Route path="projects/:id" element={<ProjectDetail isAdmin={user?.role === 'Admin'} />} />
           <Route path="alerts" element={<Alerts />} />
+          <Route path="search" element={<SearchResults />} />
           <Route path="settings" element={<Settings isAdmin={user?.role === 'Admin'} />} />
           <Route path="profile-search" element={<ProfileSearch />} />
           <Route path="related-speakers" element={<RelatedSpeakers />} />

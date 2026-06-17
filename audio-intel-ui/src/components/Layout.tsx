@@ -124,13 +124,13 @@ export default function Layout({ user, onLogout }: LayoutProps) {
       <div className="flex-1 flex flex-col min-w-0">
         {/* Header */}
         <header className="bg-black border-b border-zinc-800 px-6 py-3 sticky top-0 z-50 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-zinc-200 text-xs font-mono uppercase tracking-widest">
+          <div className="flex items-center gap-2 text-zinc-200 text-xs font-mono uppercase tracking-widest shrink-0">
             <span className="text-zinc-300">KolLab</span>
             <span>/</span>
             <span className="text-blue-500">{user?.role ?? 'User'}</span>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 shrink-0">
             {/* ML status */}
             <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-mono border ${
               mlReady

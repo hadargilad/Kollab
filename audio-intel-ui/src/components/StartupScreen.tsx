@@ -39,7 +39,7 @@ export default function StartupScreen({ onReady }: Props) {
       let backendOk = false;
       for (let i = 0; i < 15; i++) {
         if (cancelled) return;
-        backendOk = await pingUrl('http://127.0.0.1:8001/');
+        backendOk = await pingUrl('http://localhost:8001/');
         if (backendOk) break;
         await new Promise(r => setTimeout(r, 2000));
       }

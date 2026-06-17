@@ -58,15 +58,27 @@ database.init_db()
 
 @app.on_event("startup")
 async def _nlp_startup() -> None:
-    """Seed the euphemism dictionary on first boot and warm up NLP models in
-    the background so uvicorn comes up immediately."""
+    """Seed the euphemism dictionary on first boot, warm up NLP models, and
+    rebuild the semantic search index — all in the background so uvicorn
+    comes up immediately."""
     try:
         _euphemism_expansion.ensure_seeds_loaded()
     except Exception:
         # Non-fatal: NLP deps may not be installed yet on a stripped backend.
         import logging
         logging.exception("[nlp] seed load failed")
-    asyncio.get_event_loop().run_in_executor(None, _nlp_models.warm_up)
+    def _startup_bg():
+        _nlp_models.warm_up()
+        try:
+            from nlp.semantic_search import rebuild_index
+            n = rebuild_index()
+            import logging
+            logging.getLogger(__name__).info("[startup] semantic index: %d segments", n)
+        except Exception:
+            import logging
+            logging.getLogger(__name__).exception("[startup] semantic index rebuild failed")
+
+    asyncio.get_event_loop().run_in_executor(None, _startup_bg)
 
 
 # In-memory step tracker: audio_id → {pct, label}
@@ -379,9 +391,15 @@ async def _run_ml_and_save(audio_id: int, save_path: Path, original_name: str) -
     database.clear_segments(audio_id)
     if segments_to_insert:
         database.insert_segments(segments_to_insert)
-        # NLP pipeline. Order: embeddings + scoring first, then substring scan.
-        # Wrapped in try/except so a model error never marks the audio as failed.
-        # TODO(ofek): extract_and_resolve_entities(audio_id) goes between these two.
+        # NLP pipeline. Order matters: embed first (Hadar), then NER (Ofek, stub),
+        # then coded-language scoring (Ofir — depends on embeddings).
+        # Each stage is wrapped individually so one failure doesn't abort the rest.
+        # TODO(ofek): nlp.extract_and_resolve_entities(audio_id) goes after embed_segments.
+        try:
+            await asyncio.to_thread(nlp.embed_segments, audio_id)
+        except Exception:
+            import logging
+            logging.exception("embed_segments failed for audio %s", audio_id)
         try:
             await asyncio.to_thread(nlp.score_coded_language, audio_id)
         except Exception:
@@ -969,6 +987,49 @@ class ConfirmEntityRequest(BaseModel):
 def _provider_or_503():
     """Surface a missing-config provider as a clean 503 to the UI."""
     return enrichment_providers.provider
+
+
+# ─── Semantic Search (Hadar) ──────────────────────────────────────────────────
+
+@app.get("/search/semantic")
+def search_semantic(
+    q: str,
+    audio_id: Optional[int] = None,
+    speaker_id: Optional[int] = None,
+    from_date: Optional[str] = None,
+    to_date: Optional[str] = None,
+    top: int = 20,
+):
+    """Hybrid BM25 + dense retrieval + cross-encoder rerank + MMR.
+    Returns up to `top` result dicts, each containing segment text, speaker,
+    audio name, timestamps, and a relevance score."""
+    if not q.strip():
+        return {"results": []}
+    try:
+        from nlp.semantic_search import search as _search
+        results = _search(
+            q,
+            audio_id=audio_id,
+            speaker_id=speaker_id,
+            from_date=from_date,
+            to_date=to_date,
+            top_k=min(top, 50),
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    return {"results": results}
+
+
+@app.post("/search/reindex")
+def search_reindex():
+    """Rebuild the in-memory FAISS + BM25 index from all stored segment embeddings.
+    Call after bulk imports or if search results seem stale."""
+    try:
+        from nlp.semantic_search import rebuild_index
+        n = rebuild_index()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    return {"indexed": n}
 
 
 @app.get("/speakers/{speaker_id}/enrichment/search")

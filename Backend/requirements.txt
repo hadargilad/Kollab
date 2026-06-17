@@ -10,3 +10,5 @@ transformers           # distilgpt2 for Signal C (perplexity)
 torch                  # backend for transformers + sentence-transformers
 sentence-transformers  # BAAI/bge-small-en-v1.5 segment embeddings (shared infra; Hadar will reuse)
 scikit-learn           # TfidfVectorizer + CountVectorizer + cosine
+faiss-cpu              # dense vector index for semantic search (Hadar)
+rank_bm25              # BM25Okapi lexical retrieval (Hadar)
