@@ -12,3 +12,7 @@ sentence-transformers  # BAAI/bge-small-en-v1.5 segment embeddings (shared infra
 scikit-learn           # TfidfVectorizer + CountVectorizer + cosine
 faiss-cpu              # dense vector index for semantic search (Hadar)
 rank_bm25              # BM25Okapi lexical retrieval (Hadar)
+
+# NLP (Ofek — NER + Entity Resolution)
+phonetics              # Double Metaphone for phonetic name matching
+jellyfish              # Jaro-Winkler string similarity

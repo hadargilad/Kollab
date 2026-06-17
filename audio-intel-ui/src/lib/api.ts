@@ -173,6 +173,7 @@ export interface SpeakerRecord {
   wikidataId: string | null;
   imagePath: string | null;
   isUntracked: boolean;
+  isGhost: boolean;
   recordingCount: number;
   sampleCount: number;
 }
@@ -634,6 +635,70 @@ export const search = {
   },
 
   reindex: () => request<{ indexed: number }>('POST', '/search/reindex'),
+};
+
+// ─── Entities (NER / Ghost Nodes — Ofek) ─────────────────────────────────────
+
+export interface EntityRecord {
+  id: number;
+  type: string;          // PERSON | ORG | LOC | MISC | PHONE | EMAIL | MONEY
+  rawText: string;
+  normalizedText: string;
+  phoneticKey: string | null;
+  wikidataId: string | null;
+  ghostSpeakerId: number | null;
+  mentionCount: number;
+  distinctSpeakerCount: number;
+  distinctAudioCount: number;
+  firstSeen: string;
+  lastSeen: string;
+}
+
+export interface EntityMentionRecord {
+  id: number;
+  entityId: number;
+  segmentId: number;
+  offset: number;
+  length: number;
+  confidence: number;
+  resolvedSpeakerId: number | null;
+  resolutionMethod: string | null;
+  segmentText: string;
+  audioId: number;
+  startTime: number;
+  endTime: number;
+  speakerName: string | null;
+  audioName: string | null;
+}
+
+export interface SegmentMentionRecord {
+  id: number;
+  entityId: number;
+  segmentId: number;
+  offset: number;
+  length: number;
+  confidence: number;
+  resolutionMethod: string | null;
+  entityType: string;
+  rawText: string;
+  normalizedText: string;
+}
+
+export const entities = {
+  list: (entityType?: string) => {
+    const qs = entityType ? `?entity_type=${encodeURIComponent(entityType)}` : "";
+    return request<EntityRecord[]>("GET", `/entities${qs}`);
+  },
+  get: (id: number) => request<EntityRecord>("GET", `/entities/${id}`),
+  mentions: (id: number) => request<EntityMentionRecord[]>("GET", `/entities/${id}/mentions`),
+  relatedSpeakers: (id: number) =>
+    request<{ id: number; name: string; color: string; riskLevel: string; mentionCount: number }[]>(
+      "GET", `/entities/${id}/related-speakers`
+    ),
+  linkWikidata: (id: number, wikidataId: string) =>
+    request<{ success: boolean }>("POST", `/entities/${id}/link-wikidata`, { wikidataId }),
+  segmentMentions: (audioId: number) =>
+    request<SegmentMentionRecord[]>("GET", `/audios/${audioId}/segment-mentions`),
 };
 
 // ─── ML Service (stateless analysis) ──────────────────────────────────────────

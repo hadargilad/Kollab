@@ -1,9 +1,19 @@
 import { useState, useEffect } from 'react';
 import { useParams, useLocation, Link } from 'react-router-dom';
-import { Download, Search, FileText, User, Loader2, AlertCircle, ShieldAlert, Sparkles } from 'lucide-react';
-import { audios, dangerousWords, search, type AudioRecord, type SegmentRecord, type SubScores, type SearchResultItem } from '../lib/api';
+import { Copy, Check, Search, FileText, User, Loader2, AlertCircle, ShieldAlert, Sparkles } from 'lucide-react';
+import { audios, dangerousWords, search, entities, type AudioRecord, type SegmentRecord, type SubScores, type SearchResultItem, type SegmentMentionRecord } from '../lib/api';
 import SubScoresBar, { SUB_LEGEND } from './SubScoresBar';
 import SpeakerAvatar from './SpeakerAvatar';
+
+const ENTITY_COLORS: Record<string, string> = {
+  PERSON:  'bg-blue-500/25 text-blue-200 border-b border-blue-400/50',
+  ORG:     'bg-purple-500/25 text-purple-200 border-b border-purple-400/50',
+  LOC:     'bg-green-500/25 text-green-200 border-b border-green-400/50',
+  MISC:    'bg-zinc-500/20 text-zinc-200 border-b border-zinc-400/50',
+  PHONE:   'bg-amber-500/25 text-amber-200 border-b border-amber-400/50',
+  EMAIL:   'bg-cyan-500/25 text-cyan-200 border-b border-cyan-400/50',
+  MONEY:   'bg-emerald-500/25 text-emerald-200 border-b border-emerald-400/50',
+};
 
 function suspicionRowClass(score: number | null | undefined): string {
   if (score == null) return '';
@@ -38,6 +48,8 @@ export default function TranscriptView() {
   const [semanticResults, setSemanticResults] = useState<SearchResultItem[] | null>(null);
   const [semanticLoading, setSemanticLoading] = useState(false);
   const [flaggedWords, setFlaggedWords] = useState<string[]>([]);
+  const [mentionsBySegment, setMentionsBySegment] = useState<Map<number, SegmentMentionRecord[]>>(new Map());
+  const [exportCopied, setExportCopied] = useState(false);
 
   useEffect(() => {
     dangerousWords.list().then(ws => setFlaggedWords(ws.map(w => w.word))).catch(() => {});
@@ -49,6 +61,15 @@ export default function TranscriptView() {
       .then(([audioData, segsData]) => { setAudio(audioData); setSegments(segsData); })
       .catch(() => setError('Failed to load transcript.'))
       .finally(() => setLoading(false));
+    entities.segmentMentions(audioId).then(mentions => {
+      const map = new Map<number, SegmentMentionRecord[]>();
+      for (const m of mentions) {
+        const arr = map.get(m.segmentId) ?? [];
+        arr.push(m);
+        map.set(m.segmentId, arr);
+      }
+      setMentionsBySegment(map);
+    }).catch(() => {});
   }, [audioId]);
 
   // Scroll to anchored segment (e.g. /transcript/12#seg-345 from the Alerts page)
@@ -65,10 +86,10 @@ export default function TranscriptView() {
 
   const escapeRx = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-  const highlightText = (text: string, query: string) => {
-    if (!query && flaggedWords.length === 0) return <>{text}</>;
+  const highlightTextWithEntities = (text: string, query: string, segMentions: SegmentMentionRecord[]) => {
+    type Span = { start: number; end: number; red: boolean; entityType?: string; rawText?: string };
+    const intervals: Span[] = [];
 
-    const intervals: { start: number; end: number; red: boolean }[] = [];
     const addMatches = (needle: string, red: boolean) => {
       if (!needle.trim()) return;
       const rx = new RegExp(escapeRx(needle), 'gi');
@@ -78,10 +99,19 @@ export default function TranscriptView() {
     };
     if (query) addMatches(query, false);
     for (const w of flaggedWords) addMatches(w, true);
+    for (const mention of segMentions) {
+      intervals.push({
+        start: mention.offset,
+        end: mention.offset + mention.length,
+        red: false,
+        entityType: mention.entityType,
+        rawText: mention.rawText,
+      });
+    }
 
     intervals.sort((a, b) => a.start - b.start || (a.red ? -1 : 1));
 
-    const merged: { start: number; end: number; red: boolean }[] = [];
+    const merged: Span[] = [];
     for (const iv of intervals) {
       const last = merged[merged.length - 1];
       if (!last || last.end <= iv.start) { merged.push({ ...iv }); continue; }
@@ -91,14 +121,26 @@ export default function TranscriptView() {
 
     const nodes: React.ReactNode[] = [];
     let pos = 0;
-    for (const { start, end, red } of merged) {
-      if (start > pos) nodes.push(text.slice(pos, start));
-      nodes.push(
-        <mark key={start} className={red ? 'bg-red-500/25 text-red-300 rounded-sm' : 'bg-yellow-500/30 text-yellow-200 rounded-sm'}>
-          {text.slice(start, end)}
-        </mark>
-      );
-      pos = end;
+    for (const span of merged) {
+      if (span.start > pos) nodes.push(text.slice(pos, span.start));
+      const slice = text.slice(span.start, span.end);
+      if (span.red) {
+        nodes.push(<mark key={span.start} className="bg-red-500/25 text-red-300 rounded-sm">{slice}</mark>);
+      } else if (span.entityType) {
+        const cls = ENTITY_COLORS[span.entityType] ?? ENTITY_COLORS.MISC;
+        nodes.push(
+          <span
+            key={span.start}
+            title={`${span.entityType}: ${span.rawText}`}
+            className={`rounded-sm px-0.5 cursor-default ${cls}`}
+          >
+            {slice}
+          </span>
+        );
+      } else {
+        nodes.push(<mark key={span.start} className="bg-yellow-500/30 text-yellow-200 rounded-sm">{slice}</mark>);
+      }
+      pos = span.end;
     }
     if (pos < text.length) nodes.push(text.slice(pos));
     return <>{nodes}</>;
@@ -106,17 +148,46 @@ export default function TranscriptView() {
 
   const exportTranscript = () => {
     if (!audio || segments.length === 0) return;
-    const lines = segments.map(seg =>
-      `[${formatTime(seg.startTime)} – ${formatTime(seg.endTime)}] ${seg.speakerName}:\n${seg.text}`
+
+    const speakerMap = new Map<number, { name: string; turns: number; totalSec: number }>();
+    for (const seg of segments) {
+      const e = speakerMap.get(seg.speakerId);
+      const dur = seg.endTime - seg.startTime;
+      if (e) { e.turns++; e.totalSec += dur; }
+      else speakerMap.set(seg.speakerId, { name: seg.speakerName, turns: 1, totalSec: dur });
+    }
+    const speakerLines = Array.from(speakerMap.values())
+      .map(s => `  • ${s.name} — ${s.turns} turns, ${formatTime(s.totalSec)} speaking time`)
+      .join('\n');
+
+    const transcriptLines = segments.map(seg =>
+      `[${formatTime(seg.startTime)} – ${formatTime(seg.endTime)}]  ${seg.speakerName}\n${seg.text}`
     );
-    const content = `${audio.name}\n${'─'.repeat(60)}\n\n${lines.join('\n\n')}`;
-    const blob = new Blob([content], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `transcript-${id}.txt`;
-    a.click();
-    URL.revokeObjectURL(url);
+
+    const recordedAt = audio.recordedAt ? new Date(audio.recordedAt).toLocaleString() : 'Unknown';
+    const content = [
+      `TRANSCRIPT REPORT`,
+      `${'═'.repeat(60)}`,
+      ``,
+      `File:      ${audio.name}`,
+      `Recorded:  ${recordedAt}`,
+      `Duration:  ${formatTime(audio.duration ?? 0)}`,
+      `Segments:  ${segments.length}`,
+      ``,
+      `PARTICIPANTS`,
+      `${'─'.repeat(60)}`,
+      speakerLines,
+      ``,
+      `TRANSCRIPT`,
+      `${'─'.repeat(60)}`,
+      ``,
+      ...transcriptLines.map((l, i) => (i > 0 ? '\n' : '') + l),
+    ].join('\n');
+
+    navigator.clipboard.writeText(content).then(() => {
+      setExportCopied(true);
+      setTimeout(() => setExportCopied(false), 2500);
+    });
   };
 
   const participantMap = new Map<number, { id: number; name: string; color: string; imagePath: string | null; turns: number }>();
@@ -223,9 +294,13 @@ export default function TranscriptView() {
               {semanticMode ? 'Semantic' : 'Keyword'}
             </button>
             <button onClick={exportTranscript}
-              className="flex items-center gap-1.5 px-3 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-xs rounded transition-colors shrink-0">
-              <Download className="w-3.5 h-3.5" />
-              Export
+              className={`flex items-center gap-1.5 px-3 py-2 border text-xs rounded transition-colors shrink-0 ${
+                exportCopied
+                  ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-400'
+                  : 'bg-zinc-800 hover:bg-zinc-700 border-zinc-700 text-zinc-300'
+              }`}>
+              {exportCopied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+              {exportCopied ? 'Copied!' : 'Copy'}
             </button>
             {searchQuery && !semanticMode && (
               <span className="text-zinc-200 text-xs font-mono shrink-0">{filtered.length}/{segments.length}</span>
@@ -291,7 +366,7 @@ export default function TranscriptView() {
                           )}
                         </div>
                         <p className="text-zinc-200 text-sm leading-relaxed">
-                          {highlightText(seg.text, searchQuery)}
+                          {highlightTextWithEntities(seg.text, searchQuery, mentionsBySegment.get(seg.id) ?? [])}
                         </p>
                         {hasScore && seg.subScores && (
                           <div className="mt-2 max-w-md">

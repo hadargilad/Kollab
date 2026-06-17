@@ -9,6 +9,7 @@ import {
   type SpeakerRecord, type RelationRecord, type GroupRecord,
   API_BASE,
 } from '../lib/api';
+import SpeakerAvatar from './SpeakerAvatar';
 
 interface Node {
   id: number;
@@ -20,6 +21,7 @@ interface Node {
   riskLevel: 'low' | 'medium' | 'high';
   recordingCount: number;
   imagePath: string | null;
+  isGhost: boolean;
 }
 
 const CANVAS_W = 1100;
@@ -43,6 +45,7 @@ function layoutNodes(speakers: SpeakerRecord[], connectionsBySpeaker: Map<number
       riskLevel: s.riskLevel,
       recordingCount: s.recordingCount,
       imagePath: s.imagePath,
+      isGhost: s.isGhost ?? false,
     };
   });
 }
@@ -85,6 +88,8 @@ export default function NetworkGraph({ isAdmin = false }: { isAdmin?: boolean })
   // speaker, the popup floats near the node with "Add to group" / "View profile".
   const [nodeAction, setNodeAction] = useState<{ node: Node; x: number; y: number } | null>(null);
   const [nodeActionGroupPicker, setNodeActionGroupPicker] = useState(false);
+
+  const [showGhosts, setShowGhosts] = useState(false);
 
   const [bridgeGroupA, setBridgeGroupA] = useState<number | ''>('');
   const [bridgeGroupB, setBridgeGroupB] = useState<number | ''>('');
@@ -135,10 +140,11 @@ export default function NetworkGraph({ isAdmin = false }: { isAdmin?: boolean })
   const trackedSpeakers = useMemo(
     () => allSpeakers.filter(s => {
       if (s.isUntracked) return false;
+      if (s.isGhost && !showGhosts) return false;
       if (filteredSpeakerIds && !filteredSpeakerIds.has(s.id)) return false;
       return true;
     }),
-    [allSpeakers, filteredSpeakerIds],
+    [allSpeakers, filteredSpeakerIds, showGhosts],
   );
 
   const nodes = useMemo(
@@ -248,12 +254,15 @@ export default function NetworkGraph({ isAdmin = false }: { isAdmin?: boolean })
       const sameGroup = groupA && groupB && groupA.id === groupB.id;
       const isSelectedEdge = selectedNode &&
         (edge.speakerA.id === selectedNode.id || edge.speakerB.id === selectedNode.id);
+      const isMentioned = edge.topic === 'mentioned';
       ctx.beginPath();
       ctx.moveTo(fromNode.x, fromNode.y);
       ctx.lineTo(toNode.x, toNode.y);
-      ctx.strokeStyle = isSelectedEdge ? '#93c5fd' : sameGroup ? groupA.color + 'bb' : '#3f3f46';
+      ctx.strokeStyle = isSelectedEdge ? '#93c5fd' : isMentioned ? '#a78bfa88' : sameGroup ? groupA.color + 'bb' : '#3f3f46';
       ctx.lineWidth = Math.max(1, Math.min(edge.interactionCount, 8) / 2);
+      ctx.setLineDash(isMentioned ? [5, 4] : []);
       ctx.stroke();
+      ctx.setLineDash([]);
     }
 
     for (const node of nodes) {
@@ -265,29 +274,47 @@ export default function NetworkGraph({ isAdmin = false }: { isAdmin?: boolean })
 
       if (isBridge) { ctx.shadowColor = '#fbbf24'; ctx.shadowBlur = 16; }
 
-      // Color fill first — always drawn so the circle has a visible base
-      // before the (possibly still-loading) image arrives, and so the area
-      // outside the photo's aspect ratio remains the speaker's color.
-      ctx.beginPath();
-      ctx.arc(node.x, node.y, nodeRadius, 0, Math.PI * 2);
-      ctx.fillStyle = node.color;
-      ctx.fill();
-      ctx.shadowBlur = 0;
-
-      // If the speaker has an uploaded image, clip to the circle and draw it
-      // inside (object-fit: cover style — fills the disc, may crop edges).
-      const img = node.imagePath ? speakerImagesRef.current.get(node.id) : undefined;
-      if (img && img.complete && img.naturalWidth > 0) {
-        ctx.save();
+      if (node.isGhost) {
+        // Ghost nodes: hollow triangle with dashed outline and violet tint
+        const h = nodeRadius * 2;
+        ctx.beginPath();
+        ctx.moveTo(node.x, node.y - h * 0.6);
+        ctx.lineTo(node.x + h * 0.6, node.y + h * 0.4);
+        ctx.lineTo(node.x - h * 0.6, node.y + h * 0.4);
+        ctx.closePath();
+        ctx.fillStyle = '#7c3aed22';
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = '#a78bfa';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([4, 3]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      } else {
+        // Color fill first — always drawn so the circle has a visible base
+        // before the (possibly still-loading) image arrives, and so the area
+        // outside the photo's aspect ratio remains the speaker's color.
         ctx.beginPath();
         ctx.arc(node.x, node.y, nodeRadius, 0, Math.PI * 2);
-        ctx.clip();
-        const diameter = nodeRadius * 2;
-        const scale = Math.max(diameter / img.naturalWidth, diameter / img.naturalHeight);
-        const drawW = img.naturalWidth * scale;
-        const drawH = img.naturalHeight * scale;
-        ctx.drawImage(img, node.x - drawW / 2, node.y - drawH / 2, drawW, drawH);
-        ctx.restore();
+        ctx.fillStyle = node.color;
+        ctx.fill();
+        ctx.shadowBlur = 0;
+
+        // If the speaker has an uploaded image, clip to the circle and draw it
+        // inside (object-fit: cover style — fills the disc, may crop edges).
+        const img = node.imagePath ? speakerImagesRef.current.get(node.id) : undefined;
+        if (img && img.complete && img.naturalWidth > 0) {
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(node.x, node.y, nodeRadius, 0, Math.PI * 2);
+          ctx.clip();
+          const diameter = nodeRadius * 2;
+          const scale = Math.max(diameter / img.naturalWidth, diameter / img.naturalHeight);
+          const drawW = img.naturalWidth * scale;
+          const drawH = img.naturalHeight * scale;
+          ctx.drawImage(img, node.x - drawW / 2, node.y - drawH / 2, drawW, drawH);
+          ctx.restore();
+        }
       }
 
       if (groupColor) {
@@ -555,6 +582,15 @@ export default function NetworkGraph({ isAdmin = false }: { isAdmin?: boolean })
                     className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 text-xs rounded transition-colors">
                     Reset
                   </button>
+                  <label className="flex items-center gap-2 cursor-pointer select-none text-xs text-zinc-200">
+                    <input
+                      type="checkbox"
+                      checked={showGhosts}
+                      onChange={e => setShowGhosts(e.target.checked)}
+                      className="accent-violet-500"
+                    />
+                    Include Ghost speakers
+                  </label>
                   <div className="ml-auto flex items-center gap-4 text-[10px] text-zinc-200 font-mono">
                     <div className="flex items-center gap-1.5">
                       <div className="w-4 h-px bg-zinc-700" /><span>Weight</span>
@@ -564,6 +600,9 @@ export default function NetworkGraph({ isAdmin = false }: { isAdmin?: boolean })
                     </div>
                     <div className="flex items-center gap-1.5">
                       <div className="w-3 h-3 rounded-full border-2 border-dashed border-amber-400 bg-zinc-700" /><span>Bridge</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-3 h-3 border border-dashed border-violet-400" style={{ clipPath: 'polygon(50% 0%, 100% 100%, 0% 100%)' }} /><span>Ghost</span>
                     </div>
                     {allGroups.map(g => (
                       <div key={g.id} className="flex items-center gap-1.5">
@@ -840,10 +879,14 @@ export default function NetworkGraph({ isAdmin = false }: { isAdmin?: boolean })
             <div className="bg-zinc-900 border border-zinc-800 rounded-md px-4 py-3">
               <div className="flex items-center justify-between gap-4">
                 <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-9 h-9 rounded flex items-center justify-center shrink-0"
-                    style={{ backgroundColor: `${selectedNode.color}18` }}>
-                    <User className="w-4 h-4" style={{ color: selectedNode.color }} />
-                  </div>
+                  <SpeakerAvatar
+                    speakerId={selectedNode.id}
+                    name={selectedNode.label}
+                    color={selectedNode.color}
+                    imagePath={selectedNode.imagePath}
+                    size={36}
+                    bust={selectedNode.imagePath ?? undefined}
+                  />
                   <div className="min-w-0">
                     <div className="text-white text-sm font-medium">{selectedNode.label}</div>
                     <div className="text-zinc-300 text-xs font-mono capitalize">

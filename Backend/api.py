@@ -391,15 +391,19 @@ async def _run_ml_and_save(audio_id: int, save_path: Path, original_name: str) -
     database.clear_segments(audio_id)
     if segments_to_insert:
         database.insert_segments(segments_to_insert)
-        # NLP pipeline. Order matters: embed first (Hadar), then NER (Ofek, stub),
+        # NLP pipeline. Order matters: embed first (Hadar), then NER (Ofek),
         # then coded-language scoring (Ofir — depends on embeddings).
         # Each stage is wrapped individually so one failure doesn't abort the rest.
-        # TODO(ofek): nlp.extract_and_resolve_entities(audio_id) goes after embed_segments.
         try:
             await asyncio.to_thread(nlp.embed_segments, audio_id)
         except Exception:
             import logging
             logging.exception("embed_segments failed for audio %s", audio_id)
+        try:
+            await asyncio.to_thread(nlp.extract_and_resolve_entities, audio_id)
+        except Exception:
+            import logging
+            logging.exception("extract_and_resolve_entities failed for audio %s", audio_id)
         try:
             await asyncio.to_thread(nlp.score_coded_language, audio_id)
         except Exception:
@@ -1451,6 +1455,59 @@ async def rescore_coded_language(audio_id: int):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Rescoring failed: {e}")
     return {"success": True, "audioId": audio_id}
+
+
+# ─── Entities (Ofek — NER + Ghost Nodes) ─────────────────────────────────────
+
+@app.get("/entities")
+def list_entities(entity_type: Optional[str] = None):
+    entities = database.get_all_entities()
+    if entity_type:
+        entities = [e for e in entities if e["type"] == entity_type]
+    return entities
+
+
+@app.get("/entities/{entity_id}")
+def get_entity(entity_id: int):
+    ent = database.get_entity(entity_id)
+    if ent is None:
+        raise HTTPException(status_code=404, detail="Entity not found.")
+    return ent
+
+
+@app.get("/entities/{entity_id}/mentions")
+def get_entity_mentions(entity_id: int):
+    if database.get_entity(entity_id) is None:
+        raise HTTPException(status_code=404, detail="Entity not found.")
+    return database.get_entity_mentions(entity_id)
+
+
+@app.get("/entities/{entity_id}/related-speakers")
+def get_entity_related_speakers(entity_id: int):
+    if database.get_entity(entity_id) is None:
+        raise HTTPException(status_code=404, detail="Entity not found.")
+    return database.get_entity_related_speakers(entity_id)
+
+
+@app.post("/entities/{entity_id}/link-wikidata")
+def link_entity_wikidata(entity_id: int, body: dict):
+    wikidata_id = body.get("wikidataId", "").strip()
+    if not wikidata_id:
+        raise HTTPException(status_code=422, detail="wikidataId is required.")
+    if database.get_entity(entity_id) is None:
+        raise HTTPException(status_code=404, detail="Entity not found.")
+    database.link_entity_wikidata(entity_id, wikidata_id)
+    return {"success": True, "entityId": entity_id, "wikidataId": wikidata_id}
+
+
+@app.get("/audios/{audio_id}/segment-mentions")
+def get_segment_mentions(audio_id: int):
+    """Return all EntityMentions for every segment in a given audio (used by TranscriptView)."""
+    if database.get_audio(audio_id) is None:
+        raise HTTPException(status_code=404, detail="Audio not found.")
+    segments = database.get_segments_by_audio(audio_id)
+    seg_ids = [s["id"] for s in segments]
+    return database.get_mentions_for_segments(seg_ids)
 
 
 if __name__ == "__main__":

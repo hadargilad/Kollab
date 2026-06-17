@@ -23,11 +23,14 @@ EMBED_DIM = 384  # bge-small-en-v1.5
 
 LM_MODEL_NAME = "distilgpt2"
 
+NER_MODEL_NAME = "dslim/bert-base-NER"
+
 _lock = threading.Lock()
 
 _embed_model: Optional[Any] = None
 _lm_tokenizer: Optional[Any] = None
 _lm_model: Optional[Any] = None
+_ner_pipeline: Optional[Any] = None
 
 # TF-IDF state: vectorizer + the segment count we last fitted on. We refit when
 # the corpus has grown by >= TFIDF_REFIT_THRESHOLD segments.
@@ -72,6 +75,23 @@ def get_lm() -> Tuple[Any, Any]:
             _lm_tokenizer = tok
             _lm_model = mdl
     return _lm_tokenizer, _lm_model
+
+
+def get_ner_model() -> Any:
+    """HuggingFace token-classification pipeline for dslim/bert-base-NER."""
+    global _ner_pipeline
+    if _ner_pipeline is not None:
+        return _ner_pipeline
+    with _lock:
+        if _ner_pipeline is None:
+            from transformers import pipeline
+            log.info("[nlp.models] loading NER model %s", NER_MODEL_NAME)
+            _ner_pipeline = pipeline(
+                "ner",
+                model=NER_MODEL_NAME,
+                aggregation_strategy="simple",
+            )
+    return _ner_pipeline
 
 
 def get_tfidf(corpus_texts_provider) -> Optional[Any]:
@@ -123,6 +143,7 @@ def warm_up() -> None:
     try:
         get_embed_model()
         get_lm()
+        get_ner_model()
         log.info("[nlp.models] warm-up complete")
     except Exception:
         log.exception("[nlp.models] warm-up failed")
