@@ -4,6 +4,23 @@ Upload audio recordings → get a transcript, diarized speaker timeline, voice-f
 matching against known speakers, and a relationship graph of who speaks with whom.
 Built for analysts working with intercepted / recorded audio.
 
+## What it does
+
+- **Transcription + diarization** — Whisper for ASR, pyannote for "who spoke when".
+- **Voice-fingerprint identity matching** — ECAPA-TDNN embeddings, three-tier match
+  (auto / suggest / silent) with per-recording de-collision so the same speaker
+  can't be matched twice in one audio.
+- **Semantic search** — hybrid BM25 + dense (FAISS) + cross-encoder rerank across
+  every transcript; toggle for exact-word match.
+- **Entity extraction** — NER for PERSON / ORG / LOC / PHONE / EMAIL / MONEY,
+  with ghost-node creation for unknown referenced entities.
+- **Coded-language detection** — multi-signal scoring (perplexity, lexical anomaly,
+  context-vector similarity, euphemism-dictionary match) flags suspicious segments.
+- **Projects / subgroups** — admins scope analysts to specific speaker subgroups
+  so each analyst only sees the data assigned to them.
+- **Alerts** — flagged-keyword hits and coded-language detections surface in a
+  dedicated tab; click any row to jump to the segment.
+
 ---
 
 ## Run it
@@ -55,7 +72,10 @@ npm run dev:ml
 ```
 
 `dev:ml` brings up Backend + ML in Docker and launches the Tauri window
-locally. Use `npm run dev` if you only want the frontend.
+locally. Use `npm run dev` from the root if you don't need ML running
+(useful when browsing existing recordings without re-analysing); use
+`cd audio-intel-ui && npm run dev` if you want only Vite (browser) without
+Tauri.
 
 ### What to expect on first run
 
@@ -122,13 +142,35 @@ Three services, each in its own folder:
 
 | Service | Folder | Stack | Port | Role |
 |---------|--------|-------|------|------|
-| **Frontend** | [audio-intel-ui/](audio-intel-ui/) | React 19 + Vite + Tailwind + Tauri (Rust desktop shell) | 5173 | UI — uploads, dashboards, transcript viewer, speaker management |
-| **Backend** | [Backend/](Backend/) | Python + FastAPI + SQLite | 8001 | Auth, user management, audio storage, **speaker identity matching**, segments, relations, alerts |
-| **ML** | [ml/](ml/) | Python + FastAPI + PyTorch | 8000 | **Stateless** audio analysis — Whisper transcription, pyannote diarization, ECAPA-TDNN voice fingerprints. Holds no state. |
+| **Frontend** | [audio-intel-ui/](audio-intel-ui/) | React 19 + Vite + Tailwind 4 + Tauri (Rust desktop shell) | 5173 | Hand-built UI (no shadcn). Uploads, dashboards, transcript viewer, search, alerts, speaker / project management. |
+| **Backend** | [Backend/](Backend/) | Python + FastAPI + SQLite + PyTorch | 8001 | Owns every persistent table. Speaker matching, audio storage, semantic search index (FAISS), NLP detectors (coded-language, NER, entity resolution), projects/subgroups, suggestions, alerts. |
+| **ML** | [ml/](ml/) | Python + FastAPI + PyTorch | 8000 | **Stateless** audio analysis only. Whisper transcription, pyannote diarization, ECAPA-TDNN voice fingerprints. Holds no state. |
 
-The Backend owns all persistent state. The ML service is pure analysis: it
-returns transcripts and embeddings, and the Backend decides identities and
-stores everything in SQLite.
+The rule: Frontend ↔ Backend (8001) only. Backend ↔ ML over HTTP for
+analysis. ML never reads/writes its own state.
+
+### Data flow
+
+1. Frontend uploads an audio file to Backend.
+2. Backend stores the raw file, calls ML's `/analyze`.
+3. ML returns transcript segments + per-speaker 192-dim sliding-window embeddings.
+4. Backend matches each speaker against its `SpeakerEmbeddings` table
+   (auto-attribute if cosine ≥ 0.60, suggest if ≥ 0.40, silent otherwise).
+5. Backend embeds every segment with `bge-small`, indexes in FAISS for search.
+6. Backend runs the NLP pipeline (NER → entity resolution → coded-language scoring)
+   and writes any Alerts.
+
+### NLP layer (lives entirely in Backend)
+
+| Module | What it does |
+|---|---|
+| [nlp/semantic_search.py](Backend/nlp/semantic_search.py) | Hybrid BM25 + FAISS + cross-encoder rerank + MMR. Powers `/search/semantic` with `exact_only` flag. |
+| [nlp/ner.py](Backend/nlp/ner.py) | Named-entity recognition via HF Transformers. |
+| [nlp/entity_resolution.py](Backend/nlp/entity_resolution.py) | Phonetic + string-similarity matching to merge surface forms; promotes unknown entities to ghost-nodes. |
+| [nlp/coded_language.py](Backend/nlp/coded_language.py) | Four-signal coded-language detector (perplexity / lexical anomaly / context vector / euphemism similarity). |
+| [nlp/euphemism_expansion.py](Backend/nlp/euphemism_expansion.py) | Mines new euphemism candidates from the corpus (bootstrap on `seed_euphemisms.json`). |
+| [nlp/reranker.py](Backend/nlp/reranker.py) | Cross-encoder used by semantic search step 6. |
 
 See [Backend/DATABASE.md](Backend/DATABASE.md) for the schema and
-[ml/README.md](ml/README.md) for the ML pipeline stages.
+[ml/README.md](ml/README.md) for the ML pipeline stages. See [CLAUDE.md](CLAUDE.md)
+for non-obvious gotchas before changing speaker-matching or NLP code.
