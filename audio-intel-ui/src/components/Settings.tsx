@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Sliders, Save, Trash2, Plus, Loader2, ShieldAlert, Sparkles } from 'lucide-react';
+import { Sliders, Save, Trash2, Plus, Loader2, ShieldAlert, Sparkles, Eye, X } from 'lucide-react';
 import { dangerousWords, euphemisms, type DangerousWordRecord, type EuphemismRecord } from '../lib/api';
 
 export default function Settings({ isAdmin }: { isAdmin?: boolean }) {
@@ -15,14 +15,15 @@ export default function Settings({ isAdmin }: { isAdmin?: boolean }) {
   const [wordError, setWordError] = useState('');
   const [removingWordIds, setRemovingWordIds] = useState<Set<number>>(new Set());
 
-  const [euphList, setEuphList] = useState<EuphemismRecord[]>([]);
+  const [allEuphList, setAllEuphList] = useState<EuphemismRecord[]>([]);
   const [newEuph, setNewEuph] = useState('');
   const [newEuphSeverity, setNewEuphSeverity] = useState<'low' | 'medium' | 'high'>('high');
   const [addingEuph, setAddingEuph] = useState(false);
   const [euphError, setEuphError] = useState('');
-  const [euphInfo, setEuphInfo] = useState('');
   const [removingEuphIds, setRemovingEuphIds] = useState<Set<number>>(new Set());
-  const [expanding, setExpanding] = useState(false);
+  const [showBuiltInModal, setShowBuiltInModal] = useState(false);
+  const euphList = allEuphList.filter(e => e.createdBy != null);
+  const builtInEuphList = allEuphList.filter(e => e.createdBy == null);
 
   const loadWords = async () => {
     try { setFlaggedWords(await dangerousWords.list()); } catch { /* ignore */ }
@@ -31,14 +32,19 @@ export default function Settings({ isAdmin }: { isAdmin?: boolean }) {
   useEffect(() => { if (isAdmin) loadWords(); }, [isAdmin]);
 
   const loadEuphemisms = async () => {
-    try { setEuphList(await euphemisms.list()); } catch { /* ignore */ }
+    try {
+      // Keep the full list — user-added shows in the main UI; built-in seeds
+      // + auto-mined entries are exposed via the "View built-in" modal so the
+      // detector inventory is reachable without cluttering Settings.
+      setAllEuphList(await euphemisms.list());
+    } catch { /* ignore */ }
   };
 
   useEffect(() => { if (isAdmin) loadEuphemisms(); }, [isAdmin]);
 
   const handleAddEuph = async () => {
     if (!newEuph.trim()) return;
-    setAddingEuph(true); setEuphError(''); setEuphInfo('');
+    setAddingEuph(true); setEuphError('');
     try {
       await euphemisms.add(newEuph.trim(), newEuphSeverity);
       setNewEuph('');
@@ -52,18 +58,6 @@ export default function Settings({ isAdmin }: { isAdmin?: boolean }) {
     setRemovingEuphIds(prev => new Set(prev).add(id));
     try { await euphemisms.remove(id); await loadEuphemisms(); } catch { /* ignore */ }
     finally { setRemovingEuphIds(prev => { const s = new Set(prev); s.delete(id); return s; }); }
-  };
-
-  const handleExpandEuph = async () => {
-    setExpanding(true); setEuphError(''); setEuphInfo('');
-    try {
-      const summary = await euphemisms.expand();
-      if (summary.note) setEuphInfo(summary.note);
-      else setEuphInfo(`Added ${summary.added} euphemism(s) (${summary.candidates_considered} candidates considered).`);
-      await loadEuphemisms();
-    } catch (e: any) {
-      setEuphError(e.message ?? 'Expansion failed.');
-    } finally { setExpanding(false); }
   };
 
   const handleAddWord = async () => {
@@ -201,12 +195,12 @@ export default function Settings({ isAdmin }: { isAdmin?: boolean }) {
         {/* Euphemism Dictionary — admin only */}
         {isAdmin && (
           <div className={cardCls}>
-            <SectionHeader icon={Sparkles} iconColor="text-amber-400" label="Euphemism Dictionary" />
+            <SectionHeader icon={Sparkles} iconColor="text-amber-400" label="Coded-Language Phrases" />
             <div className="p-5 space-y-4">
               <p className="text-zinc-300 text-xs">
-                Phrases the coded-language detector uses as Signal D — segments whose embedding is
-                semantically close to one of these phrases get a higher suspicion score. "Expand
-                from corpus" mines additional candidates from existing transcripts.
+                Suspicious phrases used as a hint for the coded-language detector. Any segment whose
+                meaning is close to one of these phrases gets flagged. Add a phrase below to teach
+                the system a new one.
               </p>
 
               <div className="flex gap-2">
@@ -229,25 +223,22 @@ export default function Settings({ isAdmin }: { isAdmin?: boolean }) {
                   {addingEuph ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
                   Add
                 </button>
-                <button onClick={handleExpandEuph} disabled={expanding}
-                  className="flex items-center gap-1.5 px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed text-zinc-200 text-sm rounded transition-colors shrink-0">
-                  {expanding ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
-                  Expand
+                <button
+                  type="button"
+                  onClick={() => setShowBuiltInModal(true)}
+                  disabled={builtInEuphList.length === 0}
+                  className="flex items-center gap-1.5 px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed text-zinc-200 text-sm rounded transition-colors shrink-0"
+                >
+                  <Eye className="w-3.5 h-3.5" />
+                  View built-in ({builtInEuphList.length})
                 </button>
               </div>
 
               {euphError && (
                 <div className="px-3 py-2 bg-red-500/8 border border-red-500/25 rounded text-red-400 text-xs">{euphError}</div>
               )}
-              {euphInfo && (
-                <div className="px-3 py-2 bg-blue-500/8 border border-blue-500/25 rounded text-blue-300 text-xs">{euphInfo}</div>
-              )}
 
-              {euphList.length === 0 ? (
-                <div className="text-zinc-300 text-xs font-mono py-4 text-center border border-dashed border-zinc-900 rounded">
-                  No euphemisms yet. Seeds load on first startup; "Expand" mines more from the corpus.
-                </div>
-              ) : (
+              {euphList.length > 0 && (
                 <div className="space-y-1.5 max-h-105 overflow-y-auto pr-1">
                   {euphList.map(e => {
                     const severityCls = e.severity === 'high'
@@ -262,11 +253,6 @@ export default function Settings({ isAdmin }: { isAdmin?: boolean }) {
                           <span className={`text-[10px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded border shrink-0 ${severityCls}`}>
                             {e.severity}
                           </span>
-                          {e.autoLearned && (
-                            <span className="text-[10px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded border border-amber-500/25 text-amber-300 bg-amber-500/8 shrink-0">
-                              auto
-                            </span>
-                          )}
                           {e.confidence != null && (
                             <span className="text-[10px] font-mono text-zinc-200 shrink-0">
                               {Math.round(e.confidence * 100)}%
@@ -298,6 +284,67 @@ export default function Settings({ isAdmin }: { isAdmin?: boolean }) {
           </button>
         </div>
       </div>
+
+      {showBuiltInModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+          onClick={() => setShowBuiltInModal(false)}
+        >
+          <div
+            className="bg-zinc-950 border border-zinc-800 rounded-lg w-full max-w-2xl max-h-[85vh] flex flex-col"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-5 py-3.5 border-b border-zinc-800">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-amber-400" />
+                <span className="text-white text-sm font-medium">Built-in Coded-Language Phrases</span>
+                <span className="text-zinc-300 text-[10px] font-mono uppercase tracking-widest">
+                  {builtInEuphList.length}
+                </span>
+              </div>
+              <button
+                onClick={() => setShowBuiltInModal(false)}
+                className="p-1 text-zinc-300 hover:text-white transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="px-5 pt-3 pb-2">
+              <p className="text-zinc-300 text-xs">
+                These phrases are seeded by the system. They stay active for the detector even if removed from the visible list above.
+              </p>
+            </div>
+            <div className="px-5 pb-5 overflow-y-auto space-y-1.5">
+              {builtInEuphList.map(e => {
+                const severityCls = e.severity === 'high'
+                  ? 'text-red-400 bg-red-500/10 border-red-500/25'
+                  : e.severity === 'medium'
+                    ? 'text-amber-400 bg-amber-500/10 border-amber-500/25'
+                    : 'text-blue-400 bg-blue-500/10 border-blue-500/25';
+                return (
+                  <div key={e.id} className="flex items-center justify-between px-3 py-2.5 bg-black border border-zinc-900 rounded">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span className="text-zinc-300 text-sm font-mono truncate">{e.phrase}</span>
+                      <span className={`text-[10px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded border shrink-0 ${severityCls}`}>
+                        {e.severity}
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => handleRemoveEuph(e.id)}
+                      disabled={removingEuphIds.has(e.id)}
+                      className="p-1 text-zinc-300 hover:text-red-400 disabled:opacity-40 transition-colors"
+                    >
+                      {removingEuphIds.has(e.id)
+                        ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        : <Trash2 className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

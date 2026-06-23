@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { FileAudio, Users, AlertTriangle, TrendingUp, Clock, ArrowRight, Radar } from 'lucide-react';
 import { audios, speakers, alerts, type AudioRecord, type SpeakerRecord, type AlertRecord } from '../lib/api';
@@ -9,7 +9,6 @@ export default function Dashboard() {
   const [alertList, setAlertList] = useState<AlertRecord[]>([]);
   const [codedList, setCodedList] = useState<AlertRecord[]>([]);
   const [, setLoading] = useState(true);
-  const alertsRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     Promise.all([
@@ -110,11 +109,9 @@ export default function Dashboard() {
           </div>
         </Link>
 
-        <button
-          type="button"
-          onClick={() => alertsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-          disabled={alertList.length === 0}
-          className="bg-zinc-900 border border-zinc-800 border-l-2 border-l-red-500 rounded-md p-5 text-left transition-all enabled:hover:bg-zinc-800 enabled:hover:border-zinc-700 disabled:cursor-default group"
+        <Link
+          to="/alerts"
+          className="bg-zinc-900 border border-zinc-800 border-l-2 border-l-red-500 rounded-md p-5 text-left transition-all hover:bg-zinc-800 hover:border-zinc-700 group block"
         >
           <div className="flex items-start justify-between mb-3">
             <AlertTriangle className="w-5 h-5 text-red-500" />
@@ -128,11 +125,9 @@ export default function Dashboard() {
           <div className="text-white text-3xl font-bold font-mono">{alertList.length}</div>
           <div className="text-zinc-300 text-xs mt-1 flex items-center gap-1">
             Pending Alerts
-            {alertList.length > 0 && (
-              <ArrowRight className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity ml-0.5" />
-            )}
+            <ArrowRight className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity ml-0.5" />
           </div>
-        </button>
+        </Link>
       </div>
 
 
@@ -184,7 +179,7 @@ export default function Dashboard() {
         </div>
 
         {/* Alerts */}
-        <div ref={alertsRef} className="bg-zinc-900 border border-zinc-800 rounded-md scroll-mt-6">
+        <div className="bg-zinc-900 border border-zinc-800 rounded-md">
           <div className="px-5 py-3.5 border-b border-zinc-800 flex items-center justify-between">
             <span className="text-zinc-200 text-xs font-mono uppercase tracking-widest">Alerts</span>
             <Link to="/alerts" className="text-blue-400 hover:text-blue-300 text-[11px] font-mono transition-colors">
@@ -200,16 +195,19 @@ export default function Dashboard() {
           ) : (
             <div className="divide-y divide-zinc-800">
               {alertList.slice(0, 5).map((alert) => (
-                <div
+                <Link
                   key={alert.id}
-                  className={`flex items-start gap-3 px-5 py-3 border-l-2 ${alertAccent(alert.type)}`}
+                  to={alert.audioId && alert.segmentId
+                    ? `/transcript/${alert.audioId}#seg-${alert.segmentId}`
+                    : alert.audioId ? `/transcript/${alert.audioId}` : '/alerts'}
+                  className={`flex items-start gap-3 px-5 py-3 border-l-2 hover:bg-zinc-800/40 transition-colors ${alertAccent(alert.type)}`}
                 >
                   <AlertTriangle className={`w-3.5 h-3.5 mt-0.5 shrink-0 ${alertIcon(alert.type)}`} />
                   <div className="min-w-0">
                     <p className="text-zinc-300 text-xs leading-relaxed">{alert.message}</p>
                     <p className="text-zinc-200 text-[10px] font-mono mt-1">{timeAgo(alert.createdAt)}</p>
                   </div>
-                </div>
+                </Link>
               ))}
             </div>
           )}

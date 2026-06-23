@@ -1003,10 +1003,12 @@ def search_semantic(
     from_date: Optional[str] = None,
     to_date: Optional[str] = None,
     top: int = 20,
+    exact_only: bool = False,
 ):
     """Hybrid BM25 + dense retrieval + cross-encoder rerank + MMR.
-    Returns up to `top` result dicts, each containing segment text, speaker,
-    audio name, timestamps, and a relevance score."""
+    When `exact_only` is true, bypasses the semantic pipeline and returns only
+    segments whose text contains the query substring (case-insensitive),
+    sorted newest-first."""
     if not q.strip():
         return {"results": []}
     try:
@@ -1018,6 +1020,7 @@ def search_semantic(
             from_date=from_date,
             to_date=to_date,
             top_k=min(top, 50),
+            exact_only=exact_only,
         )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
