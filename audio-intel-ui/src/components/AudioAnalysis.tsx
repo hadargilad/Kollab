@@ -579,7 +579,7 @@ export default function AudioAnalysis() {
                   </button>
                 ) : (
                   <button onClick={() => setSplitMode(true)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white text-xs rounded-md transition-colors">
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-violet-600 hover:bg-violet-500 text-white text-xs rounded-md transition-colors">
                     <Scissors className="w-3.5 h-3.5" /> Split Speaker
                   </button>
                 )
@@ -587,8 +587,8 @@ export default function AudioAnalysis() {
             </div>
 
             {splitMode && (
-              <div className="px-5 py-2.5 bg-amber-500/5 border-b border-amber-500/20">
-                <p className="text-amber-300/80 text-xs">Select segments belonging to a different person. Only segments from the same source speaker can be added.</p>
+              <div className="px-5 py-2.5 bg-violet-500/5 border-b border-violet-500/20">
+                <p className="text-violet-300/80 text-xs">Select segments belonging to a different person. Only segments from the same source speaker can be added.</p>
               </div>
             )}
 
@@ -608,7 +608,7 @@ export default function AudioAnalysis() {
                         setCurrentTime(seg.startTime);
                       }}
                       className={`px-5 py-3 transition-colors ${lockedToOther ? 'opacity-35 cursor-not-allowed' : 'cursor-pointer'} ${
-                        isSelected ? 'bg-amber-500/10 border-l-2 border-l-amber-500'
+                        isSelected ? 'bg-violet-500/10 border-l-2 border-l-violet-500'
                         : isActive ? 'bg-blue-500/8 border-l-2 border-l-blue-500'
                         : 'hover:bg-zinc-800/60'
                       }`}
@@ -618,7 +618,7 @@ export default function AudioAnalysis() {
                           <input type="checkbox" checked={isSelected} disabled={lockedToOther}
                             onChange={() => toggleSegmentForSplit(seg.id, seg.speakerId)}
                             onClick={e => e.stopPropagation()}
-                            className="w-3.5 h-3.5 accent-amber-500" />
+                            className="w-3.5 h-3.5 accent-violet-500" />
                         )}
                         <SpeakerAvatar
                           speakerId={seg.speakerId}
@@ -758,13 +758,13 @@ export default function AudioAnalysis() {
 
       {/* Floating split action bar */}
       {splitMode && selectedSegmentIds.size > 0 && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-zinc-950 border border-amber-500/40 rounded-md shadow-2xl flex items-center gap-3 px-5 py-3">
-          <Scissors className="w-3.5 h-3.5 text-amber-400" />
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-zinc-950 border border-violet-500/40 rounded-md shadow-2xl flex items-center gap-3 px-5 py-3">
+          <Scissors className="w-3.5 h-3.5 text-violet-400" />
           <span className="text-white text-sm">
             <span className="font-mono">{selectedSegmentIds.size}</span> segment{selectedSegmentIds.size === 1 ? '' : 's'} selected
           </span>
           <button onClick={() => { setSplitNewName(''); setSplitError(''); setSplitModalOpen(true); }}
-            className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white text-xs rounded-md transition-colors">
+            className="px-3 py-1.5 bg-violet-600 hover:bg-violet-500 text-white text-xs rounded-md transition-colors">
             Split into new speaker
           </button>
         </div>
@@ -785,7 +785,7 @@ export default function AudioAnalysis() {
                 <label className="text-zinc-300 text-[10px] font-mono uppercase tracking-widest block mb-1.5">New Speaker Name (optional)</label>
                 <input type="text" value={splitNewName} onChange={e => setSplitNewName(e.target.value)}
                   placeholder="Leave blank to auto-name"
-                  className="w-full bg-black border border-zinc-800 rounded px-3 py-2.5 text-white text-sm placeholder-zinc-400 focus:outline-none focus:border-amber-500 transition-all font-mono"
+                  className="w-full bg-black border border-zinc-800 rounded px-3 py-2.5 text-white text-sm placeholder-zinc-400 focus:outline-none focus:border-violet-500 transition-all font-mono"
                   autoFocus onKeyDown={e => e.key === 'Enter' && handleSplitConfirm()} />
               </div>
               {splitError && (
@@ -796,7 +796,7 @@ export default function AudioAnalysis() {
               <button onClick={() => setSplitModalOpen(false)} disabled={splitting}
                 className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-sm rounded-md transition-colors">Cancel</button>
               <button onClick={handleSplitConfirm} disabled={splitting}
-                className="px-4 py-2 bg-amber-600 hover:bg-amber-500 disabled:opacity-40 text-white text-sm rounded-md flex items-center gap-2 transition-colors">
+                className="px-4 py-2 bg-violet-600 hover:bg-violet-500 disabled:opacity-40 text-white text-sm rounded-md flex items-center gap-2 transition-colors">
                 {splitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Scissors className="w-3.5 h-3.5" />}
                 Split
               </button>
