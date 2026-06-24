@@ -69,8 +69,8 @@ export default function StartupScreen({ onReady }: Props) {
 
       <div className="relative flex flex-col items-center gap-8 w-full max-w-xs">
         {/* Boot header */}
-        <div className="text-center text-zinc-300 font-mono text-[10px] uppercase tracking-widest w-full">
-          AUDIOINTEL v2.0 // SECURE BOOT
+        <div className="text-center text-zinc-300 font-mono text-[10px] tracking-widest w-full">
+          AudioIntel v2.0 // Secure Boot
         </div>
 
         {/* Logo */}
@@ -80,7 +80,7 @@ export default function StartupScreen({ onReady }: Props) {
             <h1 className="text-white text-2xl font-bold tracking-tight">
               Kol<span className="text-blue-400">L</span>ab
             </h1>
-            <p className="text-zinc-200 text-xs font-mono uppercase tracking-widest mt-0.5">
+            <p className="text-zinc-200 text-xs font-mono tracking-widest mt-0.5">
               Intelligence Management Platform
             </p>
           </div>
