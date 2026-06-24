@@ -1866,7 +1866,7 @@ def count_segments_global() -> int:
 def list_euphemisms() -> list[dict]:
     with _get_conn() as conn:
         rows = conn.execute(
-            """SELECT Id, Word, Severity, IsEuphemism, AutoLearned, Confidence, CreatedAt
+            """SELECT Id, Word, Severity, IsEuphemism, AutoLearned, Confidence, CreatedAt, CreatedBy
                FROM DangerousWords
                WHERE IsEuphemism = 1
                ORDER BY AutoLearned ASC, CreatedAt DESC"""
@@ -1880,6 +1880,7 @@ def list_euphemisms() -> list[dict]:
             "autoLearned": bool(r["AutoLearned"]),
             "confidence": r["Confidence"],
             "createdAt": r["CreatedAt"],
+            "createdBy": r["CreatedBy"],
         }
         for r in rows
     ]
@@ -1972,6 +1973,76 @@ def set_euphemism_embedding(euph_id: int, vec: "np.ndarray", model_name: str) ->
 
 
 # ─── NLP: Semantic Search (Hadar) ─────────────────────────────────────────────
+
+def search_segments_by_text(
+    query: str,
+    audio_id: Optional[int] = None,
+    speaker_id: Optional[int] = None,
+    from_date: Optional[str] = None,
+    to_date: Optional[str] = None,
+    limit: int = 200,
+) -> list[dict]:
+    """Find segments whose text contains `query` as a whole word/phrase
+    (case-insensitive, word-boundary matched — "here" won't match "there").
+    Independent of the semantic index — works on any persisted segment, even
+    one not yet embedded. Sorted by RecordedAt DESC. Returns the same shape
+    as get_segment_details_bulk."""
+    if not query or not query.strip():
+        return []
+
+    q_stripped = query.strip()
+    # SQL LIKE is a cheap prefilter; the strict word-boundary check happens in
+    # Python afterwards so we never miss matches and never over-match.
+    where = ["LOWER(sg.Text) LIKE ?"]
+    params: list = [f"%{q_stripped.lower()}%"]
+    if audio_id is not None:
+        where.append("sg.AudioId = ?"); params.append(audio_id)
+    if speaker_id is not None:
+        where.append("sg.SpeakerId = ?"); params.append(speaker_id)
+    if from_date:
+        where.append("a.RecordedAt >= ?"); params.append(from_date)
+    if to_date:
+        where.append("a.RecordedAt <= ?"); params.append(to_date)
+    # Loosen the SQL LIMIT — the Python whole-word filter will drop substring
+    # false-positives like "there" matching "here", so we want a bigger pool.
+    params.append(limit * 4)
+
+    with _get_conn() as conn:
+        rows = conn.execute(
+            f"""SELECT sg.Id, sg.AudioId, sg.SpeakerId, sg.Text, sg.StartTime, sg.EndTime,
+                       a.Name AS AudioName, a.RecordedAt,
+                       sp.Name AS SpeakerName, sp.Color AS SpeakerColor
+                FROM Segments sg
+                JOIN Audios a ON a.Id = sg.AudioId
+                LEFT JOIN Speakers sp ON sp.Id = sg.SpeakerId
+                WHERE {" AND ".join(where)}
+                ORDER BY a.RecordedAt DESC, sg.StartTime ASC
+                LIMIT ?""",
+            params,
+        ).fetchall()
+
+    word_re = re.compile(rf"\b{re.escape(q_stripped)}\b", re.IGNORECASE)
+    out = []
+    for r in rows:
+        text = r["Text"] or ""
+        if not word_re.search(text):
+            continue
+        out.append({
+            "segmentId": r["Id"],
+            "audioId": r["AudioId"],
+            "audioName": r["AudioName"],
+            "recordedAt": r["RecordedAt"],
+            "speakerId": r["SpeakerId"],
+            "speakerName": r["SpeakerName"] or "Unknown",
+            "speakerColor": r["SpeakerColor"] or "#6366f1",
+            "text": text,
+            "startTime": r["StartTime"],
+            "endTime": r["EndTime"],
+        })
+        if len(out) >= limit:
+            break
+    return out
+
 
 def get_segment_details_bulk(
     segment_ids: list[int],

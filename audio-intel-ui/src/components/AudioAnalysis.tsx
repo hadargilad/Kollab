@@ -46,6 +46,7 @@ export default function AudioAnalysis() {
   const [matchSuggestions, setMatchSuggestions] = useState<MatchSuggestion[]>([]);
   const [matchSuggestionsLoading, setMatchSuggestionsLoading] = useState(false);
   const [waveformPeaks, setWaveformPeaks] = useState<{ amp: number; color: string }[]>([]);
+  const [showHeatmap, setShowHeatmap] = useState(false);
   const waveformRef = useRef<HTMLCanvasElement>(null);
   const [imageUploadBusyId, setImageUploadBusyId] = useState<number | null>(null);
   const [imageUploadTargetId, setImageUploadTargetId] = useState<number | null>(null);
@@ -431,13 +432,27 @@ export default function AudioAnalysis() {
             {/* Action buttons */}
             <div className="flex gap-2 mb-5 flex-wrap">
               <Link to={`/transcript/${id}`}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-xs rounded transition-colors">
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-xs rounded-md transition-colors">
                 <FileText className="w-3.5 h-3.5" />Transcript
               </Link>
               <Link to="/network"
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs rounded transition-colors">
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs rounded-md transition-colors">
                 <Network className="w-3.5 h-3.5" />Network
               </Link>
+              {segments.some(s => s.suspicionScore != null) && (
+                <button
+                  type="button"
+                  onClick={() => setShowHeatmap(s => !s)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 border text-xs rounded-md transition-colors ${
+                    showHeatmap
+                      ? 'bg-orange-500/15 border-orange-500/40 text-orange-300'
+                      : 'bg-zinc-800 hover:bg-zinc-700 border-zinc-700 text-zinc-300'
+                  }`}
+                >
+                  {showHeatmap ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                  Coded-Language Heatmap
+                </button>
+              )}
             </div>
 
             {/* Waveform */}
@@ -454,8 +469,8 @@ export default function AudioAnalysis() {
                   <canvas ref={waveformRef} width={800} height={64} className="w-full h-full" />
                 </div>
 
-                {/* Suspicion heatmap — only when at least one segment was scored */}
-                {segments.some(s => s.suspicionScore != null) && (
+                {/* Suspicion heatmap — toggled by the button in the action row */}
+                {showHeatmap && segments.some(s => s.suspicionScore != null) && (
                   <div className="mt-2">
                     <div className="flex items-center justify-between mb-1">
                       <span className="text-zinc-200 text-[10px] font-mono uppercase tracking-widest">

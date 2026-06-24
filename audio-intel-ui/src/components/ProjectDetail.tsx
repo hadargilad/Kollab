@@ -315,7 +315,7 @@ export default function ProjectDetail({ isAdmin }: Props) {
                       <div className="flex flex-wrap gap-2 mb-3">
                         {sg.members.slice(0, 10).map(m => (
                           <Link key={m.id} to={`/speaker/${m.id}`}
-                            className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded border border-zinc-800 bg-black hover:bg-zinc-800 transition-colors">
+                            className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border border-zinc-800 bg-black hover:bg-zinc-800 transition-colors">
                             <SpeakerAvatar speakerId={m.id} name={m.name} color={m.color}
                               imagePath={m.imagePath} size={16} />
                             <span className="text-zinc-200 text-xs">{m.name}</span>
@@ -406,7 +406,7 @@ export default function ProjectDetail({ isAdmin }: Props) {
                 Audio access is filtered by your assignments — see what's visible to you on the Uploads page.
               </p>
               <Link to="/all-uploads"
-                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 rounded transition-colors">
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 rounded-md transition-colors">
                 Go to uploads →
               </Link>
             </div>

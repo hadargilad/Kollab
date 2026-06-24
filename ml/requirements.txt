@@ -4,7 +4,8 @@ openai-whisper
 # Speaker diarization
 pyannote.audio==3.3.2
 
-# Speaker embeddings — WavLM via HuggingFace Transformers [improvement #1]
+# Speaker embeddings (SpeechBrain ECAPA-TDNN). transformers is pulled in
+# transitively by pyannote/speechbrain — listed for visibility.
 speechbrain
 transformers
 

@@ -355,7 +355,7 @@ export default function AllUploads() {
                     {upload.status === 'processed' && (
                       <Link
                         to={`/analysis/${upload.id}`}
-                        className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs rounded transition-colors"
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs rounded-md transition-colors"
                       >
                         <PlayCircle className="w-3.5 h-3.5" />
                         Analysis

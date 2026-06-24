@@ -511,7 +511,7 @@ export default function NetworkGraph({ isAdmin = false }: { isAdmin?: boolean })
             Upload audio recordings with two or more speakers and connections will appear here.
           </p>
           <Link to="/upload"
-            className="inline-block mt-5 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded transition-colors">
+            className="inline-block mt-5 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded-md transition-colors">
             Go to Upload
           </Link>
         </div>
@@ -819,7 +819,7 @@ export default function NetworkGraph({ isAdmin = false }: { isAdmin?: boolean })
                       <span className="text-amber-400 text-xs font-mono">{bridgeSpeakers.length} bridge{bridgeSpeakers.length !== 1 ? 's' : ''}:</span>
                       {bridgeSpeakers.map(s => (
                         <Link key={s.id} to={`/speaker/${s.id}`}
-                          className="flex items-center gap-1.5 px-2 py-1 bg-amber-500/10 border border-amber-500/25 rounded text-xs text-white hover:bg-amber-500/20 transition-colors font-mono">
+                          className="flex items-center gap-1.5 px-2 py-1 bg-amber-500/10 border border-amber-500/25 rounded-md text-xs text-white hover:bg-amber-500/20 transition-colors font-mono">
                           <div className="w-2 h-2 rounded-full border border-amber-400" style={{ backgroundColor: s.color }} />
                           {s.name}
                         </Link>
@@ -900,7 +900,7 @@ export default function NetworkGraph({ isAdmin = false }: { isAdmin?: boolean })
                       <span className="text-zinc-200 text-[10px] font-mono uppercase tracking-wider">Connected to:</span>
                       {connectedNodes.map(conn => (
                         <Link key={conn.id} to={`/speaker/${conn.id}`}
-                          className="flex items-center gap-1.5 px-2 py-1 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded text-xs transition-colors font-mono">
+                          className="flex items-center gap-1.5 px-2 py-1 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-md text-xs transition-colors font-mono">
                           <div className="w-2 h-2 rounded-full" style={{ backgroundColor: conn.color }} />
                           <span className="text-zinc-300">{conn.label}</span>
                           <span className="text-zinc-200 flex items-center gap-0.5">
@@ -911,7 +911,7 @@ export default function NetworkGraph({ isAdmin = false }: { isAdmin?: boolean })
                     </>
                   )}
                   <Link to={`/speaker/${selectedNode.id}`}
-                    className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs rounded transition-colors">
+                    className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs rounded-md transition-colors">
                     View Profile
                   </Link>
                   <button onClick={() => setSelectedNode(null)}
@@ -956,7 +956,7 @@ export default function NetworkGraph({ isAdmin = false }: { isAdmin?: boolean })
                   <Link
                     to={`/speaker/${nodeAction.node.id}`}
                     onClick={() => { setNodeAction(null); setNodeActionGroupPicker(false); }}
-                    className="flex items-center gap-2 w-full px-2 py-1.5 text-zinc-200 hover:bg-zinc-800 rounded text-sm transition-colors"
+                    className="flex items-center gap-2 w-full px-2 py-1.5 text-zinc-200 hover:bg-zinc-800 rounded-md text-sm transition-colors"
                   >
                     <User className="w-3.5 h-3.5" /> View profile
                   </Link>
