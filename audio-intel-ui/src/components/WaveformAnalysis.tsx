@@ -135,15 +135,15 @@ export default function WaveformAnalysis() {
               <span className="text-zinc-200 text-xs font-mono uppercase tracking-widest">Waveform</span>
               <div className="flex items-center gap-1.5">
                 <button onClick={() => setZoom(Math.max(1, zoom - 0.5))}
-                  className="p-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 rounded transition-colors">
+                  className="p-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 rounded-md transition-colors">
                   <ZoomOut className="w-3.5 h-3.5" />
                 </button>
                 <span className="text-zinc-300 text-xs font-mono min-w-[44px] text-center">{Math.round(zoom * 100)}%</span>
                 <button onClick={() => setZoom(Math.min(3, zoom + 0.5))}
-                  className="p-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 rounded transition-colors">
+                  className="p-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 rounded-md transition-colors">
                   <ZoomIn className="w-3.5 h-3.5" />
                 </button>
-                <button className="p-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 rounded transition-colors">
+                <button className="p-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 rounded-md transition-colors">
                   <Download className="w-3.5 h-3.5" />
                 </button>
               </div>
@@ -158,7 +158,7 @@ export default function WaveformAnalysis() {
               </div>
               <div className="flex items-center gap-3">
                 <button onClick={() => setIsPlaying(!isPlaying)}
-                  className="w-8 h-8 bg-blue-600 hover:bg-blue-500 text-white rounded flex items-center justify-center transition-colors shrink-0">
+                  className="w-8 h-8 bg-blue-600 hover:bg-blue-500 text-white rounded-md flex items-center justify-center transition-colors shrink-0">
                   {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
                 </button>
                 <input type="range" min="0" max={duration} step="0.1" value={currentTime}

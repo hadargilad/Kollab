@@ -130,7 +130,7 @@ export default function Alerts() {
             <button
               key={c}
               onClick={() => setCategory(c)}
-              className={`px-2.5 py-1 rounded text-xs font-mono transition-colors ${
+              className={`px-2.5 py-1 rounded-md text-xs font-mono transition-colors ${
                 category === c
                   ? 'bg-blue-500/15 border border-blue-500/40 text-blue-300'
                   : 'border border-transparent text-zinc-300 hover:text-zinc-100'

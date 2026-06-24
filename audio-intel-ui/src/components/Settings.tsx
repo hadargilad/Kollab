@@ -149,7 +149,7 @@ export default function Settings({ isAdmin }: { isAdmin?: boolean }) {
                   <option value="low">Low</option>
                 </select>
                 <button onClick={handleAddWord} disabled={addingWord || !newWord.trim()}
-                  className="flex items-center gap-1.5 px-4 py-2.5 bg-red-700 hover:bg-red-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm rounded transition-colors shrink-0">
+                  className="flex items-center gap-1.5 px-4 py-2.5 bg-red-700 hover:bg-red-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm rounded-md transition-colors shrink-0">
                   {addingWord ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
                   Add
                 </button>
@@ -219,15 +219,20 @@ export default function Settings({ isAdmin }: { isAdmin?: boolean }) {
                   <option value="low">Low</option>
                 </select>
                 <button onClick={handleAddEuph} disabled={addingEuph || !newEuph.trim()}
-                  className="flex items-center gap-1.5 px-4 py-2.5 bg-amber-700 hover:bg-amber-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm rounded transition-colors shrink-0">
+                  className="flex items-center gap-1.5 px-4 py-2.5 bg-amber-700 hover:bg-amber-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm rounded-md transition-colors shrink-0">
                   {addingEuph ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
                   Add
+                </button>
+                <button onClick={handleExpandEuph} disabled={expanding}
+                  className="flex items-center gap-1.5 px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed text-zinc-200 text-sm rounded-md transition-colors shrink-0">
+                  {expanding ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                  Expand
                 </button>
                 <button
                   type="button"
                   onClick={() => setShowBuiltInModal(true)}
                   disabled={builtInEuphList.length === 0}
-                  className="flex items-center gap-1.5 px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed text-zinc-200 text-sm rounded transition-colors shrink-0"
+                  className="flex items-center gap-1.5 px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed text-zinc-200 text-sm rounded-md transition-colors shrink-0"
                 >
                   <Eye className="w-3.5 h-3.5" />
                   View built-in ({builtInEuphList.length})
@@ -274,11 +279,11 @@ export default function Settings({ isAdmin }: { isAdmin?: boolean }) {
 
         {/* Save */}
         <div className="flex justify-end gap-2">
-          <button className="px-5 py-2.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-sm rounded transition-colors">
+          <button className="px-5 py-2.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-sm rounded-md transition-colors">
             Reset to Defaults
           </button>
           <button onClick={handleSave}
-            className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded transition-colors">
+            className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded-md transition-colors">
             <Save className="w-4 h-4" />
             Save Changes
           </button>

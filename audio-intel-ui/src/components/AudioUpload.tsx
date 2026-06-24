@@ -225,13 +225,13 @@ export default function AudioUpload({ userId }: Props) {
             <div className="px-5 py-4 border-t border-zinc-800 flex gap-2 justify-end">
               <button
                 onClick={() => { setShowFileDetailsModal(false); setPendingFiles([]); }}
-                className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-white text-sm rounded transition-colors"
+                className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-white text-sm rounded-md transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={confirmFileUpload}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded transition-colors"
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded-md transition-colors"
               >
                 Start Upload
               </button>
@@ -337,7 +337,7 @@ export default function AudioUpload({ userId }: Props) {
                           <span className="text-emerald-400 text-xs font-mono">Complete</span>
                           {file.audioId && (
                             <Link to={`/analysis/${file.audioId}`}
-                              className="ml-auto flex items-center gap-1 px-2.5 py-1 bg-blue-600 hover:bg-blue-500 text-white text-xs rounded transition-colors">
+                              className="ml-auto flex items-center gap-1 px-2.5 py-1 bg-blue-600 hover:bg-blue-500 text-white text-xs rounded-md transition-colors">
                               View <ArrowRight className="w-3 h-3" />
                             </Link>
                           )}

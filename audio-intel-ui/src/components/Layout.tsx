@@ -114,7 +114,7 @@ export default function Layout({ user, onLogout }: LayoutProps) {
         <div className="border-t border-zinc-800 p-3">
           <button
             onClick={onLogout}
-            className="flex items-center gap-3 w-full px-4 py-2.5 rounded text-zinc-300 hover:text-red-400 hover:bg-red-500/8 transition-all border border-transparent hover:border-red-500/20"
+            className="flex items-center gap-3 w-full px-4 py-2.5 rounded-md text-zinc-300 hover:text-red-400 hover:bg-red-500/8 transition-all border border-transparent hover:border-red-500/20"
           >
             <LogOut className="w-4 h-4 shrink-0" />
             <span>Logout</span>
@@ -149,7 +149,7 @@ export default function Layout({ user, onLogout }: LayoutProps) {
             <div className="relative">
               <button
                 onClick={() => setShowUserMenu(!showUserMenu)}
-                className="flex items-center gap-2 px-3 py-1.5 rounded border border-zinc-800 bg-zinc-900 hover:bg-zinc-800 hover:border-zinc-700 transition-all"
+                className="flex items-center gap-2 px-3 py-1.5 rounded-md border border-zinc-800 bg-zinc-900 hover:bg-zinc-800 hover:border-zinc-700 transition-all"
               >
                 <div className="w-5 h-5 rounded bg-blue-600 flex items-center justify-center">
                   <User className="w-3 h-3 text-white" />
@@ -168,14 +168,14 @@ export default function Layout({ user, onLogout }: LayoutProps) {
                     <div className="p-1">
                       <button
                         onClick={() => { setShowUserMenu(false); navigate('/profile'); }}
-                        className="flex items-center gap-2.5 w-full px-3 py-2 rounded text-zinc-200 hover:text-white hover:bg-white/5 transition-all text-xs"
+                        className="flex items-center gap-2.5 w-full px-3 py-2 rounded-md text-zinc-200 hover:text-white hover:bg-white/5 transition-all text-xs"
                       >
                         <UserCircle className="w-3.5 h-3.5" />
                         My Profile
                       </button>
                       <button
                         onClick={() => { setShowUserMenu(false); onLogout(); }}
-                        className="flex items-center gap-2.5 w-full px-3 py-2 rounded text-zinc-200 hover:text-red-400 hover:bg-red-500/8 transition-all text-xs mt-0.5"
+                        className="flex items-center gap-2.5 w-full px-3 py-2 rounded-md text-zinc-200 hover:text-red-400 hover:bg-red-500/8 transition-all text-xs mt-0.5"
                       >
                         <LogOut className="w-3.5 h-3.5" />
                         Logout
