@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  Loader2, AlertCircle, ShieldAlert, Sparkles, ExternalLink, Filter,
+  Loader2, AlertCircle, ShieldAlert, Sparkles, ExternalLink, Filter, Ghost,
 } from 'lucide-react';
 import { alerts, type AlertRecord, type AlertCategory } from '../lib/api';
 import SubScoresBar from './SubScoresBar';
@@ -17,9 +17,12 @@ const SEVERITY_BADGE: Record<'low' | 'medium' | 'high', string> = {
 
 function AlertCard({ a }: { a: AlertRecord }) {
   const isCoded = a.category === 'coded_language';
+  const isGhost = a.category === 'intelligence';
   const severityCls = SEVERITY_BADGE[a.type] ?? SEVERITY_BADGE.low;
-  const Icon = isCoded ? Sparkles : ShieldAlert;
-  const iconColor = isCoded
+  const Icon = isGhost ? Ghost : isCoded ? Sparkles : ShieldAlert;
+  const iconColor = isGhost
+    ? 'text-violet-400'
+    : isCoded
     ? 'text-orange-300'
     : a.type === 'high' ? 'text-red-400' : a.type === 'medium' ? 'text-amber-400' : 'text-blue-400';
   return (
@@ -32,7 +35,7 @@ function AlertCard({ a }: { a: AlertRecord }) {
               {a.type}
             </span>
             <span className="text-[10px] font-mono uppercase tracking-widest text-zinc-200">
-              {isCoded ? 'Coded language' : a.category === 'dangerous_word' ? 'Flagged keyword' : 'Alert'}
+              {isGhost ? 'Ghost Node' : isCoded ? 'Coded language' : a.category === 'dangerous_word' ? 'Flagged keyword' : 'Alert'}
             </span>
             <span className="text-[10px] font-mono text-zinc-300 ml-auto">{a.createdAt}</span>
           </div>
@@ -40,6 +43,15 @@ function AlertCard({ a }: { a: AlertRecord }) {
           <div className="flex items-center gap-3 mt-1.5 text-[11px] font-mono text-zinc-200">
             {a.audioName && (
               <span className="truncate max-w-50">{a.audioName}</span>
+            )}
+            {isGhost && a.speakerName && (
+              <Link
+                to={`/speaker/${a.speakerId}`}
+                className="inline-flex items-center gap-1 text-violet-400 hover:text-violet-300 transition-colors"
+              >
+                <Ghost className="w-3 h-3" /> {a.speakerName}
+                <ExternalLink className="w-3 h-3" />
+              </Link>
             )}
             {a.audioId && a.segmentId && (
               <Link
@@ -103,10 +115,11 @@ export default function Alerts() {
   }, [items, category, severity, query]);
 
   const counts = useMemo(() => {
-    const out = { all: items.length, coded_language: 0, dangerous_word: 0 };
+    const out = { all: items.length, coded_language: 0, dangerous_word: 0, intelligence: 0 };
     for (const a of items) {
       if (a.category === 'coded_language') out.coded_language++;
       else if (a.category === 'dangerous_word') out.dangerous_word++;
+      else if (a.category === 'intelligence') out.intelligence++;
     }
     return out;
   }, [items]);
@@ -117,7 +130,7 @@ export default function Alerts() {
         <div className="text-zinc-200 text-[10px] font-mono uppercase tracking-widest mb-1">Security</div>
         <h1 className="text-white text-2xl font-bold tracking-tight">Alerts</h1>
         <p className="text-zinc-200 text-xs font-mono mt-0.5">
-          {counts.all} total · {counts.coded_language} coded-language · {counts.dangerous_word} flagged keyword
+          {counts.all} total · {counts.coded_language} coded-language · {counts.dangerous_word} flagged keyword · {counts.intelligence} ghost node
         </p>
       </div>
 
@@ -126,7 +139,7 @@ export default function Alerts() {
         <Filter className="w-4 h-4 text-zinc-200 shrink-0" />
 
         <div className="flex items-center gap-1">
-          {(['all', 'coded_language', 'dangerous_word'] as CategoryFilter[]).map(c => (
+          {(['all', 'coded_language', 'dangerous_word', 'intelligence'] as CategoryFilter[]).map(c => (
             <button
               key={c}
               onClick={() => setCategory(c)}
@@ -136,7 +149,7 @@ export default function Alerts() {
                   : 'border border-transparent text-zinc-300 hover:text-zinc-100'
               }`}
             >
-              {c === 'all' ? 'All' : c === 'coded_language' ? 'Coded language' : 'Flagged keyword'}
+              {c === 'all' ? 'All' : c === 'coded_language' ? 'Coded language' : c === 'dangerous_word' ? 'Flagged keyword' : 'Ghost Node'}
             </button>
           ))}
         </div>
