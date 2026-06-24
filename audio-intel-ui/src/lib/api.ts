@@ -433,6 +433,7 @@ export interface EuphemismRecord {
   autoLearned: boolean;
   confidence: number | null;
   createdAt: string;
+  createdBy: number | null;
 }
 
 export interface EuphemismExpandSummary {
@@ -445,7 +446,11 @@ export interface EuphemismExpandSummary {
 export const euphemisms = {
   list: () => request<EuphemismRecord[]>("GET", "/euphemisms"),
   add: (phrase: string, severity: 'low' | 'medium' | 'high' = 'high') =>
-    request<EuphemismRecord>("POST", "/euphemisms", { phrase, severity }),
+    request<EuphemismRecord>("POST", "/euphemisms", {
+      phrase,
+      severity,
+      created_by: _currentUser?.id ?? null,
+    }),
   remove: (id: number) => request<{ success: boolean }>("DELETE", `/euphemisms/${id}`),
   expand: () => request<EuphemismExpandSummary>("POST", "/euphemisms/expand"),
 };
@@ -623,6 +628,7 @@ export const search = {
       fromDate?: string;
       toDate?: string;
       top?: number;
+      exactOnly?: boolean;
     }
   ) => {
     const qs = new URLSearchParams({ q });
@@ -631,6 +637,7 @@ export const search = {
     if (params?.fromDate) qs.set('from_date', params.fromDate);
     if (params?.toDate) qs.set('to_date', params.toDate);
     if (params?.top) qs.set('top', String(params.top));
+    if (params?.exactOnly) qs.set('exact_only', 'true');
     return request<{ results: SearchResultItem[] }>('GET', `/search/semantic?${qs.toString()}`);
   },
 

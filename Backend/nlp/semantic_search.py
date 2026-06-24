@@ -231,6 +231,7 @@ def search(
     from_date: Optional[str] = None,
     to_date: Optional[str] = None,
     top_k: int = _MMR_TOP,
+    exact_only: bool = False,
 ) -> list[dict]:
     """Full hybrid retrieval pipeline.
 
@@ -261,13 +262,23 @@ def search(
         return []
 
     q_lower = query.strip().lower()
-    model = _models.get_embed_model()
 
-    # 1. Embed query
-    q_vec = np.asarray(
-        model.encode([query], normalize_embeddings=True, show_progress_bar=False)[0],
-        dtype=np.float32,
-    )
+    # Exact-only mode: substring-match the DB directly, bypassing the semantic
+    # index. Works even on segments not yet embedded (still being processed).
+    if exact_only:
+        rows = database.search_segments_by_text(
+            query,
+            audio_id=audio_id,
+            speaker_id=speaker_id,
+            from_date=from_date,
+            to_date=to_date,
+            limit=max(top_k, _RANKER_TOP),
+        )
+        for r in rows:
+            r["score"] = 1.0
+            r["exactMatch"] = True
+            r["relatedTerm"] = None
+        return rows[:top_k]
 
     with _index_lock:
         n = len(_seg_ids)
@@ -277,6 +288,14 @@ def search(
 
     if n == 0 or faiss_idx is None:
         return []
+
+    model = _models.get_embed_model()
+
+    # 1. Embed query
+    q_vec = np.asarray(
+        model.encode([query], normalize_embeddings=True, show_progress_bar=False)[0],
+        dtype=np.float32,
+    )
 
     # 2. BM25 lexical search → top-200 positions
     bm25_top: list[int] = []

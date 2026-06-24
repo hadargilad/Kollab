@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Upload, FileAudio, X, CheckCircle, AlertCircle, Loader2, ArrowRight } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
 import { audios } from '../lib/api';
 import { useMlStatus } from '../hooks/useMlStatus';
 
@@ -29,6 +30,7 @@ const nowLocalIso = () => {
 };
 
 export default function AudioUpload({ userId }: Props) {
+  const navigate = useNavigate();
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [dragActive, setDragActive] = useState(false);
   const { ready: mlReady } = useMlStatus();
@@ -113,10 +115,19 @@ export default function AudioUpload({ userId }: Props) {
         ));
         if (audio.status === 'processed') {
           setFiles(prev => prev.map(f => f.id === fileId ? { ...f, status: 'completed', progress: 100, progressLabel: undefined } : f));
+          toast.success(`"${name}" finished processing`, {
+            description: 'Click to open analysis',
+            duration: 8000,
+            action: { label: 'Open', onClick: () => navigate(`/analysis/${audioId}`) },
+          });
           return;
         }
         if (audio.status === 'failed') {
           setFiles(prev => prev.map(f => f.id === fileId ? { ...f, status: 'error', progress: 0, progressLabel: undefined, errorMessage: 'ML processing failed' } : f));
+          toast.error(`"${name}" failed to process`, {
+            description: 'ML pipeline did not finish.',
+            duration: 10000,
+          });
           return;
         }
       }

@@ -36,7 +36,7 @@ export default function SearchResults() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [inputQuery, setInputQuery] = useState(q);
-  const [semanticMode, setSemanticMode] = useState(true);
+  const [exactOnly, setExactOnly] = useState(false);
 
   // Filter state
   const [showFilters, setShowFilters] = useState(false);
@@ -59,6 +59,7 @@ export default function SearchResults() {
         speakerId: filterSpeakerId !== '' ? filterSpeakerId : undefined,
         fromDate: filterFromDate || undefined,
         toDate: filterToDate || undefined,
+        exactOnly,
       });
       setResults(res.results);
     } catch (e: any) {
@@ -66,7 +67,7 @@ export default function SearchResults() {
     } finally {
       setLoading(false);
     }
-  }, [initialAudioId, filterSpeakerId, filterFromDate, filterToDate]);
+  }, [initialAudioId, filterSpeakerId, filterFromDate, filterToDate, exactOnly]);
 
   // Run when q or filters change
   useEffect(() => { runSearch(q); }, [q, runSearch]);
@@ -123,14 +124,15 @@ export default function SearchResults() {
         </div>
         <button
           type="button"
-          onClick={() => setSemanticMode(m => !m)}
+          onClick={() => setExactOnly(m => !m)}
+          title={exactOnly ? 'Only segments containing the exact text' : 'Semantic + exact matches'}
           className={`flex items-center gap-1.5 px-3 py-2.5 rounded-md border text-xs font-mono transition-all ${
-            semanticMode
+            exactOnly
               ? 'bg-blue-500/15 border-blue-500/40 text-blue-300'
               : 'bg-zinc-900 border-zinc-700 text-zinc-400'
           }`}
         >
-          Semantic {semanticMode ? '●' : '○'}
+          Exact {exactOnly ? '●' : '○'}
         </button>
         <button
           type="button"

@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
-import { useParams, useLocation, Link } from 'react-router-dom';
-import { Copy, Check, Search, FileText, User, Loader2, AlertCircle, ShieldAlert, Sparkles } from 'lucide-react';
+import { useParams, useLocation, useNavigate, Link } from 'react-router-dom';
+import { Copy, Check, Search, FileText, User, Loader2, AlertCircle, ShieldAlert, Sparkles, ArrowLeft } from 'lucide-react';
 import { audios, dangerousWords, search, entities, type AudioRecord, type SegmentRecord, type SubScores, type SearchResultItem, type SegmentMentionRecord } from '../lib/api';
-import SubScoresBar, { SUB_LEGEND } from './SubScoresBar';
+import { SUB_LEGEND } from './SubScoresBar';
 import SpeakerAvatar from './SpeakerAvatar';
 
 const ENTITY_COLORS: Record<string, string> = {
@@ -37,6 +37,7 @@ function dominantSignal(subs: SubScores | null | undefined): string | null {
 export default function TranscriptView() {
   const { id } = useParams<{ id: string }>();
   const location = useLocation();
+  const navigate = useNavigate();
   const audioId = Number(id);
 
   const [audio, setAudio] = useState<AudioRecord | null>(null);
@@ -257,6 +258,14 @@ export default function TranscriptView() {
   return (
     <div className="p-6 space-y-5">
       <div>
+        <button
+          type="button"
+          onClick={() => navigate(-1)}
+          className="flex items-center gap-1.5 text-zinc-300 hover:text-white text-xs font-mono mb-2 transition-colors"
+        >
+          <ArrowLeft className="w-3.5 h-3.5" />
+          Back
+        </button>
         <div className="text-zinc-200 text-[10px] font-mono uppercase tracking-widest mb-1">Transcript</div>
         <h1 className="text-white text-2xl font-bold tracking-tight">{audio.name}</h1>
         <p className="text-zinc-200 text-xs font-mono mt-0.5">ID:{id}</p>
@@ -368,11 +377,6 @@ export default function TranscriptView() {
                         <p className="text-zinc-200 text-sm leading-relaxed">
                           {highlightTextWithEntities(seg.text, searchQuery, mentionsBySegment.get(seg.id) ?? [])}
                         </p>
-                        {hasScore && seg.subScores && (
-                          <div className="mt-2 max-w-md">
-                            <SubScoresBar scores={seg.subScores} compact={!flagged} height={flagged ? 6 : 3} />
-                          </div>
-                        )}
                       </div>
                     </div>
                   );
@@ -452,11 +456,6 @@ export default function TranscriptView() {
                     <div className="flex items-center justify-between">
                       <span className="text-zinc-200 text-xs uppercase tracking-wider">Dominant signal</span>
                       <span className="text-zinc-300 text-xs font-mono">{dom}</span>
-                    </div>
-                  )}
-                  {avg && (
-                    <div className="pt-1">
-                      <SubScoresBar scores={avg} compact={false} height={6} />
                     </div>
                   )}
                   <div className="pt-1 flex gap-2">

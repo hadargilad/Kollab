@@ -1,5 +1,6 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
+import { Toaster } from 'sonner';
 import { setApiUser } from './lib/api';
 import Login from './components/Login';
 import Dashboard from './components/Dashboard';
@@ -44,6 +45,7 @@ export default function App() {
 
   return (
     <Router>
+      <Toaster theme="dark" position="bottom-right" richColors closeButton />
       <Routes>
         <Route
           path="/login"
