@@ -10,6 +10,7 @@ export default function ProfileSearch() {
   const [error, setError] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [selectMode, setSelectMode] = useState(false);
   const [batchConfirmOpen, setBatchConfirmOpen] = useState(false);
   const [batchBusy, setBatchBusy] = useState(false);
   const [batchError, setBatchError] = useState('');
@@ -118,26 +119,36 @@ export default function ProfileSearch() {
                 ? `${filteredProfiles.length} / ${profiles.length} profiles`
                 : `${profiles.length} profile${profiles.length !== 1 ? 's' : ''}`}
             </div>
-            {selectedIds.size > 0 && (
+            {selectMode && selectedIds.size > 0 && (
               <>
-                <span className="text-zinc-200 text-xs font-mono ml-2">· {selectedIds.size} selected</span>
+                <span className="text-zinc-200 text-xs font-mono">· {selectedIds.size} selected</span>
                 <button
                   onClick={() => setBatchConfirmOpen(true)}
-                  className="ml-auto flex items-center gap-1.5 px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white text-xs rounded-md transition-colors"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white text-xs rounded-md transition-colors"
                 >
                   <Trash2 className="w-3.5 h-3.5" /> Delete {selectedIds.size}
-                </button>
-                <button
-                  onClick={() => setSelectedIds(new Set())}
-                  className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 text-xs rounded-md transition-colors"
-                >
-                  Clear
                 </button>
               </>
             )}
             {batchError && (
               <span className="text-red-400 text-xs font-mono w-full">{batchError}</span>
             )}
+            <div className="ml-auto flex items-center gap-2">
+              {selectMode && (
+                <button
+                  onClick={() => setSelectedIds(new Set())}
+                  className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 text-xs rounded-md transition-colors"
+                >
+                  Clear
+                </button>
+              )}
+              <button
+                onClick={() => { setSelectMode(v => !v); setSelectedIds(new Set()); }}
+                className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 text-xs rounded-md transition-colors"
+              >
+                {selectMode ? 'Cancel' : 'Select'}
+              </button>
+            </div>
           </div>
 
           {profiles.length === 0 ? (
@@ -162,13 +173,15 @@ export default function ProfileSearch() {
                 >
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex items-center gap-3">
-                      <input
-                        type="checkbox"
-                        checked={selectedIds.has(profile.id)}
-                        onClick={e => e.stopPropagation()}
-                        onChange={() => toggleSelected(profile.id)}
-                        className="w-4 h-4 accent-blue-500 shrink-0"
-                      />
+                      {selectMode && (
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(profile.id)}
+                          onClick={e => e.stopPropagation()}
+                          onChange={() => toggleSelected(profile.id)}
+                          className="w-4 h-4 accent-blue-500 shrink-0"
+                        />
+                      )}
                       <SpeakerAvatar
                         speakerId={profile.id}
                         name={profile.name}

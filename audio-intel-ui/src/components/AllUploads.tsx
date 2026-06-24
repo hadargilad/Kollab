@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { FileAudio, Search, Filter, Calendar, CheckCircle, Clock, AlertCircle, PlayCircle, Loader2, RefreshCw, Trash2 } from 'lucide-react';
+import { FileAudio, Search, Filter, Calendar, CheckCircle, Clock, AlertCircle, PlayCircle, Loader2, RefreshCw, Trash2, Pencil, X } from 'lucide-react';
 import { audios, type AudioRecord } from '../lib/api';
 
 export default function AllUploads() {
@@ -17,8 +17,15 @@ export default function AllUploads() {
   const [retrying, setRetrying] = useState<Set<number>>(new Set());
   const [deleting, setDeleting] = useState<Set<number>>(new Set());
   const [confirmDelete, setConfirmDelete] = useState<AudioRecord | null>(null);
+  const [editTarget, setEditTarget] = useState<AudioRecord | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+  const [editRecordedAt, setEditRecordedAt] = useState('');
+  const [editBusy, setEditBusy] = useState(false);
+  const [editError, setEditError] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [selectMode, setSelectMode] = useState(false);
+  const [editMode, setEditMode] = useState(false);
   const [batchConfirmOpen, setBatchConfirmOpen] = useState(false);
   const [batchBusy, setBatchBusy] = useState(false);
   const [batchError, setBatchError] = useState('');
@@ -94,6 +101,32 @@ export default function AllUploads() {
       setUploads(prev => prev.map(u => u.id === id ? { ...u, status: 'processing' } : u));
     } catch { /* leave as failed */ }
     finally { setRetrying(prev => { const s = new Set(prev); s.delete(id); return s; }); }
+  };
+
+  const openEdit = (upload: AudioRecord) => {
+    setEditTarget(upload);
+    setEditName(upload.name);
+    setEditDescription(upload.description ?? '');
+    setEditRecordedAt(upload.recordedAt ? upload.recordedAt.slice(0, 16) : '');
+    setEditError('');
+  };
+
+  const handleEdit = async () => {
+    if (!editTarget || !editName.trim()) return;
+    setEditBusy(true); setEditError('');
+    try {
+      const updated = await audios.update(editTarget.id, {
+        name: editName.trim(),
+        description: editDescription,
+        recorded_at: editRecordedAt || null,
+      });
+      setUploads(prev => prev.map(u => u.id === updated.id ? { ...u, ...updated } : u));
+      setEditTarget(null);
+    } catch (e: any) {
+      setEditError(e?.message ?? 'Update failed.');
+    } finally {
+      setEditBusy(false);
+    }
   };
 
   const handleDelete = async (id: number) => {
@@ -280,13 +313,24 @@ export default function AllUploads() {
                   </button>
                 </>
               )}
+              {!selectMode && (editMode ? (
+                <button onClick={() => setEditMode(false)}
+                  className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 text-xs rounded-md transition-colors">
+                  Cancel
+                </button>
+              ) : (
+                <button onClick={() => setEditMode(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 text-xs rounded-md transition-colors">
+                  <Pencil className="w-3.5 h-3.5" /> Edit
+                </button>
+              ))}
               {selectMode ? (
                 <button onClick={() => { setSelectMode(false); setSelectedIds(new Set()); }}
                   className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 text-xs rounded-md transition-colors">
                   Cancel
                 </button>
               ) : (
-                <button onClick={() => setSelectMode(true)}
+                <button onClick={() => { setSelectMode(true); setEditMode(false); }}
                   className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 text-xs rounded-md transition-colors">
                   Select
                 </button>
@@ -303,8 +347,10 @@ export default function AllUploads() {
           ) : (
             filteredUploads.map((upload) => (
               <div key={upload.id}
-                className={`bg-zinc-900 border rounded-md px-5 py-4 hover:border-zinc-700 transition-colors ${
-                  selectMode && selectedIds.has(upload.id) ? 'border-blue-500/40 bg-blue-500/4' : 'border-zinc-800'
+                onClick={editMode ? () => { openEdit(upload); setEditMode(false); } : undefined}
+                className={`bg-zinc-900 border rounded-md px-5 py-4 transition-colors ${
+                  editMode ? 'hover:border-blue-500/40 hover:bg-blue-500/4 cursor-pointer' :
+                  selectMode && selectedIds.has(upload.id) ? 'border-blue-500/40 bg-blue-500/4 hover:border-zinc-700' : 'border-zinc-800 hover:border-zinc-700'
                 }`}>
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex items-start gap-3 flex-1 min-w-0">
@@ -424,6 +470,62 @@ export default function AllUploads() {
               >
                 {batchBusy && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                 Delete {selectedIds.size}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit modal */}
+      {editTarget && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+          <div className="bg-zinc-950 border border-zinc-800 rounded-md w-full max-w-md shadow-2xl">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
+              <h2 className="text-white font-semibold">Edit recording</h2>
+              <button onClick={() => setEditTarget(null)} className="text-zinc-200 hover:text-white transition-colors">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="px-5 py-4 space-y-3">
+              <div>
+                <label className="text-zinc-200 text-[10px] font-mono uppercase tracking-widest block mb-1.5">Name</label>
+                <input
+                  type="text"
+                  value={editName}
+                  onChange={e => setEditName(e.target.value)}
+                  className={inputCls}
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="text-zinc-200 text-[10px] font-mono uppercase tracking-widest block mb-1.5">Description</label>
+                <textarea
+                  value={editDescription}
+                  onChange={e => setEditDescription(e.target.value)}
+                  rows={3}
+                  className={inputCls + ' resize-none'}
+                />
+              </div>
+              <div>
+                <label className="text-zinc-200 text-[10px] font-mono uppercase tracking-widest block mb-1.5">Recorded at</label>
+                <input
+                  type="datetime-local"
+                  value={editRecordedAt}
+                  onChange={e => setEditRecordedAt(e.target.value)}
+                  className={inputCls + ' scheme-dark'}
+                />
+              </div>
+              {editError && <p className="text-red-400 text-xs font-mono">{editError}</p>}
+            </div>
+            <div className="px-5 py-4 border-t border-zinc-800 flex gap-2 justify-end">
+              <button onClick={() => setEditTarget(null)} disabled={editBusy}
+                className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-white text-sm rounded-md transition-colors">
+                Cancel
+              </button>
+              <button onClick={handleEdit} disabled={editBusy || !editName.trim()}
+                className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm rounded-md transition-colors">
+                {editBusy && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                Save
               </button>
             </div>
           </div>

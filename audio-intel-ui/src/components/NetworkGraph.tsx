@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  Filter, ZoomIn, ZoomOut, Maximize2, User, Phone, Loader2, AlertCircle,
+  Filter, ZoomIn, ZoomOut, Maximize2, User, Loader2, AlertCircle,
   Network as NetworkIcon, Plus, Trash2, X, Users, GitBranch, ChevronDown,
 } from 'lucide-react';
 import {
@@ -88,6 +88,9 @@ export default function NetworkGraph({ isAdmin = false }: { isAdmin?: boolean })
   // speaker, the popup floats near the node with "Add to group" / "View profile".
   const [nodeAction, setNodeAction] = useState<{ node: Node; x: number; y: number } | null>(null);
   const [nodeActionGroupPicker, setNodeActionGroupPicker] = useState(false);
+  const [nodeActionGhostPicker, setNodeActionGhostPicker] = useState(false);
+  const [ghostPickerSearch, setGhostPickerSearch] = useState('');
+  const [ghostPickerBusy, setGhostPickerBusy] = useState(false);
 
   const [showGhosts, setShowGhosts] = useState(false);
 
@@ -384,6 +387,22 @@ export default function NetworkGraph({ isAdmin = false }: { isAdmin?: boolean })
     }
   };
 
+  async function handleResolveGhost(realSpeakerId: number) {
+    if (!nodeAction) return;
+    setGhostPickerBusy(true);
+    try {
+      await speakersApi.resolveGhost(nodeAction.node.id, realSpeakerId);
+      setNodeAction(null);
+      setNodeActionGhostPicker(false);
+      setGhostPickerSearch('');
+      const [sp, rl] = await Promise.all([speakersApi.list(), relationsApi.list()]);
+      setAllSpeakers(sp);
+      setAllRelations(rl);
+    } catch { /* swallow — keep popup open */ } finally {
+      setGhostPickerBusy(false);
+    }
+  }
+
   async function handleNodePopupAddToGroup(groupId: number) {
     if (!nodeAction) return;
     try {
@@ -393,15 +412,6 @@ export default function NetworkGraph({ isAdmin = false }: { isAdmin?: boolean })
       setNodeActionGroupPicker(false);
     } catch { /* show inline? for now swallow */ }
   }
-
-  const connectedNodes = selectedNode
-    ? allRelations
-        .filter(r => r.speakerA.id === selectedNode.id || r.speakerB.id === selectedNode.id)
-        .map(r => {
-          const other = r.speakerA.id === selectedNode.id ? r.speakerB : r.speakerA;
-          return { id: other.id, label: other.name, color: other.color, weight: r.interactionCount };
-        })
-    : [];
 
   async function handleCreateGroup() {
     if (!newGroupName.trim()) return;
@@ -874,54 +884,6 @@ export default function NetworkGraph({ isAdmin = false }: { isAdmin?: boolean })
             />
           </div>
 
-          {/* Selected node */}
-          {selectedNode && (
-            <div className="bg-zinc-900 border border-zinc-800 rounded-md px-4 py-3">
-              <div className="flex items-center justify-between gap-4">
-                <div className="flex items-center gap-3 min-w-0">
-                  <SpeakerAvatar
-                    speakerId={selectedNode.id}
-                    name={selectedNode.label}
-                    color={selectedNode.color}
-                    imagePath={selectedNode.imagePath}
-                    size={36}
-                    bust={selectedNode.imagePath ?? undefined}
-                  />
-                  <div className="min-w-0">
-                    <div className="text-white text-sm font-medium">{selectedNode.label}</div>
-                    <div className="text-zinc-300 text-xs font-mono capitalize">
-                      {selectedNode.riskLevel} risk · {selectedNode.connections} interactions · {selectedNode.recordingCount} recordings
-                    </div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
-                  {connectedNodes.length > 0 && (
-                    <>
-                      <span className="text-zinc-200 text-[10px] font-mono uppercase tracking-wider">Connected to:</span>
-                      {connectedNodes.map(conn => (
-                        <Link key={conn.id} to={`/speaker/${conn.id}`}
-                          className="flex items-center gap-1.5 px-2 py-1 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-md text-xs transition-colors font-mono">
-                          <div className="w-2 h-2 rounded-full" style={{ backgroundColor: conn.color }} />
-                          <span className="text-zinc-300">{conn.label}</span>
-                          <span className="text-zinc-200 flex items-center gap-0.5">
-                            <Phone className="w-2.5 h-2.5" />{conn.weight}
-                          </span>
-                        </Link>
-                      ))}
-                    </>
-                  )}
-                  <Link to={`/speaker/${selectedNode.id}`}
-                    className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs rounded-md transition-colors">
-                    View Profile
-                  </Link>
-                  <button onClick={() => setSelectedNode(null)}
-                    className="p-1.5 text-zinc-200 hover:text-white transition-colors">
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
         </>
       )}
 
@@ -936,7 +898,7 @@ export default function NetworkGraph({ isAdmin = false }: { isAdmin?: boolean })
         const memberOfIds = new Set(allGroups.filter(g => g.members.some(m => m.id === nodeAction.node.id)).map(g => g.id));
         return (
           <>
-            <div className="fixed inset-0 z-40" onClick={() => { setNodeAction(null); setNodeActionGroupPicker(false); }} />
+            <div className="fixed inset-0 z-40" onClick={() => { setNodeAction(null); setNodeActionGroupPicker(false); setNodeActionGhostPicker(false); setGhostPickerSearch(''); }} />
             <div
               className="fixed z-50 bg-zinc-950 border border-zinc-700 rounded-md shadow-2xl overflow-hidden"
               style={{ left, top, width: POPUP_W }}
@@ -945,21 +907,66 @@ export default function NetworkGraph({ isAdmin = false }: { isAdmin?: boolean })
                 <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: nodeAction.node.color }} />
                 <span className="text-white text-sm font-medium truncate">{nodeAction.node.label}</span>
               </div>
-              {!nodeActionGroupPicker ? (
+              {!nodeActionGroupPicker && !nodeActionGhostPicker ? (
                 <div className="p-2 space-y-1">
-                  <button
-                    onClick={() => setNodeActionGroupPicker(true)}
-                    className="flex items-center gap-2 w-full px-2 py-1.5 text-zinc-200 hover:bg-zinc-800 rounded-md text-sm text-left transition-colors"
-                  >
-                    <Plus className="w-3.5 h-3.5" /> Add to group
-                  </button>
+                  {nodeAction.node.isGhost && (
+                    <button
+                      onClick={() => { setNodeActionGhostPicker(true); setGhostPickerSearch(''); }}
+                      className="flex items-center gap-2 w-full px-2 py-1.5 text-violet-300 hover:bg-violet-500/10 rounded-md text-sm text-left transition-colors"
+                    >
+                      <User className="w-3.5 h-3.5" /> Link to real speaker
+                    </button>
+                  )}
+                  {!nodeAction.node.isGhost && (
+                    <button
+                      onClick={() => setNodeActionGroupPicker(true)}
+                      className="flex items-center gap-2 w-full px-2 py-1.5 text-zinc-200 hover:bg-zinc-800 rounded-md text-sm text-left transition-colors"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Add to group
+                    </button>
+                  )}
                   <Link
                     to={`/speaker/${nodeAction.node.id}`}
-                    onClick={() => { setNodeAction(null); setNodeActionGroupPicker(false); }}
+                    onClick={() => { setNodeAction(null); setNodeActionGroupPicker(false); setNodeActionGhostPicker(false); }}
                     className="flex items-center gap-2 w-full px-2 py-1.5 text-zinc-200 hover:bg-zinc-800 rounded-md text-sm transition-colors"
                   >
                     <User className="w-3.5 h-3.5" /> View profile
                   </Link>
+                </div>
+              ) : nodeActionGhostPicker ? (
+                <div className="flex flex-col max-h-64">
+                  <button
+                    onClick={() => setNodeActionGhostPicker(false)}
+                    className="px-3 py-1.5 text-zinc-200 text-[10px] font-mono uppercase tracking-widest hover:bg-zinc-800 text-left transition-colors flex items-center gap-1.5"
+                  >
+                    ← Pick speaker
+                  </button>
+                  <div className="px-2 pb-1">
+                    <input
+                      type="text"
+                      value={ghostPickerSearch}
+                      onChange={e => setGhostPickerSearch(e.target.value)}
+                      placeholder="Search…"
+                      autoFocus
+                      className="w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-violet-500"
+                    />
+                  </div>
+                  <div className="overflow-y-auto">
+                    {allSpeakers
+                      .filter(s => !s.isGhost && !s.isUntracked &&
+                        (ghostPickerSearch === '' || s.name.toLowerCase().includes(ghostPickerSearch.toLowerCase())))
+                      .map(s => (
+                        <button
+                          key={s.id}
+                          disabled={ghostPickerBusy}
+                          onClick={() => handleResolveGhost(s.id)}
+                          className="flex items-center gap-2 w-full px-3 py-1.5 text-sm text-left text-zinc-200 hover:bg-zinc-800 transition-colors disabled:opacity-50"
+                        >
+                          <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: s.color }} />
+                          <span className="truncate flex-1">{s.name}</span>
+                        </button>
+                      ))}
+                  </div>
                 </div>
               ) : (
                 <div className="flex flex-col max-h-60">

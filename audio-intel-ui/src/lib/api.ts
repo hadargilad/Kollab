@@ -262,6 +262,8 @@ export const audios = {
   list: () => request<AudioRecord[]>("GET", withUser("/audios")),
   get: (id: number) => request<AudioRecord>("GET", withUser(`/audios/${id}`)),
   remove: (id: number) => request<{ success: boolean }>("DELETE", `/audios/${id}`),
+  update: (id: number, data: { name: string; description: string; recorded_at: string | null }) =>
+    request<AudioRecord>("PUT", `/audios/${id}`, data),
   batchDelete: (ids: number[]) =>
     request<{ deleted: number[]; failed: { id: number; reason: string }[] }>(
       "POST", "/audios/batch-delete", { ids },
@@ -379,6 +381,11 @@ export const speakers = {
 
   matchSuggestions: (id: number, limit = 5) =>
     request<MatchSuggestion[]>("GET", `/speakers/${id}/match-suggestions?limit=${limit}`),
+
+  resolveGhost: (ghostId: number, realSpeakerId: number) =>
+    request<{ success: boolean; mergedIntoId: number }>(
+      "POST", `/speakers/${ghostId}/resolve-ghost`, { real_speaker_id: realSpeakerId }
+    ),
 };
 
 export interface MatchSuggestion {
@@ -403,7 +410,7 @@ export const suggestions = {
 
 // ─── Alerts ───────────────────────────────────────────────────────────────────
 
-export type AlertCategory = 'coded_language' | 'dangerous_word';
+export type AlertCategory = 'coded_language' | 'dangerous_word' | 'intelligence';
 
 export interface AlertRecord {
   id: number;
@@ -411,6 +418,7 @@ export interface AlertRecord {
   category: AlertCategory | null;
   message: string;
   createdAt: string;
+  speakerId: number | null;
   speakerName: string | null;
   audioName: string | null;
   audioId: number | null;

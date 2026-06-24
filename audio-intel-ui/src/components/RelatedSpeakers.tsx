@@ -170,7 +170,7 @@ export default function RelatedSpeakers() {
         ))}
       </div>
 
-      <div className="max-w-3xl">
+      <div>
         {linkSuccess && (
           <div className="mb-4 flex items-center gap-2 px-4 py-3 bg-emerald-500/8 border border-emerald-500/25 rounded-md text-emerald-300 text-sm">
             <Check className="w-4 h-4 shrink-0" /> {linkSuccess}
