@@ -579,7 +579,7 @@ export default function NetworkGraph({ isAdmin = false }: { isAdmin?: boolean })
                     </div>
                   )}
                   <button onClick={() => setFilter({ minConnections: 0, topic: 'all', riskLevel: 'all' })}
-                    className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 text-xs rounded transition-colors">
+                    className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 text-xs rounded-md transition-colors">
                     Reset
                   </button>
                   <label className="flex items-center gap-2 cursor-pointer select-none text-xs text-zinc-200">
@@ -658,7 +658,7 @@ export default function NetworkGraph({ isAdmin = false }: { isAdmin?: boolean })
                               setAddToGroupError('');
                             }
                           }}
-                          className="flex items-center gap-1.5 px-2.5 py-1 bg-blue-600 hover:bg-blue-500 text-white text-xs rounded transition-colors"
+                          className="flex items-center gap-1.5 px-2.5 py-1 bg-blue-600 hover:bg-blue-500 text-white text-xs rounded-md transition-colors"
                           title="Add speakers to the selected subgroup"
                         >
                           <Plus className="w-3 h-3" /> Add to {allGroups.find(g => g.id === subgroupFilterId)?.name}
@@ -666,7 +666,7 @@ export default function NetworkGraph({ isAdmin = false }: { isAdmin?: boolean })
                       )}
                     </div>
                     <button onClick={() => { setShowNewGroupForm(v => !v); setGroupError(''); }}
-                      className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-xs rounded transition-colors">
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-xs rounded-md transition-colors">
                       <Plus className="w-3 h-3" /> New Group
                     </button>
                   </div>
@@ -698,9 +698,9 @@ export default function NetworkGraph({ isAdmin = false }: { isAdmin?: boolean })
                       </select>
                       {groupError && <span className="text-red-400 text-xs font-mono">{groupError}</span>}
                       <button onClick={handleCreateGroup}
-                        className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs rounded transition-colors">Create</button>
+                        className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs rounded-md transition-colors">Create</button>
                       <button onClick={() => { setShowNewGroupForm(false); setGroupError(''); setNewGroupParentId(null); }}
-                        className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 text-xs rounded transition-colors">Cancel</button>
+                        className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 text-xs rounded-md transition-colors">Cancel</button>
                     </div>
                   )}
 
@@ -761,12 +761,12 @@ export default function NetworkGraph({ isAdmin = false }: { isAdmin?: boolean })
                                     setAddToGroupSelectedIds(new Set());
                                     setAddToGroupError('');
                                   }}
-                                  className="flex items-center gap-1.5 px-2.5 py-1 bg-blue-600 hover:bg-blue-500 text-white text-xs rounded transition-colors"
+                                  className="flex items-center gap-1.5 px-2.5 py-1 bg-blue-600 hover:bg-blue-500 text-white text-xs rounded-md transition-colors"
                                 >
                                   <Plus className="w-3 h-3" /> Add speakers
                                 </button>
                                 <button onClick={() => handleDeleteGroup(group.id)}
-                                  className="flex items-center gap-1 px-2 py-1 text-[10px] font-mono text-zinc-200 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors ml-auto">
+                                  className="flex items-center gap-1 px-2 py-1 text-[10px] font-mono text-zinc-200 hover:text-red-400 hover:bg-red-500/10 rounded-md transition-colors ml-auto">
                                   <Trash2 className="w-3 h-3" /> Delete
                                 </button>
                               </div>
@@ -810,7 +810,7 @@ export default function NetworkGraph({ isAdmin = false }: { isAdmin?: boolean })
                   </select>
                   <button onClick={handleFindBridges}
                     disabled={bridgeGroupA === '' || bridgeGroupB === '' || bridgeGroupA === bridgeGroupB || bridgeLoading}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-500 disabled:bg-zinc-800 disabled:text-zinc-200 text-white text-xs rounded transition-colors">
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-500 disabled:bg-zinc-800 disabled:text-zinc-200 text-white text-xs rounded-md transition-colors">
                     {bridgeLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <GitBranch className="w-3.5 h-3.5" />}
                     Find
                   </button>
@@ -852,15 +852,15 @@ export default function NetworkGraph({ isAdmin = false }: { isAdmin?: boolean })
               <div className="flex items-center gap-1.5">
                 <span className="text-zinc-300 text-[10px] font-mono mr-1">click node to inspect</span>
                 <button onClick={() => setZoom(Math.max(0.5, zoom - 0.1))}
-                  className="p-1.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-200 rounded transition-colors">
+                  className="p-1.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-200 rounded-md transition-colors">
                   <ZoomOut className="w-3.5 h-3.5" />
                 </button>
                 <button onClick={() => setZoom(Math.min(2, zoom + 0.1))}
-                  className="p-1.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-200 rounded transition-colors">
+                  className="p-1.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-200 rounded-md transition-colors">
                   <ZoomIn className="w-3.5 h-3.5" />
                 </button>
                 <button onClick={() => setZoom(1)}
-                  className="p-1.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-200 rounded transition-colors">
+                  className="p-1.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-200 rounded-md transition-colors">
                   <Maximize2 className="w-3.5 h-3.5" />
                 </button>
               </div>
@@ -949,7 +949,7 @@ export default function NetworkGraph({ isAdmin = false }: { isAdmin?: boolean })
                 <div className="p-2 space-y-1">
                   <button
                     onClick={() => setNodeActionGroupPicker(true)}
-                    className="flex items-center gap-2 w-full px-2 py-1.5 text-zinc-200 hover:bg-zinc-800 rounded text-sm text-left transition-colors"
+                    className="flex items-center gap-2 w-full px-2 py-1.5 text-zinc-200 hover:bg-zinc-800 rounded-md text-sm text-left transition-colors"
                   >
                     <Plus className="w-3.5 h-3.5" /> Add to group
                   </button>
@@ -1045,7 +1045,7 @@ export default function NetworkGraph({ isAdmin = false }: { isAdmin?: boolean })
                         <button
                           key={sp.id}
                           onClick={() => toggleAddSpeakerSelected(sp.id)}
-                          className={`flex items-center gap-2.5 p-2 rounded border text-left transition-colors ${
+                          className={`flex items-center gap-2.5 p-2 rounded-md border text-left transition-colors ${
                             checked ? 'border-blue-500/40 bg-blue-500/8' : 'border-zinc-800 bg-black hover:border-zinc-700'
                           }`}
                         >
@@ -1070,11 +1070,11 @@ export default function NetworkGraph({ isAdmin = false }: { isAdmin?: boolean })
                 </span>
                 <div className="flex gap-2">
                   <button onClick={() => setAddToGroupTarget(null)} disabled={addToGroupBusy}
-                    className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 text-sm rounded transition-colors">
+                    className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 text-sm rounded-md transition-colors">
                     Cancel
                   </button>
                   <button onClick={submitAddToGroup} disabled={addToGroupBusy || addToGroupSelectedIds.size === 0}
-                    className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm rounded transition-colors">
+                    className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm rounded-md transition-colors">
                     {addToGroupBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
                     Add {addToGroupSelectedIds.size || ''}
                   </button>

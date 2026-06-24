@@ -53,7 +53,7 @@ export default function Profile({ currentUser, onUpdateSuccess }: Props) {
         </div>
         {!isEditing && (
           <button onClick={() => setIsEditing(true)}
-            className="flex items-center gap-1.5 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-sm rounded transition-colors">
+            className="flex items-center gap-1.5 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-sm rounded-md transition-colors">
             <Edit3 className="w-3.5 h-3.5" /> Edit Profile
           </button>
         )}
@@ -156,11 +156,11 @@ export default function Profile({ currentUser, onUpdateSuccess }: Props) {
             {isEditing && (
               <div className="flex gap-2">
                 <button type="submit" disabled={isLoading}
-                  className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm rounded font-medium transition-colors">
+                  className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm rounded-md font-medium transition-colors">
                   <Save className="w-4 h-4" /> {isLoading ? 'Saving…' : 'Save Changes'}
                 </button>
                 <button type="button" onClick={() => setIsEditing(false)}
-                  className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-sm rounded transition-colors">
+                  className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-sm rounded-md transition-colors">
                   <X className="w-4 h-4" /> Cancel
                 </button>
               </div>

@@ -238,7 +238,7 @@ export default function AllUploads() {
             {(recordedFrom || recordedTo) && (
               <button
                 onClick={() => { setRecordedFrom(''); setRecordedTo(''); }}
-                className="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 text-xs rounded transition-colors font-mono"
+                className="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 text-xs rounded-md transition-colors font-mono"
               >
                 Clear Range
               </button>
@@ -275,19 +275,19 @@ export default function AllUploads() {
                 <>
                   {batchError && <span className="text-red-400 text-xs font-mono">{batchError}</span>}
                   <button onClick={() => setBatchConfirmOpen(true)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white text-xs rounded transition-colors">
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white text-xs rounded-md transition-colors">
                     <Trash2 className="w-3.5 h-3.5" /> Delete {selectedIds.size}
                   </button>
                 </>
               )}
               {selectMode ? (
                 <button onClick={() => { setSelectMode(false); setSelectedIds(new Set()); }}
-                  className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 text-xs rounded transition-colors">
+                  className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 text-xs rounded-md transition-colors">
                   Cancel
                 </button>
               ) : (
                 <button onClick={() => setSelectMode(true)}
-                  className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 text-xs rounded transition-colors">
+                  className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 text-xs rounded-md transition-colors">
                   Select
                 </button>
               )}
@@ -371,7 +371,7 @@ export default function AllUploads() {
                       <button
                         onClick={() => handleRetry(upload.id)}
                         disabled={retrying.has(upload.id)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/25 disabled:opacity-50 text-red-400 text-xs rounded transition-colors"
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/25 disabled:opacity-50 text-red-400 text-xs rounded-md transition-colors"
                       >
                         <RefreshCw className={`w-3.5 h-3.5 ${retrying.has(upload.id) ? 'animate-spin' : ''}`} />
                         {retrying.has(upload.id) ? 'Retrying…' : 'Retry'}
@@ -380,7 +380,7 @@ export default function AllUploads() {
                     <button
                       onClick={() => setConfirmDelete(upload)}
                       disabled={deleting.has(upload.id)}
-                      className="p-1.5 text-zinc-200 hover:text-red-400 hover:bg-red-500/8 rounded transition-colors disabled:opacity-50"
+                      className="p-1.5 text-zinc-200 hover:text-red-400 hover:bg-red-500/8 rounded-md transition-colors disabled:opacity-50"
                     >
                       {deleting.has(upload.id)
                         ? <Loader2 className="w-4 h-4 animate-spin" />
@@ -413,14 +413,14 @@ export default function AllUploads() {
               <button
                 onClick={() => setBatchConfirmOpen(false)}
                 disabled={batchBusy}
-                className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-white text-sm rounded transition-colors"
+                className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-white text-sm rounded-md transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={handleBatchDelete}
                 disabled={batchBusy}
-                className="px-4 py-2 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white text-sm rounded transition-colors flex items-center gap-2"
+                className="px-4 py-2 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white text-sm rounded-md transition-colors flex items-center gap-2"
               >
                 {batchBusy && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                 Delete {selectedIds.size}
@@ -451,14 +451,14 @@ export default function AllUploads() {
               <button
                 onClick={() => setConfirmDelete(null)}
                 disabled={deleting.has(confirmDelete.id)}
-                className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-white text-sm rounded transition-colors"
+                className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-white text-sm rounded-md transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={() => handleDelete(confirmDelete.id)}
                 disabled={deleting.has(confirmDelete.id)}
-                className="px-4 py-2 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white text-sm rounded transition-colors flex items-center gap-2"
+                className="px-4 py-2 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white text-sm rounded-md transition-colors flex items-center gap-2"
               >
                 {deleting.has(confirmDelete.id) && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                 Delete

@@ -93,7 +93,7 @@ function EntityRow({ ent }: { ent: EntityRecord }) {
             <button
               onClick={handleLinkWikidata}
               disabled={linkSaving || !wikidataInput.trim()}
-              className="px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white rounded transition-colors"
+              className="px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white rounded-md transition-colors"
             >
               {linkSaving ? 'Saving…' : 'Link'}
             </button>
@@ -224,7 +224,7 @@ export default function Entities() {
             <button
               key={t}
               onClick={() => setTypeFilter(t)}
-              className={`px-2.5 py-1 text-[11px] font-mono uppercase rounded border transition-colors ${
+              className={`px-2.5 py-1 text-[11px] font-mono uppercase rounded-md border transition-colors ${
                 typeFilter === t
                   ? 'bg-blue-500/20 border-blue-500/50 text-blue-300'
                   : 'bg-transparent border-zinc-700 text-zinc-300 hover:border-zinc-500'

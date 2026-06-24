@@ -129,7 +129,7 @@ export default function StartupScreen({ onReady }: Props) {
             </p>
             <button
               onClick={() => setAttempt(a => a + 1)}
-              className="mt-1 px-4 py-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-300 text-xs rounded transition-colors font-mono"
+              className="mt-1 px-4 py-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-300 text-xs rounded-md transition-colors font-mono"
             >
               RETRY
             </button>

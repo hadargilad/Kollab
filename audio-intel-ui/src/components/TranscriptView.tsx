@@ -285,7 +285,7 @@ export default function TranscriptView() {
               type="button"
               onClick={() => { setSemanticMode(m => !m); setSemanticResults(null); setSearchQuery(''); }}
               title={semanticMode ? 'Switch to keyword search' : 'Switch to semantic search'}
-              className={`flex items-center gap-1.5 px-3 py-2 border text-xs rounded transition-colors shrink-0 ${
+              className={`flex items-center gap-1.5 px-3 py-2 border text-xs rounded-md transition-colors shrink-0 ${
                 semanticMode
                   ? 'bg-blue-500/15 border-blue-500/40 text-blue-300'
                   : 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:text-zinc-200'
@@ -294,7 +294,7 @@ export default function TranscriptView() {
               {semanticMode ? 'Semantic' : 'Keyword'}
             </button>
             <button onClick={exportTranscript}
-              className={`flex items-center gap-1.5 px-3 py-2 border text-xs rounded transition-colors shrink-0 ${
+              className={`flex items-center gap-1.5 px-3 py-2 border text-xs rounded-md transition-colors shrink-0 ${
                 exportCopied
                   ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-400'
                   : 'bg-zinc-800 hover:bg-zinc-700 border-zinc-700 text-zinc-300'

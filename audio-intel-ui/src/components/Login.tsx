@@ -98,7 +98,7 @@ export default function Login({ onLogin }: LoginProps) {
             <button
               type="submit"
               disabled={isLoading}
-              className={`w-full py-2.5 rounded font-semibold text-sm tracking-wide transition-all mt-2 ${
+              className={`w-full py-2.5 rounded-md font-semibold text-sm tracking-wide transition-all mt-2 ${
                 isLoading
                   ? 'bg-zinc-800 text-zinc-300 cursor-not-allowed'
                   : 'bg-blue-600 hover:bg-blue-500 text-white active:scale-[0.98]'

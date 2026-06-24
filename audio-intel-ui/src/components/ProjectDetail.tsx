@@ -220,7 +220,7 @@ export default function ProjectDetail({ isAdmin }: Props) {
           </div>
           {isAdmin && (
             <button onClick={handleDeleteProject}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-red-500/20 hover:text-red-300 border border-zinc-700 hover:border-red-500/40 text-zinc-300 text-xs rounded transition-colors">
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-red-500/20 hover:text-red-300 border border-zinc-700 hover:border-red-500/40 text-zinc-300 text-xs rounded-md transition-colors">
               <Trash2 className="w-3.5 h-3.5" /> Delete project
             </button>
           )}
@@ -235,7 +235,7 @@ export default function ProjectDetail({ isAdmin }: Props) {
               <span className="text-zinc-300 text-xs font-mono uppercase tracking-widest">Subgroups</span>
               {isAdmin && (
                 <button onClick={() => setShowAddSubgroup(v => !v)}
-                  className="flex items-center gap-1.5 px-2.5 py-1 bg-blue-600 hover:bg-blue-500 text-white text-xs rounded transition-colors">
+                  className="flex items-center gap-1.5 px-2.5 py-1 bg-blue-600 hover:bg-blue-500 text-white text-xs rounded-md transition-colors">
                   <Plus className="w-3.5 h-3.5" /> Add subgroup
                 </button>
               )}
@@ -257,12 +257,12 @@ export default function ProjectDetail({ isAdmin }: Props) {
                       className="w-12 h-9 bg-black border border-zinc-800 rounded cursor-pointer" />
                   </div>
                   <button onClick={handleAddSubgroup} disabled={subBusy || !subName.trim()}
-                    className="flex items-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm rounded transition-colors">
+                    className="flex items-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm rounded-md transition-colors">
                     {subBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
                     Create
                   </button>
                   <button onClick={() => setShowAddSubgroup(false)}
-                    className="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-sm rounded transition-colors">
+                    className="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-sm rounded-md transition-colors">
                     Cancel
                   </button>
                 </div>
@@ -298,7 +298,7 @@ export default function ProjectDetail({ isAdmin }: Props) {
                       {isAdmin && (
                         <div className="flex items-center gap-1">
                           <button onClick={() => openAddMembers({ id: sg.id, name: sg.name })}
-                            className="flex items-center gap-1.5 px-2.5 py-1 bg-blue-600 hover:bg-blue-500 text-white text-xs rounded transition-colors"
+                            className="flex items-center gap-1.5 px-2.5 py-1 bg-blue-600 hover:bg-blue-500 text-white text-xs rounded-md transition-colors"
                             title="Add speakers to this subgroup">
                             <UserPlus className="w-3.5 h-3.5" /> Add
                           </button>
@@ -338,7 +338,7 @@ export default function ProjectDetail({ isAdmin }: Props) {
                               {a.analystUsername}
                               <button onClick={() => handleUnassign(a.id)}
                                 disabled={assignmentBusy === `del:${a.id}`}
-                                className="ml-1 p-0.5 rounded hover:bg-red-500/20 hover:text-red-300 transition-colors">
+                                className="ml-1 p-0.5 rounded-md hover:bg-red-500/20 hover:text-red-300 transition-colors">
                                 {assignmentBusy === `del:${a.id}`
                                   ? <Loader2 className="w-3 h-3 animate-spin" />
                                   : <X className="w-3 h-3" />}
@@ -485,7 +485,7 @@ export default function ProjectDetail({ isAdmin }: Props) {
                         <button
                           key={sp.id}
                           onClick={() => toggleMemberSelected(sp.id)}
-                          className={`flex items-center gap-3 p-2.5 rounded border transition-colors text-left ${
+                          className={`flex items-center gap-3 p-2.5 rounded-md border transition-colors text-left ${
                             checked
                               ? 'border-blue-500/40 bg-blue-500/8'
                               : 'border-zinc-800 bg-black hover:border-zinc-700'
@@ -524,11 +524,11 @@ export default function ProjectDetail({ isAdmin }: Props) {
                 </span>
                 <div className="flex gap-2">
                   <button onClick={closeAddMembers} disabled={memberBusy}
-                    className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 text-sm rounded transition-colors">
+                    className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 text-sm rounded-md transition-colors">
                     Cancel
                   </button>
                   <button onClick={submitAddMembers} disabled={memberBusy || memberSelectedIds.size === 0}
-                    className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm rounded transition-colors">
+                    className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm rounded-md transition-colors">
                     {memberBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UserPlus className="w-3.5 h-3.5" />}
                     Add {memberSelectedIds.size > 0 ? memberSelectedIds.size : ''}
                   </button>
@@ -559,7 +559,7 @@ function AnalystPicker({
   return (
     <div className="relative">
       <button onClick={() => setOpen(v => !v)}
-        className="inline-flex items-center gap-1 px-2 py-0.5 rounded border border-dashed border-zinc-700 text-zinc-200 hover:text-zinc-200 hover:border-zinc-500 text-xs font-mono transition-colors">
+        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-dashed border-zinc-700 text-zinc-200 hover:text-zinc-200 hover:border-zinc-500 text-xs font-mono transition-colors">
         <Plus className="w-3 h-3" /> assign
       </button>
       {open && (

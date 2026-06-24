@@ -92,7 +92,7 @@ export default function Projects({ isAdmin, currentUserId }: Props) {
         </div>
         {isAdmin && (
           <button onClick={() => setCreateOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded transition-colors">
+            className="flex items-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded-md transition-colors">
             <Plus className="w-4 h-4" /> New project
           </button>
         )}
@@ -131,11 +131,11 @@ export default function Projects({ isAdmin, currentUserId }: Props) {
             </div>
             <div className="p-4 flex gap-2 justify-end border-t border-zinc-800">
               <button onClick={() => setCreateOpen(false)} disabled={creating}
-                className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-sm rounded transition-colors">
+                className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-sm rounded-md transition-colors">
                 Cancel
               </button>
               <button onClick={handleCreate} disabled={creating || !newName.trim()}
-                className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm rounded transition-colors">
+                className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm rounded-md transition-colors">
                 {creating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
                 Create
               </button>

@@ -122,7 +122,7 @@ export default function ForcePasswordChange({ user, onSuccess }: Props) {
           <button
             type="submit"
             disabled={isLoading}
-            className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold py-2.5 rounded text-sm transition-all active:scale-[0.98]"
+            className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold py-2.5 rounded-md text-sm transition-all active:scale-[0.98]"
           >
             {isLoading ? 'Updating…' : 'Set Password & Continue'}
           </button>

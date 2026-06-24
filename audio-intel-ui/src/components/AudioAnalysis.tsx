@@ -409,12 +409,12 @@ export default function AudioAnalysis() {
                   </p>
                 </div>
                 <button onClick={() => handleAcceptSuggestion(sg)} disabled={busy}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white text-xs rounded transition-colors">
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white text-xs rounded-md transition-colors">
                   {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UserCheck className="w-3.5 h-3.5" />}
                   Confirm
                 </button>
                 <button onClick={() => handleRejectSuggestion(sg)} disabled={busy}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 disabled:opacity-40 text-zinc-200 text-xs rounded transition-colors">
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 disabled:opacity-40 text-zinc-200 text-xs rounded-md transition-colors">
                   <X className="w-3.5 h-3.5" />
                   Different
                 </button>
@@ -559,12 +559,12 @@ export default function AudioAnalysis() {
               {segments.length > 0 && (
                 splitMode ? (
                   <button onClick={exitSplitMode}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-xs rounded transition-colors">
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-xs rounded-md transition-colors">
                     <X className="w-3.5 h-3.5" /> Cancel
                   </button>
                 ) : (
                   <button onClick={() => setSplitMode(true)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white text-xs rounded transition-colors">
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white text-xs rounded-md transition-colors">
                     <Scissors className="w-3.5 h-3.5" /> Split Speaker
                   </button>
                 )
@@ -749,7 +749,7 @@ export default function AudioAnalysis() {
             <span className="font-mono">{selectedSegmentIds.size}</span> segment{selectedSegmentIds.size === 1 ? '' : 's'} selected
           </span>
           <button onClick={() => { setSplitNewName(''); setSplitError(''); setSplitModalOpen(true); }}
-            className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white text-xs rounded transition-colors">
+            className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white text-xs rounded-md transition-colors">
             Split into new speaker
           </button>
         </div>
@@ -779,9 +779,9 @@ export default function AudioAnalysis() {
             </div>
             <div className="p-4 border-t border-zinc-800 flex justify-end gap-2">
               <button onClick={() => setSplitModalOpen(false)} disabled={splitting}
-                className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-sm rounded transition-colors">Cancel</button>
+                className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-sm rounded-md transition-colors">Cancel</button>
               <button onClick={handleSplitConfirm} disabled={splitting}
-                className="px-4 py-2 bg-amber-600 hover:bg-amber-500 disabled:opacity-40 text-white text-sm rounded flex items-center gap-2 transition-colors">
+                className="px-4 py-2 bg-amber-600 hover:bg-amber-500 disabled:opacity-40 text-white text-sm rounded-md flex items-center gap-2 transition-colors">
                 {splitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Scissors className="w-3.5 h-3.5" />}
                 Split
               </button>
@@ -816,7 +816,7 @@ export default function AudioAnalysis() {
                           key={s.id}
                           onClick={() => acceptReassignSuggestion(s)}
                           disabled={reassigning}
-                          className="flex w-full items-center gap-2.5 px-2 py-1.5 bg-black hover:bg-zinc-800 border border-zinc-800 hover:border-blue-500/40 disabled:opacity-50 rounded transition-colors text-left"
+                          className="flex w-full items-center gap-2.5 px-2 py-1.5 bg-black hover:bg-zinc-800 border border-zinc-800 hover:border-blue-500/40 disabled:opacity-50 rounded-md transition-colors text-left"
                         >
                           <SpeakerAvatar speakerId={s.id} name={s.name} color={s.color} imagePath={s.imagePath} size={24} />
                           <span className="text-zinc-200 text-sm flex-1 truncate">{s.name}</span>
@@ -872,15 +872,15 @@ export default function AudioAnalysis() {
             </div>
             <div className="p-4 border-t border-zinc-800 flex flex-col-reverse sm:flex-row gap-2 sm:justify-end">
               <button onClick={() => { setReassignTarget(null); setReassignName(''); }}
-                className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-sm rounded transition-colors">Cancel</button>
+                className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-sm rounded-md transition-colors">Cancel</button>
               {reassignMatch && (
                 <button onClick={() => handleReassign(true)} disabled={reassigning}
-                  className="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 disabled:opacity-50 text-white text-sm rounded transition-colors">
+                  className="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 disabled:opacity-50 text-white text-sm rounded-md transition-colors">
                   No, different person
                 </button>
               )}
               <button onClick={() => handleReassign(false)} disabled={reassigning}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm rounded flex items-center gap-2 justify-center transition-colors">
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm rounded-md flex items-center gap-2 justify-center transition-colors">
                 {reassigning && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                 {reassignMatch ? 'Merge into existing' : 'Save as new person'}
               </button>

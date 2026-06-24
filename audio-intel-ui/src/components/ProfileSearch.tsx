@@ -123,13 +123,13 @@ export default function ProfileSearch() {
                 <span className="text-zinc-200 text-xs font-mono ml-2">· {selectedIds.size} selected</span>
                 <button
                   onClick={() => setBatchConfirmOpen(true)}
-                  className="ml-auto flex items-center gap-1.5 px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white text-xs rounded transition-colors"
+                  className="ml-auto flex items-center gap-1.5 px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white text-xs rounded-md transition-colors"
                 >
                   <Trash2 className="w-3.5 h-3.5" /> Delete {selectedIds.size}
                 </button>
                 <button
                   onClick={() => setSelectedIds(new Set())}
-                  className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 text-xs rounded transition-colors"
+                  className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 text-xs rounded-md transition-colors"
                 >
                   Clear
                 </button>
@@ -226,14 +226,14 @@ export default function ProfileSearch() {
               <button
                 onClick={() => setBatchConfirmOpen(false)}
                 disabled={batchBusy}
-                className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-white text-sm rounded transition-colors"
+                className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-white text-sm rounded-md transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={handleBatchDelete}
                 disabled={batchBusy}
-                className="px-4 py-2 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white text-sm rounded transition-colors flex items-center gap-2"
+                className="px-4 py-2 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white text-sm rounded-md transition-colors flex items-center gap-2"
               >
                 {batchBusy && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                 Delete {selectedIds.size}
