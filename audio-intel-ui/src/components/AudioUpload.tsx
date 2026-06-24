@@ -90,7 +90,11 @@ export default function AudioUpload({ userId }: Props) {
   const doUpload = async (fileId: string, file: File, name: string, description: string, recordedAt: string) => {
     let audioId: number;
     try {
-      const result = await audios.upload(file, name, description, userId, recordedAt);
+      // Real upload (0-100% of bytes sent) is mapped onto the 0-20% segment of
+      // the bar; processing then continues that same bar from 20% to 100%.
+      const result = await audios.upload(file, name, description, userId, recordedAt, (pct) => {
+        setFiles(prev => prev.map(f => f.id === fileId ? { ...f, progress: Math.min(20, Math.round(pct * 0.2)) } : f));
+      });
       audioId = result.id;
       setFiles(prev => prev.map(f => f.id === fileId ? { ...f, audioId, status: 'processing', progress: 20 } : f));
     } catch (err) {
@@ -311,7 +315,11 @@ export default function AudioUpload({ userId }: Props) {
 
                     <div className="flex items-center gap-2.5 mt-2">
                       {file.status === 'uploading' && (
-                        <><Loader2 className="w-3.5 h-3.5 text-blue-400 animate-spin" /><span className="text-blue-400 text-xs font-mono">Uploading…</span></>
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 text-blue-400 animate-spin" />
+                          <span className="text-blue-400 text-xs font-mono">Uploading…</span>
+                          {file.progress > 0 && <span className="text-blue-600 text-xs font-mono">{Math.round(file.progress * 5)}%</span>}
+                        </>
                       )}
                       {file.status === 'processing' && (
                         <>
