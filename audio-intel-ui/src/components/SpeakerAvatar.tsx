@@ -14,10 +14,24 @@ interface Props {
   bust?: string | number;
 }
 
-function initials(name: string): string {
+// Avatars drop the speaker's per-person color entirely — uniform dark slate
+// fill with a single cyan accent ring, so the whole app reads as a dark-ops
+// console rather than a rainbow of flat colors. The raw `color` prop is
+// still accepted (used elsewhere as the speaker's identity signal — edges,
+// group rings, badges) but is no longer rendered here.
+const AVATAR_FILL = '#23272f';
+const AVATAR_ACCENT = 'rgba(34,211,238,0.55)';
+
+export function initials(name: string): string {
   const cleaned = (name || '').trim();
   if (!cleaned) return '?';
-  // "Speaker 1" → "S1", "Ofir Menda" → "OM"
+  // Auto-named unknowns ("Speaker 1", "Speaker 41"...) all reduce to the same
+  // "S<first digit>" under plain initials, so different people become
+  // visually indistinguishable once there are more than ~9 of them. Show the
+  // actual number instead — fully unique and still reads as "an unknown".
+  const speakerMatch = cleaned.match(/^speaker\s+(\d+)$/i);
+  if (speakerMatch) return speakerMatch[1];
+  // "Ofir Menda" → "OM"
   const parts = cleaned.split(/\s+/);
   if (parts.length === 1) {
     const p = parts[0];
@@ -26,9 +40,9 @@ function initials(name: string): string {
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
-/** Round speaker avatar — image if available, else initials over the speaker color. */
+/** Round speaker avatar — image if available, else initials over a dark slate fill. */
 export default function SpeakerAvatar({
-  speakerId, name, color, imagePath, size = 24, className = '', bust,
+  speakerId, name, imagePath, size = 24, className = '', bust,
 }: Props) {
   const [errored, setErrored] = useState(false);
   const hasImg = !!imagePath && !errored;
@@ -49,7 +63,7 @@ export default function SpeakerAvatar({
           height: size,
           borderWidth,
           borderStyle: 'solid',
-          borderColor: color,
+          borderColor: AVATAR_ACCENT,
         }}
         onError={() => setErrored(true)}
       />
@@ -62,12 +76,12 @@ export default function SpeakerAvatar({
       style={{
         width: size,
         height: size,
-        backgroundColor: color,
+        backgroundColor: AVATAR_FILL,
         fontSize,
         lineHeight: 1,
         borderWidth,
         borderStyle: 'solid',
-        borderColor: 'rgba(255,255,255,0.15)',
+        borderColor: AVATAR_ACCENT,
       }}
       title={name}
     >
