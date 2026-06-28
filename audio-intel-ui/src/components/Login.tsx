@@ -46,7 +46,7 @@ export default function Login({ onLogin }: LoginProps) {
           <h1 className="text-white text-2xl font-bold tracking-tight mt-4">
             Kol<span className="text-blue-400">L</span>ab
           </h1>
-          <p className="text-zinc-200 text-xs font-mono mt-1 uppercase tracking-widest">
+          <p className="text-zinc-200 text-xs font-mono mt-1 tracking-widest">
             Intelligence Management Platform
           </p>
         </div>
