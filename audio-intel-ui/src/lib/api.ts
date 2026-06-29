@@ -1,5 +1,8 @@
-const BASE = "http://localhost:8001";
-const ML_BASE = "http://localhost:8000";
+// In dev (npm run dev / Tauri) we hit local Backend on :8001. In production
+// (Vercel build) we read VITE_API_BASE_URL — each developer points their copy
+// at their own local Backend, which talks to shared Turso + R2.
+const BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8001";
+const ML_BASE = import.meta.env.VITE_ML_BASE_URL || "http://localhost:8000";
 export const API_BASE = BASE;
 
 // Identity threading: filtered endpoints take ?user_id=. App.tsx calls

@@ -8,7 +8,6 @@ Runs on port 8001. The ML service runs separately on port 8000.
 import asyncio
 import json
 import os
-import shutil
 import time as _time
 import uuid
 from pathlib import Path
@@ -25,6 +24,7 @@ from typing import Optional
 
 import database
 import matcher
+import storage
 from enrichment_provider import ProviderNotConfiguredError
 import enrichment_providers
 import nlp
@@ -33,16 +33,9 @@ from nlp import models as _nlp_models
 
 ML_URL = os.getenv("ML_API_URL", "http://127.0.0.1:8000")
 
-if os.getenv("AUDIO_STORAGE_DIR"):
-    STORAGE_DIR = Path(os.environ["AUDIO_STORAGE_DIR"])
-else:
-    try:
-        from platformdirs import user_data_dir
-        STORAGE_DIR = Path(user_data_dir("AudioIntel")) / "uploads"
-    except ImportError:
-        STORAGE_DIR = Path.home() / ".audio-intel" / "uploads"
-
-STORAGE_DIR.mkdir(parents=True, exist_ok=True)
+# Backward-compatible alias — storage.LOCAL_DIR owns the actual on-disk root.
+# Other modules that imported STORAGE_DIR from this file keep working unchanged.
+STORAGE_DIR = storage.LOCAL_DIR
 
 app = FastAPI(title="AudioIntel Backend", version="1.0.0")
 
@@ -51,6 +44,7 @@ app.add_middleware(
     allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 database.init_db()
@@ -315,19 +309,21 @@ def _scan_for_dangerous_words(audio_id: int) -> None:
                 break
 
 
-async def _run_ml_and_save(audio_id: int, save_path: Path, original_name: str) -> None:
+async def _run_ml_and_save(audio_id: int, audio_handle: str, original_name: str) -> None:
     """Background task: call ML service, persist results, update audio status."""
     _audio_progress[audio_id] = {"pct": 0, "label": "Queued…"}
     stop_event = asyncio.Event()
     poll_task = asyncio.create_task(_poll_ml_progress(audio_id, stop_event))
 
     try:
+        audio_bytes = storage.read_bytes(audio_handle)
+        if audio_bytes is None:
+            raise RuntimeError(f"audio not found at {audio_handle}")
         async with httpx.AsyncClient(timeout=600.0) as client:
-            with save_path.open("rb") as f:
-                ml_response = await client.post(
-                    f"{ML_URL}/analyze",
-                    files={"file": (original_name, f, "audio/mpeg")},
-                )
+            ml_response = await client.post(
+                f"{ML_URL}/analyze",
+                files={"file": (original_name, audio_bytes, "audio/mpeg")},
+            )
         ml_response.raise_for_status()
         result = ml_response.json()
     except Exception:
@@ -438,17 +434,15 @@ async def upload_audio(
     display_name = name.strip() or Path(original_name).stem
     suffix = Path(original_name).suffix or ".wav"
     file_id = uuid.uuid4().hex
-    save_path = STORAGE_DIR / f"{file_id}{suffix}"
+    key = f"audios/{file_id}{suffix}"
 
-    with save_path.open("wb") as out:
-        shutil.copyfileobj(file.file, out)
+    handle, file_size = storage.put_upload(file, key)
 
-    file_size = save_path.stat().st_size
     audio_id = database.create_audio(
-        display_name, description, str(save_path), file_size, uploaded_by, recorded_at.strip()
+        display_name, description, handle, file_size, uploaded_by, recorded_at.strip()
     )
 
-    background_tasks.add_task(_run_ml_and_save, audio_id, save_path, original_name)
+    background_tasks.add_task(_run_ml_and_save, audio_id, handle, original_name)
 
     return {"id": audio_id, "name": display_name, "status": "processing"}
 
@@ -476,11 +470,7 @@ def delete_audio(audio_id: int):
     if not audio:
         raise HTTPException(status_code=404, detail="Audio not found.")
     ok = database.delete_audio(audio_id)
-    # Remove file from disk if it exists
-    try:
-        Path(audio["filePath"]).unlink(missing_ok=True)
-    except Exception:
-        pass
+    storage.delete(audio["filePath"])
     return {"success": ok}
 
 
@@ -510,10 +500,7 @@ def batch_delete_audios(body: BatchDeleteRequest):
             failed.append({"id": aid, "reason": "not found"})
             continue
         if database.delete_audio(aid):
-            try:
-                Path(audio["filePath"]).unlink(missing_ok=True)
-            except Exception:
-                pass
+            storage.delete(audio["filePath"])
             deleted.append(aid)
         else:
             failed.append({"id": aid, "reason": "delete failed"})
@@ -525,7 +512,15 @@ def get_audio_file(audio_id: int):
     audio = database.get_audio(audio_id)
     if not audio:
         raise HTTPException(status_code=404, detail="Audio not found.")
-    path = Path(audio["filePath"])
+    handle = audio["filePath"]
+    # R2: bounce the browser to a presigned URL so playback streams direct from
+    # cloud storage (no per-byte traffic through Backend).
+    url = storage.presigned_url(handle)
+    if url:
+        from fastapi.responses import RedirectResponse
+        return RedirectResponse(url=url, status_code=307)
+    # Local fallback: serve from disk.
+    path = Path(handle)
     if not path.exists():
         raise HTTPException(status_code=404, detail="File not found on disk.")
     suffix = path.suffix.lower()
@@ -543,11 +538,11 @@ async def retry_audio(audio_id: int, background_tasks: BackgroundTasks):
         raise HTTPException(status_code=404, detail="Audio not found.")
     if audio["status"] == "processing":
         raise HTTPException(status_code=409, detail="Already processing.")
-    save_path = Path(audio["filePath"])
-    if not save_path.exists():
-        raise HTTPException(status_code=404, detail="Audio file no longer on disk.")
+    handle = audio["filePath"]
+    if not storage.exists(handle):
+        raise HTTPException(status_code=404, detail="Audio file no longer in storage.")
     database.update_audio_result(audio_id, "processing")
-    background_tasks.add_task(_run_ml_and_save, audio_id, save_path, save_path.name)
+    background_tasks.add_task(_run_ml_and_save, audio_id, handle, Path(handle).name)
     return {"success": True}
 
 
@@ -588,11 +583,35 @@ def get_speaker_audios(speaker_id: int):
     return database.get_audios_for_speaker(speaker_id)
 
 
-# Speaker pictures live inside STORAGE_DIR/speaker_images/ so they share the
-# same on-disk root as audio uploads. We accept jpg/png/webp.
+# Speaker pictures share the storage backend with audio uploads — local disk or
+# R2 depending on env. ImagePath in the DB stores the full handle (R2 key or
+# absolute local path) so the storage module can route correctly on read.
 _SPEAKER_IMG_DIR = STORAGE_DIR / "speaker_images"
 _SPEAKER_IMG_DIR.mkdir(parents=True, exist_ok=True)
 _ALLOWED_IMG_EXT = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
+
+
+def _speaker_image_key(speaker_id: int, ext: str) -> str:
+    """Build the storage key for a fresh speaker image upload."""
+    fname = f"speaker_{speaker_id}_{uuid.uuid4().hex[:8]}{ext}"
+    # In R2 mode we just want "speakers/<fname>"; in local mode put_bytes/put_upload
+    # will route to LOCAL_DIR. Either way the returned handle goes into ImagePath
+    # as-is and reads route correctly via storage.{presigned_url,read_bytes}.
+    if storage.USE_R2:
+        return f"speakers/{fname}"
+    return str(_SPEAKER_IMG_DIR / fname)
+
+
+def _resolve_legacy_image_path(stored: str) -> str:
+    """Older rows stored just the filename ('speaker_5_abc.jpg'). Promote to a
+    full handle so storage.* can find it on disk."""
+    if not stored:
+        return stored
+    if storage.USE_R2 and "/" in stored:
+        return stored  # already a key
+    if "/" in stored or "\\" in stored:
+        return stored  # already a full path
+    return str(_SPEAKER_IMG_DIR / stored)
 
 
 def _attach_wikidata_image_if_needed(speaker_id: int) -> None:
@@ -638,10 +657,9 @@ def _attach_wikidata_image_if_needed(speaker_id: int) -> None:
             return
         if r.status_code != 200 or not r.content:
             return
-        fname = f"speaker_{speaker_id}_{uuid.uuid4().hex[:8]}{ext}"
-        dest = _SPEAKER_IMG_DIR / fname
-        dest.write_bytes(r.content)
-        database.set_speaker_image_path(speaker_id, fname)
+        key = _speaker_image_key(speaker_id, ext)
+        handle = storage.put_bytes(r.content, key)
+        database.set_speaker_image_path(speaker_id, handle)
     except Exception:
         _logging.exception("[wikidata image] failed for speaker %d", speaker_id)
 
@@ -654,20 +672,13 @@ async def upload_speaker_image(speaker_id: int, file: UploadFile = File(...)):
     ext = Path(file.filename or "").suffix.lower()
     if ext not in _ALLOWED_IMG_EXT:
         raise HTTPException(status_code=400, detail=f"Unsupported file type {ext or '(none)'}.")
-    # Remove an existing image so we don't leak stale files when ext changes.
+    # Remove the previous image so we don't leak stale objects when ext changes.
     if spk.get("imagePath"):
-        old = _SPEAKER_IMG_DIR / spk["imagePath"]
-        if old.exists():
-            try:
-                old.unlink()
-            except OSError:
-                pass
-    fname = f"speaker_{speaker_id}_{uuid.uuid4().hex[:8]}{ext}"
-    dest = _SPEAKER_IMG_DIR / fname
-    with dest.open("wb") as out:
-        shutil.copyfileobj(file.file, out)
-    database.set_speaker_image_path(speaker_id, fname)
-    return {"success": True, "imagePath": fname}
+        storage.delete(_resolve_legacy_image_path(spk["imagePath"]))
+    key = _speaker_image_key(speaker_id, ext)
+    handle, _size = storage.put_upload(file, key)
+    database.set_speaker_image_path(speaker_id, handle)
+    return {"success": True, "imagePath": handle}
 
 
 @app.delete("/speakers/{speaker_id}/image")
@@ -676,12 +687,7 @@ def delete_speaker_image(speaker_id: int):
     if not spk:
         raise HTTPException(status_code=404, detail="Speaker not found.")
     if spk.get("imagePath"):
-        f = _SPEAKER_IMG_DIR / spk["imagePath"]
-        if f.exists():
-            try:
-                f.unlink()
-            except OSError:
-                pass
+        storage.delete(_resolve_legacy_image_path(spk["imagePath"]))
     database.set_speaker_image_path(speaker_id, None)
     return {"success": True}
 
@@ -691,10 +697,15 @@ def get_speaker_image(speaker_id: int):
     spk = database.get_speaker(speaker_id)
     if not spk or not spk.get("imagePath"):
         raise HTTPException(status_code=404, detail="No image for speaker.")
-    f = _SPEAKER_IMG_DIR / spk["imagePath"]
-    if not f.exists():
+    handle = _resolve_legacy_image_path(spk["imagePath"])
+    url = storage.presigned_url(handle)
+    if url:
+        from fastapi.responses import RedirectResponse
+        return RedirectResponse(url=url, status_code=307)
+    p = Path(handle)
+    if not p.exists():
         raise HTTPException(status_code=404, detail="Image file missing on disk.")
-    return FileResponse(str(f))
+    return FileResponse(str(p))
 
 
 class SpeakerTrackedRequest(BaseModel):
@@ -758,19 +769,18 @@ def reassign_speaker(audio_id: int, speaker_id: int, body: ReassignSpeakerReques
     return new_speaker
 
 
-async def _embeddings_for_ranges(audio_path: Path, ranges: list[tuple[float, float]]) -> tuple[np.ndarray, str]:
+async def _embeddings_for_ranges(audio_bytes: bytes, audio_name: str, ranges: list[tuple[float, float]]) -> tuple[np.ndarray, str]:
     """POST the audio + ranges to ML's /speakers/embed-from-ranges and return
     (embeddings, model_version). Raises HTTPException on ML failure."""
     if not ranges:
         return np.zeros((0, 192), dtype=np.float32), "ecapa-tdnn-v1"
     ranges_json = json.dumps([[float(s), float(e)] for s, e in ranges])
-    with audio_path.open("rb") as f:
-        async with httpx.AsyncClient(timeout=300.0) as client:
-            ml_response = await client.post(
-                f"{ML_URL}/speakers/embed-from-ranges",
-                files={"file": (audio_path.name, f, "audio/mpeg")},
-                data={"ranges": ranges_json},
-            )
+    async with httpx.AsyncClient(timeout=300.0) as client:
+        ml_response = await client.post(
+            f"{ML_URL}/speakers/embed-from-ranges",
+            files={"file": (audio_name, audio_bytes, "audio/mpeg")},
+            data={"ranges": ranges_json},
+        )
     if ml_response.status_code != 200:
         raise HTTPException(status_code=502, detail=f"ML re-extract failed: {ml_response.text[:200]}")
     payload = ml_response.json()
@@ -790,9 +800,10 @@ async def split_speaker(audio_id: int, speaker_id: int, body: SplitSpeakerReques
     audio = database.get_audio(audio_id)
     if not audio:
         raise HTTPException(status_code=404, detail="Audio not found.")
-    audio_path = Path(audio["filePath"])
-    if not audio_path.exists():
-        raise HTTPException(status_code=404, detail="Audio file no longer on disk.")
+    audio_bytes = storage.read_bytes(audio["filePath"])
+    if audio_bytes is None:
+        raise HTTPException(status_code=404, detail="Audio file no longer in storage.")
+    audio_name = Path(audio["filePath"]).name
 
     source = database.get_speaker(speaker_id)
     if not source:
@@ -819,13 +830,13 @@ async def split_speaker(audio_id: int, speaker_id: int, body: SplitSpeakerReques
     remaining_ranges = [(s["startTime"], s["endTime"]) for s in remaining]
 
     # Re-extract embeddings via ML — does the heavy lifting (load audio, slice, ECAPA windows)
-    new_embeddings, model_version = await _embeddings_for_ranges(audio_path, moved_ranges)
+    new_embeddings, model_version = await _embeddings_for_ranges(audio_bytes, audio_name, moved_ranges)
     if new_embeddings.size == 0:
         raise HTTPException(
             status_code=400,
             detail="Selected segments produced no usable embeddings (probably too short).",
         )
-    remaining_embeddings, _ = await _embeddings_for_ranges(audio_path, remaining_ranges) if remaining_ranges else (np.zeros((0, 192), dtype=np.float32), model_version)
+    remaining_embeddings, _ = await _embeddings_for_ranges(audio_bytes, audio_name, remaining_ranges) if remaining_ranges else (np.zeros((0, 192), dtype=np.float32), model_version)
 
     # Snapshot speaker set before any repointing so we can diff relations afterward.
     before_speakers = database.get_audio_speaker_ids(audio_id)
