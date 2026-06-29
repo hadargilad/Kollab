@@ -1,5 +1,6 @@
 import hashlib
 import base64
+import logging
 import os
 import re
 import sqlite3
@@ -20,9 +21,145 @@ else:
     except ImportError:
         DB_PATH = Path.home() / ".audio-intel" / "AudioIntelDB.db"
 
+# Turso embedded-replica mode: when both env vars are set, we use libsql which
+# keeps a local SQLite file in sync with the remote Turso primary. The API is
+# sqlite3-compatible (Connection.execute/executemany/commit) — same `_get_conn()`
+# return type for callers either way. Silent fallback to plain sqlite3 if libsql
+# isn't installed or the connection fails so dev/offline keeps working.
+TURSO_URL = os.getenv("TURSO_URL")
+TURSO_AUTH_TOKEN = os.getenv("TURSO_AUTH_TOKEN")
+_USE_TURSO = bool(TURSO_URL and TURSO_AUTH_TOKEN)
 
-def _get_conn() -> sqlite3.Connection:
+_libsql = None
+if _USE_TURSO:
+    try:
+        import libsql_experimental as _libsql  # type: ignore
+    except ImportError:
+        try:
+            import libsql as _libsql  # type: ignore
+        except ImportError:
+            logging.warning("[database] TURSO_URL set but libsql not installed; falling back to sqlite3")
+            _USE_TURSO = False
+
+
+class _LibsqlConnWrap:
+    """Thin adapter so libsql_experimental.Connection plays well with the rest of
+    the codebase, which uses `with conn:` (auto-commit on success / rollback on
+    failure — same semantics as sqlite3.Connection's context manager) and
+    `row["ColumnName"]` indexing on cursor rows."""
+
+    def __init__(self, inner):
+        self._inner = inner
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        try:
+            if exc_type is None:
+                self._inner.commit()
+            else:
+                # libsql may or may not expose rollback; suppress to avoid
+                # double-faulting on a primary exception.
+                try:
+                    self._inner.rollback()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        return False  # propagate any original exception
+
+    def execute(self, *args, **kwargs):
+        return _RowsCursor(self._inner.execute(*args, **kwargs))
+
+    def executemany(self, *args, **kwargs):
+        return _RowsCursor(self._inner.executemany(*args, **kwargs))
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
+
+
+class _RowsCursor:
+    """Wraps a libsql cursor so fetched rows are sqlite3.Row-like (support both
+    integer indexing and column-name indexing)."""
+
+    def __init__(self, inner):
+        self._inner = inner
+
+    def fetchone(self):
+        row = self._inner.fetchone()
+        return _wrap_row(row, self._inner.description) if row is not None else None
+
+    def fetchall(self):
+        return [_wrap_row(r, self._inner.description) for r in self._inner.fetchall()]
+
+    def __iter__(self):
+        for r in self._inner:
+            yield _wrap_row(r, self._inner.description)
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
+
+
+class _Row:
+    """sqlite3.Row-like: indexable by int or column name, also iterable."""
+    __slots__ = ("_values", "_index")
+
+    def __init__(self, values, index):
+        self._values = values
+        self._index = index
+
+    def __getitem__(self, key):
+        if isinstance(key, int):
+            return self._values[key]
+        return self._values[self._index[key]]
+
+    def __iter__(self):
+        return iter(self._values)
+
+    def __len__(self):
+        return len(self._values)
+
+    def keys(self):
+        return list(self._index.keys())
+
+    def get(self, key, default=None):
+        try:
+            return self[key]
+        except (KeyError, IndexError):
+            return default
+
+
+def _wrap_row(row, description):
+    if row is None:
+        return None
+    # Already dict-indexable (sqlite3.Row, dict) — pass through.
+    if hasattr(row, "keys") and not isinstance(row, tuple):
+        return row
+    cols = {col[0]: i for i, col in enumerate(description or [])}
+    values = tuple(row)
+    return _Row(values, cols)
+
+
+def _get_conn():
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    if _USE_TURSO:
+        try:
+            conn = _libsql.connect(
+                str(DB_PATH),
+                sync_url=TURSO_URL,
+                auth_token=TURSO_AUTH_TOKEN,
+            )
+            # Pull latest from Turso. Cheap when there's nothing new; tolerate
+            # offline by swallowing the failure — local cache still works.
+            try:
+                conn.sync()
+            except Exception:
+                pass
+            conn.execute("PRAGMA foreign_keys = ON")
+            return _LibsqlConnWrap(conn)
+        except Exception:
+            logging.exception("[database] Turso connect failed; falling back to sqlite3")
     conn = sqlite3.connect(str(DB_PATH))
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")

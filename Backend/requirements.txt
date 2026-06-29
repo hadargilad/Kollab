@@ -5,6 +5,10 @@ platformdirs
 httpx
 numpy
 
+# Cloud state (Turso + R2). Both optional — Backend works locally if env vars unset.
+libsql-experimental    # Turso embedded-replica client (SQLite-compatible)
+boto3                  # S3-compatible client for Cloudflare R2
+
 # NLP (Ofir — coded-language detection)
 transformers           # distilgpt2 for Signal C (perplexity)
 torch                  # backend for transformers + sentence-transformers
