@@ -1,4 +1,4 @@
-# AudioIntel ML Service
+# Kollab ML Service
 
 Stateless audio analysis. Given an audio file the service returns a transcript,
 diarized speaker turns, and per-speaker voice fingerprints. It does **not**

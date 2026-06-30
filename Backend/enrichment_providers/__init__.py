@@ -11,7 +11,7 @@ from .null_provider import NullProvider
 from .wikidata import WikidataProvider
 
 
-_log = logging.getLogger("audiointel.enrichment")
+_log = logging.getLogger("kollab.enrichment")
 
 
 def _build_provider() -> EnrichmentProvider:

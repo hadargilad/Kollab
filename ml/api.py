@@ -1,6 +1,6 @@
 """
-AudioIntel ML API
-=================
+Kollab ML API
+=============
 Pure stateless analysis service. Holds no DB and persists nothing.
 
 Endpoints:
@@ -23,7 +23,7 @@ from pipeline import (
     EMBEDDING_MODEL_VERSION,
 )
 
-app = FastAPI(title="AudioIntel ML API", version="3.0.0")
+app = FastAPI(title="Kollab ML API", version="3.0.0")
 
 # Only one heavy analysis at a time — Whisper+pyannote are RAM-hungry
 _analyze_lock = threading.Semaphore(1)
@@ -40,7 +40,7 @@ app.add_middleware(
 
 @app.get("/")
 def health_check():
-    return {"status": "AudioIntel ML service is running", "version": "3.0.0"}
+    return {"status": "Kollab ML service is running", "version": "3.0.0"}
 
 
 @app.get("/status")
