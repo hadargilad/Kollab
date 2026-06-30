@@ -1,5 +1,5 @@
 """
-Speaker matcher for AudioIntel.
+Speaker matcher for Kollab.
 
 The matcher decides, given a fresh speaker's window embeddings, whether they
 correspond to a speaker we already know — and at what confidence tier:

@@ -1,6 +1,6 @@
 """
-AudioIntel Backend API
-======================
+Kollab Backend API
+===================
 Lightweight auth + user management service.
 Runs on port 8001. The ML service runs separately on port 8000.
 """
@@ -37,7 +37,7 @@ ML_URL = os.getenv("ML_API_URL", "http://127.0.0.1:8000")
 # Other modules that imported STORAGE_DIR from this file keep working unchanged.
 STORAGE_DIR = storage.LOCAL_DIR
 
-app = FastAPI(title="AudioIntel Backend", version="1.0.0")
+app = FastAPI(title="Kollab Backend", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -173,7 +173,7 @@ def _resolve_caller(user_id: Optional[int]) -> tuple[Optional[int], bool]:
 
 @app.get("/")
 def health():
-    return {"status": "AudioIntel backend running", "version": "1.0.0"}
+    return {"status": "Kollab backend running", "version": "1.0.0"}
 
 
 # ─── System Stats ─────────────────────────────────────────────────────────────
@@ -650,7 +650,7 @@ def _attach_wikidata_image_if_needed(speaker_id: int) -> None:
             with httpx.Client(
                 timeout=15.0,
                 follow_redirects=True,
-                headers={"User-Agent": "AudioIntel/1.0 (profile image fetch)"},
+                headers={"User-Agent": "Kollab/1.0 (profile image fetch)"},
             ) as c:
                 r = c.get(url)
         except httpx.HTTPError:

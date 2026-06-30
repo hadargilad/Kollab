@@ -70,7 +70,7 @@ export default function StartupScreen({ onReady }: Props) {
       <div className="relative flex flex-col items-center gap-8 w-full max-w-xs">
         {/* Boot header */}
         <div className="text-center text-zinc-300 font-mono text-[10px] tracking-widest w-full">
-          AudioIntel v2.0 // Secure Boot
+          Kollab v2.0 // Secure Boot
         </div>
 
         {/* Logo */}
