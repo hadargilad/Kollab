@@ -178,7 +178,6 @@ export default function Entities() {
   }, []);
 
   const filtered = allEntities.filter(e => {
-    if (e.distinctAudioCount < 2) return false;
     if (typeFilter !== 'all' && e.type !== typeFilter) return false;
     if (search && !e.rawText.toLowerCase().includes(search.toLowerCase())) return false;
     return true;

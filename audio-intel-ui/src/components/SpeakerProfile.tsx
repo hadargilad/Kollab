@@ -3,6 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { User, FileAudio, Calendar, Link2, Loader2, AlertCircle, Pencil, Check, X, Merge, Trash2, PlayCircle, Clock, ArrowLeft, Sparkles, ExternalLink, Camera, EyeOff, Eye, Wand2 } from 'lucide-react';
 import { speakers, relations, type SpeakerRecord, type RelationRecord, type SpeakerAudioRecord, type MatchSuggestion } from '../lib/api';
 import SpeakerAvatar from './SpeakerAvatar';
+import Loader from './Loader';
 
 const RISK_COLORS = {
   low:    { bg: 'bg-emerald-500/8',  text: 'text-emerald-400',  border: 'border-emerald-500/25' },
@@ -208,11 +209,7 @@ export default function SpeakerProfile() {
     return `${Math.floor(days / 30)}mo ago`;
   };
 
-  if (loading) return (
-    <div className="flex items-center justify-center py-20">
-      <Loader2 className="w-6 h-6 text-blue-500 animate-spin" />
-    </div>
-  );
+  if (loading) return <Loader />;
 
   if (error || !speaker) return (
     <div className="p-6">

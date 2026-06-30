@@ -97,8 +97,8 @@ class EntityResolver:
 
         for ent in existing_entities:
             self._all.append(ent)
-            self._by_norm[ent["normalized_text"]].append(ent)
-            pk = ent.get("phonetic_key") or ""
+            self._by_norm[ent["normalizedText"]].append(ent)
+            pk = ent.get("phoneticKey") or ""
             if pk:
                 self._by_phonetic[pk].append(ent)
 
@@ -129,7 +129,7 @@ class EntityResolver:
         jw_candidates = [
             ent for ent in self._all
             if ent["type"] == entity_type
-            and _jaro_winkler(normalized, ent["normalized_text"]) >= JARO_THRESHOLD
+            and _jaro_winkler(normalized, ent["normalizedText"]) >= JARO_THRESHOLD
         ]
         if jw_candidates:
             best = self._pick_by_embedding(jw_candidates, mention_embedding, speaker_context_embeddings)
@@ -149,7 +149,7 @@ class EntityResolver:
         # Find which candidate's ghost/related speaker context is closest
         best, best_score = candidates[0], -1.0
         for cand in candidates:
-            gid = cand.get("ghost_speaker_id")
+            gid = cand.get("ghostSpeakerId")
             if gid and gid in speaker_ctx:
                 score = _cosine(mention_emb, speaker_ctx[gid])
                 if score > best_score:
@@ -158,8 +158,8 @@ class EntityResolver:
 
     def register(self, entity_row: dict) -> None:
         self._all.append(entity_row)
-        self._by_norm[entity_row["normalized_text"]].append(entity_row)
-        pk = entity_row.get("phonetic_key") or ""
+        self._by_norm[entity_row["normalizedText"]].append(entity_row)
+        pk = entity_row.get("phoneticKey") or ""
         if pk:
             self._by_phonetic[pk].append(entity_row)
 
@@ -185,7 +185,7 @@ def extract_and_resolve_entities(audio_id: int) -> None:
             vec = _blob_to_floats(row["embedding"])
             if vec:
                 seg_emb_lookup[row["id"]] = vec
-                sid = row.get("speaker_id")
+                sid = row.get("speakerId")
                 if sid:
                     by_speaker[sid].append(vec)
     for sid, vecs in by_speaker.items():
@@ -252,8 +252,8 @@ def extract_and_resolve_entities(audio_id: int) -> None:
             )
 
             # upsert "mentioned" relation between speaker and ghost (if promoted)
-            if matched_ent and matched_ent.get("ghost_speaker_id") and speaker_id:
-                database.upsert_mention_relation(speaker_id, matched_ent["ghost_speaker_id"])
+            if matched_ent and matched_ent.get("ghostSpeakerId") and speaker_id:
+                database.upsert_mention_relation(speaker_id, matched_ent["ghostSpeakerId"])
 
     # After processing all segments: check ghost promotion
     _promote_ghosts(audio_id)
@@ -268,14 +268,14 @@ def _promote_ghosts(audio_id: int) -> None:
         min_speakers=GHOST_MIN_SPEAKERS,
     )
     for ent in candidates:
-        ghost_id = ent.get("ghost_speaker_id")
+        ghost_id = ent.get("ghostSpeakerId")
         if not ghost_id:
-            ghost_id = database.create_ghost_speaker(ent["id"], ent["raw_text"])
+            ghost_id = database.create_ghost_speaker(ent["id"], ent["rawText"])
             if ghost_id:
                 log.info(
                     "[entity_resolution] promoted entity %d ('%s') to ghost speaker %d",
                     ent["id"],
-                    ent["raw_text"],
+                    ent["rawText"],
                     ghost_id,
                 )
                 database.create_alert(
