@@ -289,10 +289,11 @@ export const speakers = {
       new_name: newName,
       force_separate: forceSeparate,
     }),
-  split: (audioId: number, speakerId: number, segmentIds: number[], newName = "") =>
+  split: (audioId: number, speakerId: number, segmentIds: number[], newName = "", sourceNewName = "") =>
     request<SpeakerRecord>("POST", `/audios/${audioId}/speakers/${speakerId}/split`, {
       segment_ids: segmentIds,
       new_name: newName,
+      source_new_name: sourceNewName,
     }),
   enroll: (name: string, file: File): Promise<EnrollSpeakerResult> => {
     const form = new FormData();
@@ -323,10 +324,11 @@ export const speakers = {
       "GET", `/speakers/${speakerId}/enrichment/related?limit=${limit}`
     ),
 
-  enrichmentLink: (speakerId: number, entityId: string, name: string, file: File | null): Promise<EnrichmentLinkResult> => {
+  enrichmentLink: (speakerId: number, entityId: string, name: string, file: File | null, audioName = ""): Promise<EnrichmentLinkResult> => {
     const form = new FormData();
     form.append("entityId", entityId);
     form.append("name", name);
+    form.append("audio_name", audioName);
     if (file) form.append("file", file);
     return fetch(`${BASE}/speakers/${speakerId}/enrichment/link`, { method: "POST", body: form }).then(async (r) => {
       if (!r.ok) {

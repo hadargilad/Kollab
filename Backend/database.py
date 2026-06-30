@@ -69,14 +69,52 @@ class _LibsqlConnWrap:
             pass
         return False  # propagate any original exception
 
-    def execute(self, *args, **kwargs):
-        return _RowsCursor(self._inner.execute(*args, **kwargs))
+    def execute(self, sql, params=None, *args, **kwargs):
+        sql2, names = _rewrite_named(sql)
+        if names and isinstance(params, dict):
+            params = tuple(params[n] for n in names)
+            sql = sql2
+        elif names:
+            sql = sql2  # cleaned regardless so libsql doesn't choke on :name
+        # libsql_experimental's bindings only accept tuples; sqlite3 accepts
+        # any sequence (list, tuple). Coerce so existing code keeps working.
+        if isinstance(params, list):
+            params = tuple(params)
+        if params is None:
+            return _RowsCursor(self._inner.execute(sql, *args, **kwargs))
+        return _RowsCursor(self._inner.execute(sql, params, *args, **kwargs))
 
-    def executemany(self, *args, **kwargs):
-        return _RowsCursor(self._inner.executemany(*args, **kwargs))
+    def executemany(self, sql, seq_of_params, *args, **kwargs):
+        sql2, names = _rewrite_named(sql)
+        if names:
+            # libsql_experimental only accepts positional tuples in executemany.
+            # sqlite3 accepts dicts when SQL uses `:name`. Translate per-row.
+            seq_of_params = [
+                tuple(p[n] for n in names) if isinstance(p, dict) else
+                tuple(p) if isinstance(p, list) else p
+                for p in seq_of_params
+            ]
+            sql = sql2
+        else:
+            # Coerce per-row lists → tuples even when there are no named params.
+            seq_of_params = [tuple(p) if isinstance(p, list) else p for p in seq_of_params]
+        return _RowsCursor(self._inner.executemany(sql, seq_of_params, *args, **kwargs))
 
     def __getattr__(self, name):
         return getattr(self._inner, name)
+
+
+import re as _re
+_NAMED_PARAM_RE = _re.compile(r":(\w+)")
+
+
+def _rewrite_named(sql):
+    """If the SQL uses `:name` placeholders, return (positional-?-sql, names).
+    Otherwise (sql_unchanged, [])."""
+    names = _NAMED_PARAM_RE.findall(sql)
+    if not names:
+        return sql, []
+    return _NAMED_PARAM_RE.sub("?", sql), names
 
 
 class _RowsCursor:
@@ -141,25 +179,105 @@ def _wrap_row(row, description):
     return _Row(values, cols)
 
 
+import time as _time
+import threading as _threading
+
+# Rate-limit Turso pulls. Without this, every API request issued by the UI
+# would round-trip to Frankfurt — multiple times per second. With it, reads
+# use the local replica file (instant) and we only re-sync every
+# TURSO_SYNC_MIN_SEC. Writes still push to the primary on commit, so the
+# stale-read window only affects what OTHER developers wrote — your own
+# writes are visible to you immediately via the local cache.
+TURSO_SYNC_MIN_SEC = float(os.getenv("TURSO_SYNC_MIN_SEC", "5"))
+_last_sync_at = 0.0
+
+# Single shared libsql connection + a lock, instead of opening a new one per
+# request. libsql.connect() does network handshake (auth + manifest probe) on
+# every call — ~2-3s a pop, fatal for an app the UI polls multiple times per
+# second. One pooled connection cuts request latency to milliseconds.
+_pooled_libsql = None
+_pool_lock = _threading.RLock()
+
+
+def _maybe_sync(conn) -> None:
+    global _last_sync_at
+    now = _time.monotonic()
+    if now - _last_sync_at < TURSO_SYNC_MIN_SEC:
+        return
+    try:
+        conn.sync()
+        _last_sync_at = _time.monotonic()
+    except Exception:
+        pass  # offline-tolerant
+
+
+def _get_pooled_libsql(_force_new: bool = False):
+    """Lazily open the shared libsql connection. If `_force_new` is True (used
+    by the recovery path), discard the existing one and open a fresh one."""
+    global _pooled_libsql
+    if _force_new and _pooled_libsql is not None:
+        try:
+            _pooled_libsql.close()
+        except Exception:
+            pass
+        _pooled_libsql = None
+    if _pooled_libsql is None:
+        _pooled_libsql = _libsql.connect(
+            str(DB_PATH),
+            sync_url=TURSO_URL,
+            auth_token=TURSO_AUTH_TOKEN,
+        )
+        _pooled_libsql.execute("PRAGMA foreign_keys = ON")
+    return _pooled_libsql
+
+
+class _PooledLibsqlConn(_LibsqlConnWrap):
+    """Same wrapper as _LibsqlConnWrap, but holds a shared lock for its
+    lifetime — entry on __enter__, release on __exit__. This serialises DB
+    access through the single pooled libsql connection without changing any
+    call site (every existing `with _get_conn() as conn:` keeps working)."""
+
+    def __init__(self, inner, lock):
+        super().__init__(inner)
+        self._lock = lock
+        self._lock.acquire()
+
+    def __exit__(self, exc_type, exc, tb):
+        try:
+            return super().__exit__(exc_type, exc, tb)
+        finally:
+            self._lock.release()
+
+
+_LIBSQL_RECOVERABLE_ERRORS = (
+    "wal_insert_begin",
+    "wal_get",
+    "stream not found",
+    "stream closed",
+    "Connection reset",
+    "Broken pipe",
+)
+
+
+def _is_recoverable_libsql_error(err: Exception) -> bool:
+    msg = str(err)
+    return any(needle in msg for needle in _LIBSQL_RECOVERABLE_ERRORS)
+
+
 def _get_conn():
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     if _USE_TURSO:
-        try:
-            conn = _libsql.connect(
-                str(DB_PATH),
-                sync_url=TURSO_URL,
-                auth_token=TURSO_AUTH_TOKEN,
-            )
-            # Pull latest from Turso. Cheap when there's nothing new; tolerate
-            # offline by swallowing the failure — local cache still works.
+        for attempt in (0, 1):
             try:
-                conn.sync()
-            except Exception:
-                pass
-            conn.execute("PRAGMA foreign_keys = ON")
-            return _LibsqlConnWrap(conn)
-        except Exception:
-            logging.exception("[database] Turso connect failed; falling back to sqlite3")
+                inner = _get_pooled_libsql(_force_new=(attempt == 1))
+                _maybe_sync(inner)
+                return _PooledLibsqlConn(inner, _pool_lock)
+            except Exception as e:
+                if attempt == 0 and _is_recoverable_libsql_error(e):
+                    logging.warning("[database] libsql pool got into a bad state (%s); recycling", e)
+                    continue
+                logging.exception("[database] Turso pool failed; falling back to sqlite3")
+                break
     conn = sqlite3.connect(str(DB_PATH))
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
@@ -595,6 +713,17 @@ _SPEAKER_COLORS = [
 ]
 
 
+def _pick_unused_color(conn) -> str:
+    """Pick a palette colour that no existing speaker is already using. Falls
+    back to a count-based cycle if every palette colour is already taken."""
+    used = {row[0] for row in conn.execute("SELECT DISTINCT Color FROM Speakers").fetchall()}
+    for c in _SPEAKER_COLORS:
+        if c not in used:
+            return c
+    count = conn.execute("SELECT COUNT(*) FROM Speakers").fetchone()[0]
+    return _SPEAKER_COLORS[count % len(_SPEAKER_COLORS)]
+
+
 def create_audio(name: str, description: str, file_path: str,
                  file_size: int, uploaded_by: int,
                  recorded_at: Optional[str] = None) -> int:
@@ -699,8 +828,7 @@ def create_unknown_speaker() -> tuple[int, str]:
         ).fetchone()
         next_num = (row[0] or 0) + 1
         display_name = f"Speaker {next_num}"
-        count = conn.execute("SELECT COUNT(*) FROM Speakers").fetchone()[0]
-        color = _SPEAKER_COLORS[count % len(_SPEAKER_COLORS)]
+        color = _pick_unused_color(conn)
         cursor = conn.execute(
             "INSERT INTO Speakers (VoiceIdentifier, Name, Color) VALUES (?, ?, ?)",
             (voice_id, display_name, color),
@@ -729,8 +857,7 @@ def get_or_create_speaker(voice_identifier: str, name: str) -> tuple[int, bool]:
             if name_match:
                 return name_match["Id"], False
 
-        count = conn.execute("SELECT COUNT(*) FROM Speakers").fetchone()[0]
-        color = _SPEAKER_COLORS[count % len(_SPEAKER_COLORS)]
+        color = _pick_unused_color(conn)
         cursor = conn.execute(
             "INSERT INTO Speakers (VoiceIdentifier, Name, Color) VALUES (?, ?, ?)",
             (voice_identifier, name, color),
@@ -978,8 +1105,7 @@ def reassign_speaker_in_audio(audio_id: int, old_speaker_id: int, new_name: str)
     new_voice_id = f"speaker_{_uuid.uuid4().hex[:8]}"
     with _get_conn() as conn:
         before = _distinct_audio_speakers(conn, audio_id)
-        count = conn.execute("SELECT COUNT(*) FROM Speakers").fetchone()[0]
-        color = _SPEAKER_COLORS[count % len(_SPEAKER_COLORS)]
+        color = _pick_unused_color(conn)
         cursor = conn.execute(
             "INSERT INTO Speakers (VoiceIdentifier, Name, Color) VALUES (?, ?, ?)",
             (new_voice_id, new_name, color),
@@ -1253,7 +1379,7 @@ def get_all_segment_embeddings() -> list[dict]:
         rows = conn.execute(
             "SELECT Id, SpeakerId, Embedding FROM Segments WHERE Embedding IS NOT NULL"
         ).fetchall()
-    return [{"id": r["Id"], "speaker_id": r["SpeakerId"], "embedding": r["Embedding"]} for r in rows]
+    return [{"id": r["Id"], "speakerId": r["SpeakerId"], "embedding": r["Embedding"]} for r in rows]
 
 
 # ─── Entities ─────────────────────────────────────────────────────────────────

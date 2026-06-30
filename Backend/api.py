@@ -497,21 +497,30 @@ def get_audio_file(audio_id: int):
     if not audio:
         raise HTTPException(status_code=404, detail="Audio not found.")
     handle = audio["filePath"]
-    # R2: bounce the browser to a presigned URL so playback streams direct from
-    # cloud storage (no per-byte traffic through Backend).
-    url = storage.presigned_url(handle)
-    if url:
-        from fastapi.responses import RedirectResponse
-        return RedirectResponse(url=url, status_code=307)
-    # Local fallback: serve from disk.
-    path = Path(handle)
-    if not path.exists():
-        raise HTTPException(status_code=404, detail="File not found on disk.")
-    suffix = path.suffix.lower()
+
+    suffix = Path(handle).suffix.lower()
     media_type = {
         ".mp3": "audio/mpeg", ".wav": "audio/wav",
         ".m4a": "audio/mp4", ".ogg": "audio/ogg",
     }.get(suffix, "audio/mpeg")
+
+    # In R2 mode we stream the bytes through Backend rather than redirecting
+    # to a presigned URL. Why: the waveform pipeline does fetch().arrayBuffer()
+    # to read PCM, which the browser rejects under cross-origin without R2
+    # bucket-level CORS. Streaming via Backend (already on the same origin) is
+    # CORS-free and avoids needing extra bucket-admin permissions. The cost is
+    # one Backend-RAM-resident copy per request, fine for a 3-user team.
+    if storage.USE_R2 and not storage._looks_like_local_path(handle):
+        from fastapi.responses import Response
+        body = storage.read_bytes(handle)
+        if body is None:
+            raise HTTPException(status_code=404, detail="File not found in R2.")
+        return Response(content=body, media_type=media_type)
+
+    # Local fallback: serve from disk.
+    path = Path(handle)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="File not found on disk.")
     return FileResponse(str(path), media_type=media_type)
 
 
@@ -682,10 +691,22 @@ def get_speaker_image(speaker_id: int):
     if not spk or not spk.get("imagePath"):
         raise HTTPException(status_code=404, detail="No image for speaker.")
     handle = _resolve_legacy_image_path(spk["imagePath"])
-    url = storage.presigned_url(handle)
-    if url:
-        from fastapi.responses import RedirectResponse
-        return RedirectResponse(url=url, status_code=307)
+
+    # Stream from R2 through Backend rather than 307-redirecting to a presigned
+    # URL — same reason as audio: avoids cross-origin and redirect-quirk issues
+    # in <img> tags and network-graph SVGs.
+    if storage.USE_R2 and not storage._looks_like_local_path(handle):
+        from fastapi.responses import Response
+        body = storage.read_bytes(handle)
+        if body is None:
+            raise HTTPException(status_code=404, detail="Image not found in R2.")
+        ext = Path(handle).suffix.lower()
+        media_type = {
+            ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+            ".png": "image/png", ".webp": "image/webp", ".gif": "image/gif",
+        }.get(ext, "application/octet-stream")
+        return Response(content=body, media_type=media_type)
+
     p = Path(handle)
     if not p.exists():
         raise HTTPException(status_code=404, detail="Image file missing on disk.")
@@ -718,7 +739,8 @@ class ReassignSpeakerRequest(BaseModel):
 
 class SplitSpeakerRequest(BaseModel):
     segment_ids: list[int]
-    new_name: str = ""  # empty → auto-generate "Speaker N"
+    new_name: str = ""          # name for the NEW speaker (selected segments). Empty → "Speaker N"
+    source_new_name: str = ""   # optional rename for the SOURCE speaker (remaining segments). Empty → keep current name
 
 
 @app.post("/audios/{audio_id}/speakers/{speaker_id}/reassign", status_code=201)
@@ -849,6 +871,14 @@ async def split_speaker(audio_id: int, speaker_id: int, body: SplitSpeakerReques
         database.merge_speakers(speaker_id, new_id)
         return database.get_speaker(new_id)
 
+    # Optional: rename the source (the one keeping the *remaining* segments).
+    # We do this AFTER the split so the rename can't collide with the new
+    # speaker that was just created.
+    src_new = body.source_new_name.strip()
+    if src_new:
+        source = database.get_speaker(speaker_id)
+        database.update_speaker(speaker_id, src_new, source["riskLevel"] if source else "low")
+
     database.adjust_relations_for_audio(audio_id, before_speakers)
     return database.get_speaker(new_id)
 
@@ -938,21 +968,19 @@ def update_speaker(speaker_id: int, body: UpdateSpeakerRequest):
 
 # ─── Speaker Enrollment + Suggestions ─────────────────────────────────────────
 
-async def _enroll_from_audio(name: str, file: UploadFile) -> tuple[int, int]:
-    """Shared enrollment plumbing: ML embed + persist + cap-trim.
-    Returns (speaker_id, rows_inserted). Raises HTTPException on failure."""
+async def _enroll_from_bytes(name: str, original_name: str, file_bytes: bytes,
+                              content_type: str = "audio/mpeg") -> tuple[int, int]:
+    """Same as _enroll_from_audio but caller already has the bytes (avoids
+    double-reading the UploadFile when we also need to persist it)."""
     clean_name = name.strip()
     if not clean_name:
         raise HTTPException(status_code=400, detail="Name cannot be empty.")
-
-    original_name = file.filename or "audio"
-    file_bytes = await file.read()
 
     try:
         async with httpx.AsyncClient(timeout=300.0) as client:
             ml_response = await client.post(
                 f"{ML_URL}/speakers/embed",
-                files={"file": (original_name, file_bytes, file.content_type or "audio/mpeg")},
+                files={"file": (original_name, file_bytes, content_type)},
             )
         ml_response.raise_for_status()
         payload = ml_response.json()
@@ -970,6 +998,14 @@ async def _enroll_from_audio(name: str, file: UploadFile) -> tuple[int, int]:
         model_version=payload.get("model_version", "ecapa-tdnn-v1"),
     )
     return speaker_id, inserted
+
+
+async def _enroll_from_audio(name: str, file: UploadFile) -> tuple[int, int]:
+    """UploadFile wrapper around _enroll_from_bytes — used by /speakers/enroll."""
+    original_name = file.filename or "audio"
+    file_bytes = await file.read()
+    return await _enroll_from_bytes(name, original_name, file_bytes,
+                                     file.content_type or "audio/mpeg")
 
 
 @app.post("/speakers/enroll", status_code=201)
@@ -1124,9 +1160,11 @@ def enrichment_related(speaker_id: int, limit: int = 25):
 
 @app.post("/speakers/{speaker_id}/enrichment/link", status_code=201)
 async def enrichment_link(
+    background_tasks: BackgroundTasks,
     speaker_id: int,
     entityId: str = Form(...),
     name: str = Form(...),
+    audio_name: str = Form(""),
     file: Optional[UploadFile] = File(None),
 ):
     """Enroll a suggested related entity as a new speaker, linked to the
@@ -1148,23 +1186,63 @@ async def enrichment_link(
         raise HTTPException(status_code=400, detail="entityId is required.")
 
     existing = database.get_speaker_by_wikidata_id(entityId)
-    reused = False
-    if existing:
-        if existing["id"] == speaker_id:
-            raise HTTPException(status_code=400, detail="Cannot link a speaker to themselves.")
+    reused = bool(existing and existing["id"] != speaker_id)
+    if existing and existing["id"] == speaker_id:
+        raise HTTPException(status_code=400, detail="Cannot link a speaker to themselves.")
+
+    # Read bytes once if an audio file was provided — used for ML embed,
+    # R2 upload, and the background analyse task.
+    audio_bytes: Optional[bytes] = None
+    original_name = ""
+    if file is not None and getattr(file, "filename", ""):
+        original_name = file.filename or "audio"
+        audio_bytes = await file.read()
+        if not audio_bytes:
+            audio_bytes = None  # treat empty upload as no file
+
+    if reused:
         new_speaker_id = existing["id"]
-        reused = True
     else:
-        if file is None or not getattr(file, "filename", ""):
+        if not audio_bytes:
             raise HTTPException(
                 status_code=400,
                 detail="Audio file is required when adding a new speaker.",
             )
-        new_speaker_id, _ = await _enroll_from_audio(name, file)
+        new_speaker_id, _ = await _enroll_from_bytes(
+            name, original_name, audio_bytes,
+            file.content_type if file else "audio/mpeg",
+        )
         try:
             database.set_wikidata_id(new_speaker_id, entityId)
         except ValueError as e:
             raise HTTPException(status_code=409, detail=str(e))
+
+    # Persist + queue full analysis for the recording — same flow for both
+    # paths: new speaker (audio_bytes definitely present) and reused speaker
+    # (audio_bytes only if the analyst attached one). The recording lands in
+    # "All Uploads" with status=processing, transitions to processed when
+    # the Whisper+diarize+NLP pass finishes.
+    if audio_bytes:
+        try:
+            from datetime import datetime as _dt
+            import uuid as _uuid
+            suffix = Path(original_name).suffix or ".wav"
+            file_id = _uuid.uuid4().hex
+            key = f"audios/{file_id}{suffix}"
+            handle = storage.put_bytes(audio_bytes, key)
+            display_name = audio_name.strip() or f"Enrollment — {name.strip()}"
+            new_audio_id = database.create_audio(
+                display_name,
+                f"Voice enrollment for {name.strip()} (linked from {source['name']}).",
+                handle,
+                len(audio_bytes),
+                None,
+                _dt.utcnow().isoformat(),
+            )
+            background_tasks.add_task(_run_ml_and_save, new_audio_id, handle, original_name)
+        except Exception:
+            import logging
+            logging.exception("[enrichment_link] failed to persist enrollment audio (speaker %s)", new_speaker_id)
 
     database.upsert_relation(speaker_id, new_speaker_id, topic="wikidata")
     # Whether reused or freshly enrolled, the speaker now carries a Wikidata id.

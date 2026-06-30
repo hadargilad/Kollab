@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Loader2, Search, Users, Check, X, Upload, Plus, AlertCircle,
-  ChevronRight, User, Link2, Globe, ExternalLink, Sparkles,
+  ChevronRight, User, Link2, Globe, ExternalLink, UsersRound,
 } from 'lucide-react';
 import {
   speakers, type SpeakerRecord, type EntityCandidate, type RelatedEntity,
@@ -29,8 +29,16 @@ export default function RelatedSpeakers() {
   const [relatedLoading, setRelatedLoading] = useState(false);
   const [relatedError, setRelatedError] = useState('');
   const [linkedIds, setLinkedIds] = useState<Set<string>>(new Set());
+
+  // Step-3 free-text search (alongside the Wikidata-suggested list, lets the
+  // analyst find someone Wikidata didn't auto-link).
+  const [extraQuery, setExtraQuery] = useState('');
+  const [extraResults, setExtraResults] = useState<EntityCandidate[]>([]);
+  const [extraLoading, setExtraLoading] = useState(false);
+  const [extraError, setExtraError] = useState('');
   const [linkTarget, setLinkTarget] = useState<RelatedEntity | null>(null);
   const [linkName, setLinkName] = useState('');
+  const [linkAudioName, setLinkAudioName] = useState('');
   const [linkFile, setLinkFile] = useState<File | null>(null);
   const [linking, setLinking] = useState(false);
   const [linkError, setLinkError] = useState('');
@@ -106,15 +114,38 @@ export default function RelatedSpeakers() {
     }
   };
 
+  const handleExtraSearch = async () => {
+    if (!sourceId || !extraQuery.trim()) return;
+    setExtraLoading(true);
+    setExtraError('');
+    setExtraResults([]);
+    try {
+      const results = await speakers.enrichmentSearch(sourceId, extraQuery.trim());
+      setExtraResults(results);
+      if (results.length === 0) setExtraError('No matches on Wikidata.');
+    } catch (e: any) {
+      setExtraError(e.message ?? 'Search failed.');
+    } finally {
+      setExtraLoading(false);
+    }
+  };
+
   const startLink = (cand: RelatedEntity) => {
     setLinkTarget(cand);
     setLinkName(cand.label);
+    setLinkAudioName('');
     setLinkFile(null);
     setLinkError('');
     if (linkFileRef.current) linkFileRef.current.value = '';
   };
 
-  const cancelLink = () => { setLinkTarget(null); setLinkName(''); setLinkFile(null); setLinkError(''); };
+  const cancelLink = () => {
+    setLinkTarget(null);
+    setLinkName('');
+    setLinkAudioName('');
+    setLinkFile(null);
+    setLinkError('');
+  };
 
   const submitLink = async () => {
     if (!sourceId || !linkTarget) return;
@@ -123,9 +154,9 @@ export default function RelatedSpeakers() {
     setLinking(true);
     setLinkError('');
     try {
-      await speakers.enrichmentLink(sourceId, linkTarget.entityId, linkName.trim(), linkFile);
+      await speakers.enrichmentLink(sourceId, linkTarget.entityId, linkName.trim(), linkFile, linkAudioName.trim());
       setLinkedIds(prev => new Set(prev).add(linkTarget.entityId));
-      setLinkSuccess(`Added ${linkTarget.label} as a suggested connection of ${source?.name ?? 'source'}.`);
+      setLinkSuccess(`Added ${linkTarget.label} as a suggested connection of ${source?.name ?? 'source'}. Recording queued for analysis.`);
       cancelLink();
       setTimeout(() => setLinkSuccess(''), 5000);
     } catch (e: any) {
@@ -144,7 +175,7 @@ export default function RelatedSpeakers() {
       <div>
         <div className="text-zinc-200 text-[10px] font-mono uppercase tracking-widest mb-1">Intelligence</div>
         <div className="flex items-center gap-2.5 mb-0.5">
-          <Sparkles className="w-5 h-5 text-blue-400" />
+          <UsersRound className="w-5 h-5 text-blue-400" />
           <h1 className="text-white text-2xl font-bold tracking-tight">Related Speakers</h1>
         </div>
         <p className="text-zinc-300 text-sm">
@@ -315,6 +346,80 @@ export default function RelatedSpeakers() {
                 Click <span className="text-zinc-300">Add as speaker</span> to enroll — you'll need a clean audio sample.
               </p>
 
+              {/* Free-text Wikidata search — for someone the suggestions didn't include. */}
+              <div className="mb-5 pb-5 border-b border-zinc-800">
+                <div className="text-zinc-200 text-[10px] font-mono uppercase tracking-widest mb-2">
+                  Or search Wikidata directly
+                </div>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <div className="relative flex-1">
+                    <Search className="w-3.5 h-3.5 text-zinc-200 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input type="text" placeholder="e.g. Sebastian Vettel"
+                      value={extraQuery}
+                      onChange={e => setExtraQuery(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && handleExtraSearch()}
+                      className={inputCls + ' pl-9'} />
+                  </div>
+                  <button onClick={handleExtraSearch} disabled={extraLoading || !extraQuery.trim()}
+                    className="flex items-center gap-1.5 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm rounded transition-colors shrink-0">
+                    {extraLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
+                    Search
+                  </button>
+                </div>
+                {extraError && (
+                  <div className="mt-3 flex items-start gap-2 px-3 py-2 bg-red-500/8 border border-red-500/25 rounded text-red-400 text-xs">
+                    <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" /><span>{extraError}</span>
+                  </div>
+                )}
+                {extraResults.length > 0 && (
+                  <div className="mt-3 space-y-1.5">
+                    {extraResults.map(cand => {
+                      const linked = linkedIds.has(cand.entityId);
+                      return (
+                        <div key={cand.entityId}
+                          className="flex items-center justify-between px-4 py-3 bg-black border border-zinc-800 rounded">
+                          <div className="flex items-center gap-3 min-w-0 flex-1">
+                            {cand.imageUrl ? (
+                              <img src={cand.imageUrl} alt={cand.label}
+                                className="w-8 h-8 rounded object-cover bg-zinc-800"
+                                onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                            ) : (
+                              <div className="w-8 h-8 rounded bg-zinc-800 flex items-center justify-center shrink-0">
+                                <User className="w-4 h-4 text-zinc-200" />
+                              </div>
+                            )}
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2">
+                                <span className="text-white text-sm truncate">{cand.label}</span>
+                                <a href={wikidataUrl(cand.entityId)} target="_blank" rel="noopener noreferrer"
+                                  className="text-blue-400 text-[10px] font-mono hover:underline shrink-0">{cand.entityId}</a>
+                              </div>
+                              {cand.description && <div className="text-zinc-200 text-xs truncate">{cand.description}</div>}
+                            </div>
+                          </div>
+                          {linked ? (
+                            <span className="flex items-center gap-1 px-2.5 py-1 bg-emerald-500/8 border border-emerald-500/25 text-emerald-300 text-[10px] font-mono rounded shrink-0">
+                              <Check className="w-3 h-3" /> Linked
+                            </span>
+                          ) : (
+                            <button onClick={() => startLink({
+                              entityId: cand.entityId,
+                              label: cand.label,
+                              description: cand.description ?? '',
+                              imageUrl: cand.imageUrl ?? null,
+                              reason: 'manual search',
+                            } as RelatedEntity)}
+                              className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs rounded transition-colors shrink-0">
+                              <Plus className="w-3.5 h-3.5" /> Add as speaker
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
               {relatedLoading ? (
                 <div className="flex items-center justify-center gap-2 text-zinc-300 text-xs py-8">
                   <Loader2 className="w-3.5 h-3.5 animate-spin" /> Querying Wikidata…
@@ -393,9 +498,17 @@ export default function RelatedSpeakers() {
               </p>
               <div className="space-y-3">
                 <div>
-                  <label className="text-zinc-200 text-[10px] font-mono uppercase tracking-widest block mb-1.5">Display Name</label>
+                  <label className="text-zinc-200 text-[10px] font-mono uppercase tracking-widest block mb-1.5">Speaker Name</label>
                   <input type="text" value={linkName} onChange={e => setLinkName(e.target.value)}
                     className="w-full bg-black border border-zinc-800 rounded px-3 py-2.5 text-white text-sm focus:outline-none focus:border-blue-500 transition-all" />
+                </div>
+                <div>
+                  <label className="text-zinc-200 text-[10px] font-mono uppercase tracking-widest block mb-1.5">
+                    Recording Name <span className="text-zinc-400 normal-case">(optional)</span>
+                  </label>
+                  <input type="text" value={linkAudioName} onChange={e => setLinkAudioName(e.target.value)}
+                    placeholder={`Default: Enrollment — ${linkName.trim() || linkTarget.label}`}
+                    className="w-full bg-black border border-zinc-800 rounded px-3 py-2.5 text-white text-sm placeholder-zinc-400 focus:outline-none focus:border-blue-500 transition-all" />
                 </div>
                 <div>
                   <label className="text-zinc-200 text-[10px] font-mono uppercase tracking-widest block mb-1.5">Audio Sample</label>
@@ -405,6 +518,9 @@ export default function RelatedSpeakers() {
                     <input ref={linkFileRef} type="file" accept="audio/*" className="hidden"
                       onChange={e => setLinkFile(e.target.files?.[0] ?? null)} />
                   </label>
+                  <p className="text-zinc-400 text-[10px] mt-1.5">
+                    This recording will be analyzed (transcript + speakers) and appear in All Uploads.
+                  </p>
                 </div>
                 {linkError && (
                   <div className="flex items-start gap-2 px-3 py-2.5 bg-red-500/8 border border-red-500/25 rounded text-red-400 text-xs">

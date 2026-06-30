@@ -3,6 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
   Briefcase, Plus, Loader2, AlertCircle, ArrowLeft, Trash2, UserCheck, X, Layers, UserPlus, Search,
 } from 'lucide-react';
+import Loader from './Loader';
 import {
   projects, groups, assignments, users as usersApi, speakers as speakersApi,
   type ProjectDetail as ProjectDetailType,
@@ -173,11 +174,7 @@ export default function ProjectDetail({ isAdmin }: Props) {
     return map;
   }, [allAssignments]);
 
-  if (loading) return (
-    <div className="flex items-center justify-center py-20">
-      <Loader2 className="w-6 h-6 text-blue-500 animate-spin" />
-    </div>
-  );
+  if (loading) return <Loader />;
 
   if (error || !detail) return (
     <div className="p-6">

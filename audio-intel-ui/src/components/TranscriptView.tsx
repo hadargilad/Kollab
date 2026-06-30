@@ -4,6 +4,7 @@ import { Copy, Check, Search, FileText, User, Loader2, AlertCircle, ShieldAlert,
 import { audios, dangerousWords, search, entities, type AudioRecord, type SegmentRecord, type SubScores, type SearchResultItem, type SegmentMentionRecord } from '../lib/api';
 import { SUB_LEGEND } from './SubScoresBar';
 import SpeakerAvatar from './SpeakerAvatar';
+import Loader from './Loader';
 
 const ENTITY_COLORS: Record<string, string> = {
   PERSON:  'bg-blue-500/25 text-blue-200 border-b border-blue-400/50',
@@ -240,11 +241,7 @@ export default function TranscriptView() {
     if (!value) setSemanticResults(null);
   };
 
-  if (loading) return (
-    <div className="flex items-center justify-center py-20">
-      <Loader2 className="w-6 h-6 text-blue-500 animate-spin" />
-    </div>
-  );
+  if (loading) return <Loader />;
 
   if (error || !audio) return (
     <div className="p-6">
