@@ -805,9 +805,63 @@ def get_all_audios() -> list[dict]:
 
 def delete_audio(audio_id: int) -> bool:
     with _get_conn() as conn:
+        # Snapshot which speakers appeared in this audio BEFORE the cascade
+        # drops the rows in Segments. After deletion we check which of these
+        # have zero segments left anywhere — auto-named 'Speaker N' rows that
+        # qualify get pruned so the UI doesn't accumulate ghost unknowns. Named
+        # speakers (charles leclerc etc.) are intentionally preserved even if
+        # they end up orphaned — they're real identities in the voice DB.
+        prior_speakers = [
+            r["SpeakerId"] for r in conn.execute(
+                "SELECT DISTINCT SpeakerId FROM Segments WHERE AudioId = ? AND SpeakerId IS NOT NULL",
+                (audio_id,),
+            ).fetchall()
+        ]
         result = conn.execute("DELETE FROM Audios WHERE Id = ?", (audio_id,))
+        if result.rowcount > 0:
+            _prune_orphan_unknown_speakers(conn, prior_speakers)
         conn.commit()
     return result.rowcount > 0
+
+
+def _prune_orphan_unknown_speakers(conn, candidate_speaker_ids: list[int]) -> int:
+    """Of `candidate_speaker_ids`, delete the ones that (a) have no segments
+    left in any audio AND (b) are auto-named 'Speaker N' unknowns. Returns the
+    number pruned. Caller is responsible for the commit."""
+    pruned = 0
+    for sid in candidate_speaker_ids:
+        still_has_segs = conn.execute(
+            "SELECT 1 FROM Segments WHERE SpeakerId = ? LIMIT 1", (sid,),
+        ).fetchone()
+        if still_has_segs:
+            continue
+        row = conn.execute(
+            "SELECT Name FROM Speakers WHERE Id = ? AND Name GLOB 'Speaker [0-9]*'",
+            (sid,),
+        ).fetchone()
+        if not row:
+            continue
+        conn.execute("DELETE FROM Speakers WHERE Id = ?", (sid,))
+        pruned += 1
+    return pruned
+
+
+def prune_all_orphan_unknown_speakers() -> int:
+    """One-shot cleanup: delete every auto-named 'Speaker N' that has zero
+    segments anywhere. Returns count pruned."""
+    with _get_conn() as conn:
+        rows = conn.execute(
+            """SELECT s.Id FROM Speakers s
+               LEFT JOIN Segments sg ON sg.SpeakerId = s.Id
+               WHERE s.Name GLOB 'Speaker [0-9]*'
+               GROUP BY s.Id
+               HAVING COUNT(sg.Id) = 0"""
+        ).fetchall()
+        ids = [r["Id"] for r in rows]
+        for sid in ids:
+            conn.execute("DELETE FROM Speakers WHERE Id = ?", (sid,))
+        conn.commit()
+    return len(ids)
 
 
 # ─── Speakers ─────────────────────────────────────────────────────────────────
