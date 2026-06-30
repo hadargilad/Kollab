@@ -20,3 +20,6 @@ rank_bm25              # BM25Okapi lexical retrieval (Hadar)
 # NLP (Ofek — NER + Entity Resolution)
 phonetics              # Double Metaphone for phonetic name matching
 jellyfish              # Jaro-Winkler string similarity
+
+# Testing
+pytest
