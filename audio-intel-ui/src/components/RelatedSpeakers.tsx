@@ -47,9 +47,10 @@ export default function RelatedSpeakers() {
   const source = useMemo(() => allSpeakers.find(s => s.id === sourceId) ?? null, [allSpeakers, sourceId]);
 
   const filteredSpeakers = useMemo(() => {
+    const named = allSpeakers.filter(s => !/^Speaker \d+$/i.test(s.name));
     const q = speakerFilter.trim().toLowerCase();
-    if (!q) return allSpeakers;
-    return allSpeakers.filter(s => s.name.toLowerCase().includes(q) || s.voiceIdentifier.toLowerCase().includes(q));
+    if (!q) return named;
+    return named.filter(s => s.name.toLowerCase().includes(q) || s.voiceIdentifier.toLowerCase().includes(q));
   }, [allSpeakers, speakerFilter]);
 
   const goToStep2 = (id: number) => {
