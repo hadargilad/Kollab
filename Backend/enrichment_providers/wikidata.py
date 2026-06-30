@@ -27,7 +27,7 @@ from enrichment_provider import (
 )
 
 
-_log = logging.getLogger("audiointel.enrichment.wikidata")
+_log = logging.getLogger("kollab.enrichment.wikidata")
 
 
 _WIKIDATA_API = "https://www.wikidata.org/w/api.php"
@@ -36,7 +36,7 @@ _COMMONS_FILE = "https://commons.wikimedia.org/wiki/Special:FilePath/"
 
 # Wikidata's SPARQL endpoint asks every requester to identify themselves
 # with a meaningful User-Agent (https://meta.wikimedia.org/wiki/User-Agent_policy).
-_USER_AGENT = "AudioIntel/1.0 (https://github.com/; enrichment feature)"
+_USER_AGENT = "Kollab/1.0 (https://github.com/; enrichment feature)"
 
 # How long to keep a successful response in memory.
 _CACHE_TTL_SEC = 3600

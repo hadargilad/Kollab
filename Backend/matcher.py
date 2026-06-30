@@ -1,5 +1,5 @@
 """
-Speaker matcher for AudioIntel.
+Speaker matcher for Kollab.
 
 The matcher decides, given a fresh speaker's window embeddings, whether they
 correspond to a speaker we already know — and at what confidence tier:
@@ -100,7 +100,11 @@ def match_or_register(
         arr = arr.reshape(1, -1)
 
     corpus = database.get_all_embeddings()
-    available = {sid: vecs for sid, vecs in corpus.items() if sid not in taken_speaker_ids}
+    named_ids = database.get_named_speaker_ids()
+    available = {
+        sid: vecs for sid, vecs in corpus.items()
+        if sid not in taken_speaker_ids and sid in named_ids
+    }
 
     best_id: Optional[int] = None
     best_score = 0.0

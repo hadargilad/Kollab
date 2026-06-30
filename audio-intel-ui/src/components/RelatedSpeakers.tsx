@@ -55,9 +55,10 @@ export default function RelatedSpeakers() {
   const source = useMemo(() => allSpeakers.find(s => s.id === sourceId) ?? null, [allSpeakers, sourceId]);
 
   const filteredSpeakers = useMemo(() => {
+    const named = allSpeakers.filter(s => !/^Speaker \d+$/i.test(s.name));
     const q = speakerFilter.trim().toLowerCase();
-    if (!q) return allSpeakers;
-    return allSpeakers.filter(s => s.name.toLowerCase().includes(q) || s.voiceIdentifier.toLowerCase().includes(q));
+    if (!q) return named;
+    return named.filter(s => s.name.toLowerCase().includes(q) || s.voiceIdentifier.toLowerCase().includes(q));
   }, [allSpeakers, speakerFilter]);
 
   const goToStep2 = (id: number) => {
@@ -201,7 +202,7 @@ export default function RelatedSpeakers() {
         ))}
       </div>
 
-      <div className="max-w-3xl">
+      <div>
         {linkSuccess && (
           <div className="mb-4 flex items-center gap-2 px-4 py-3 bg-emerald-500/8 border border-emerald-500/25 rounded-md text-emerald-300 text-sm">
             <Check className="w-4 h-4 shrink-0" /> {linkSuccess}
@@ -234,7 +235,7 @@ export default function RelatedSpeakers() {
                 <div className="space-y-1.5 max-h-96 overflow-y-auto">
                   {filteredSpeakers.map(s => (
                     <button key={s.id} onClick={() => goToStep2(s.id)}
-                      className="w-full flex items-center justify-between px-4 py-3 bg-black border border-zinc-800 hover:border-zinc-600 rounded transition-colors text-left">
+                      className="w-full flex items-center justify-between px-4 py-3 bg-black border border-zinc-800 hover:border-zinc-600 rounded-md transition-colors text-left">
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded flex items-center justify-center shrink-0"
                           style={{ backgroundColor: `${s.color}18` }}>
@@ -277,7 +278,7 @@ export default function RelatedSpeakers() {
                   onKeyDown={e => e.key === 'Enter' && handleSearch()}
                   className={inputCls + ' flex-1'} />
                 <button onClick={handleSearch} disabled={searchLoading || !searchQuery.trim()}
-                  className="flex items-center gap-1.5 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm rounded transition-colors shrink-0">
+                  className="flex items-center gap-1.5 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm rounded-md transition-colors shrink-0">
                   {searchLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
                   Search Wikidata
                 </button>
@@ -316,7 +317,7 @@ export default function RelatedSpeakers() {
                         </div>
                       </div>
                       <button onClick={() => handleConfirm(cand)} disabled={confirmLoadingId !== null}
-                        className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs rounded transition-colors shrink-0">
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs rounded-md transition-colors shrink-0">
                         {confirmLoadingId === cand.entityId ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
                         This is {source.name}
                       </button>
@@ -467,7 +468,7 @@ export default function RelatedSpeakers() {
                           </span>
                         ) : (
                           <button onClick={() => startLink(c)}
-                            className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs rounded transition-colors shrink-0">
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs rounded-md transition-colors shrink-0">
                             <Plus className="w-3.5 h-3.5" /> Add as speaker
                           </button>
                         )}
@@ -531,11 +532,11 @@ export default function RelatedSpeakers() {
             </div>
             <div className="px-5 py-4 border-t border-zinc-800 flex justify-end gap-2">
               <button onClick={cancelLink} disabled={linking}
-                className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-sm rounded transition-colors">
+                className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-sm rounded-md transition-colors">
                 Cancel
               </button>
               <button onClick={submitLink} disabled={linking || !linkName.trim() || !linkFile}
-                className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white text-sm rounded transition-colors">
+                className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white text-sm rounded-md transition-colors">
                 {linking ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
                 Enroll & Link
               </button>

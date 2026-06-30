@@ -278,6 +278,13 @@ def _promote_ghosts(audio_id: int) -> None:
                     ent["rawText"],
                     ghost_id,
                 )
+                database.create_alert(
+                    alert_type="ghost_node_created",
+                    message=f"New ghost node detected: \"{ent['raw_text']}\" — mentioned across {ent.get('distinct_audio_count', '?')} recordings by {ent.get('distinct_speaker_count', '?')} speakers.",
+                    related_speaker_id=ghost_id,
+                    related_audio_id=audio_id,
+                    category="intelligence",
+                )
         if ghost_id:
             # Sync "mentioned" edges for all existing mentions (idempotent)
             mentions = database.get_entity_mentions(ent["id"])

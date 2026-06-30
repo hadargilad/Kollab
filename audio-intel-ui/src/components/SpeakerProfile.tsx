@@ -261,11 +261,11 @@ export default function SpeakerProfile() {
             </div>
             <div className="p-5 flex gap-2 justify-end">
               <button onClick={() => setConfirmDelete(false)} disabled={deleting}
-                className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-sm rounded transition-colors">
+                className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-sm rounded-md transition-colors">
                 Cancel
               </button>
               <button onClick={performDelete} disabled={deleting}
-                className="flex items-center gap-1.5 px-4 py-2 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white text-sm rounded transition-colors">
+                className="flex items-center gap-1.5 px-4 py-2 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white text-sm rounded-md transition-colors">
                 {deleting && <Loader2 className="w-3.5 h-3.5 animate-spin" />} Delete
               </button>
             </div>
@@ -291,15 +291,15 @@ export default function SpeakerProfile() {
             </div>
             <div className="p-5 flex flex-col-reverse sm:flex-row gap-2 sm:justify-end">
               <button onClick={() => setPendingMerge(null)} disabled={saving}
-                className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-sm rounded transition-colors">
+                className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-sm rounded-md transition-colors">
                 Cancel
               </button>
               <button onClick={() => performSave(true)} disabled={saving}
-                className="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 disabled:opacity-50 text-white text-sm rounded transition-colors">
+                className="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 disabled:opacity-50 text-white text-sm rounded-md transition-colors">
                 Save as separate person
               </button>
               <button onClick={() => performSave(false)} disabled={saving}
-                className="flex items-center justify-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm rounded transition-colors">
+                className="flex items-center justify-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm rounded-md transition-colors">
                 {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />} Yes, merge profiles
               </button>
             </div>
@@ -362,7 +362,7 @@ export default function SpeakerProfile() {
                       <div className="flex gap-1.5">
                         {(['low', 'medium', 'high'] as const).map(r => (
                           <button key={r} onClick={() => setEditRisk(r)}
-                            className={`px-2.5 py-1 rounded text-[10px] font-mono uppercase border transition-colors ${
+                            className={`px-2.5 py-1 rounded-md text-[10px] font-mono uppercase border transition-colors ${
                               editRisk === r ? `${RISK_COLORS[r].bg} ${RISK_COLORS[r].text} ${RISK_COLORS[r].border}` : 'bg-zinc-800 text-zinc-300 border-zinc-700'
                             }`}>
                             {r}
@@ -384,7 +384,7 @@ export default function SpeakerProfile() {
                                   key={s.id}
                                   onClick={() => acceptSuggestion(s)}
                                   disabled={saving}
-                                  className="flex w-full items-center gap-2.5 px-2 py-1.5 bg-black hover:bg-zinc-800 border border-zinc-800 hover:border-blue-500/40 disabled:opacity-50 rounded transition-colors text-left"
+                                  className="flex w-full items-center gap-2.5 px-2 py-1.5 bg-black hover:bg-zinc-800 border border-zinc-800 hover:border-blue-500/40 disabled:opacity-50 rounded-md transition-colors text-left"
                                 >
                                   <SpeakerAvatar speakerId={s.id} name={s.name} color={s.color} imagePath={s.imagePath} size={24} />
                                   <span className="text-zinc-200 text-sm flex-1 truncate">{s.name}</span>
@@ -429,23 +429,23 @@ export default function SpeakerProfile() {
                 {editing ? (
                   <>
                     <button onClick={saveEdit} disabled={saving}
-                      className="flex items-center gap-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-sm rounded transition-colors">
+                      className="flex items-center gap-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-sm rounded-md transition-colors">
                       {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />} Save
                     </button>
                     <button onClick={cancelEdit}
-                      className="flex items-center gap-1 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-sm rounded transition-colors">
+                      className="flex items-center gap-1 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-sm rounded-md transition-colors">
                       <X className="w-3.5 h-3.5" /> Cancel
                     </button>
                   </>
                 ) : (
                   <>
                     <button onClick={startEdit}
-                      className="flex items-center gap-1 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-sm rounded transition-colors">
+                      className="flex items-center gap-1 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-sm rounded-md transition-colors">
                       <Pencil className="w-3.5 h-3.5" /> Edit
                     </button>
                     <button onClick={toggleUntracked} disabled={trackingBusy}
                       title={speaker.isUntracked ? 'Re-track in connection graph' : 'Hide from connection graph (e.g. interviewer or guest)'}
-                      className={`flex items-center gap-1 px-3 py-1.5 border text-sm rounded transition-colors ${
+                      className={`flex items-center gap-1 px-3 py-1.5 border text-sm rounded-md transition-colors ${
                         speaker.isUntracked
                           ? 'bg-blue-600/20 hover:bg-blue-600/30 border-blue-500/40 text-blue-200'
                           : 'bg-zinc-800 hover:bg-zinc-700 border-zinc-700 text-zinc-300'
@@ -457,7 +457,7 @@ export default function SpeakerProfile() {
                           : <><EyeOff className="w-3.5 h-3.5" /> Untrack</>}
                     </button>
                     <button onClick={() => setConfirmDelete(true)}
-                      className="flex items-center gap-1 px-3 py-1.5 bg-zinc-800 hover:bg-red-500/10 border border-zinc-700 text-zinc-300 hover:text-red-400 text-sm rounded transition-colors">
+                      className="flex items-center gap-1 px-3 py-1.5 bg-zinc-800 hover:bg-red-500/10 border border-zinc-700 text-zinc-300 hover:text-red-400 text-sm rounded-md transition-colors">
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   </>
@@ -468,7 +468,7 @@ export default function SpeakerProfile() {
             <div className="grid grid-cols-3 gap-3">
               <button type="button" onClick={() => recordingsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
                 disabled={recordings.length === 0}
-                className="p-3 bg-black border border-zinc-900 rounded text-left transition-colors enabled:hover:border-zinc-700 disabled:cursor-default">
+                className="p-3 bg-black border border-zinc-900 rounded-md text-left transition-colors enabled:hover:border-zinc-700 disabled:cursor-default">
                 <div className="flex items-center gap-1.5 mb-1.5">
                   <FileAudio className="w-3.5 h-3.5 text-blue-400" />
                   <span className="text-zinc-200 text-[10px] font-mono uppercase tracking-wider">Recordings</span>
@@ -629,7 +629,7 @@ export default function SpeakerProfile() {
               </div>
               {!editing && (
                 <button onClick={startEdit}
-                  className="mt-3 w-full py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 text-sm rounded transition-colors">
+                  className="mt-3 w-full py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 text-sm rounded-md transition-colors">
                   Update Risk Level
                 </button>
               )}

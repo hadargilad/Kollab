@@ -92,7 +92,11 @@ export default function AudioUpload({ userId }: Props) {
   const doUpload = async (fileId: string, file: File, name: string, description: string, recordedAt: string) => {
     let audioId: number;
     try {
-      const result = await audios.upload(file, name, description, userId, recordedAt);
+      // Real upload (0-100% of bytes sent) is mapped onto the 0-20% segment of
+      // the bar; processing then continues that same bar from 20% to 100%.
+      const result = await audios.upload(file, name, description, userId, recordedAt, (pct) => {
+        setFiles(prev => prev.map(f => f.id === fileId ? { ...f, progress: Math.min(20, Math.round(pct * 0.2)) } : f));
+      });
       audioId = result.id;
       setFiles(prev => prev.map(f => f.id === fileId ? { ...f, audioId, status: 'processing', progress: 20 } : f));
     } catch (err) {
@@ -225,13 +229,13 @@ export default function AudioUpload({ userId }: Props) {
             <div className="px-5 py-4 border-t border-zinc-800 flex gap-2 justify-end">
               <button
                 onClick={() => { setShowFileDetailsModal(false); setPendingFiles([]); }}
-                className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-white text-sm rounded transition-colors"
+                className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-white text-sm rounded-md transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={confirmFileUpload}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded transition-colors"
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded-md transition-colors"
               >
                 Start Upload
               </button>
@@ -322,7 +326,11 @@ export default function AudioUpload({ userId }: Props) {
 
                     <div className="flex items-center gap-2.5 mt-2">
                       {file.status === 'uploading' && (
-                        <><Loader2 className="w-3.5 h-3.5 text-blue-400 animate-spin" /><span className="text-blue-400 text-xs font-mono">Uploading…</span></>
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 text-blue-400 animate-spin" />
+                          <span className="text-blue-400 text-xs font-mono">Uploading…</span>
+                          {file.progress > 0 && <span className="text-blue-600 text-xs font-mono">{Math.round(file.progress * 5)}%</span>}
+                        </>
                       )}
                       {file.status === 'processing' && (
                         <>
@@ -337,7 +345,7 @@ export default function AudioUpload({ userId }: Props) {
                           <span className="text-emerald-400 text-xs font-mono">Complete</span>
                           {file.audioId && (
                             <Link to={`/analysis/${file.audioId}`}
-                              className="ml-auto flex items-center gap-1 px-2.5 py-1 bg-blue-600 hover:bg-blue-500 text-white text-xs rounded transition-colors">
+                              className="ml-auto flex items-center gap-1 px-2.5 py-1 bg-blue-600 hover:bg-blue-500 text-white text-xs rounded-md transition-colors">
                               View <ArrowRight className="w-3 h-3" />
                             </Link>
                           )}

@@ -1,6 +1,6 @@
 """
-AudioIntel ML Pipeline
-======================
+Kollab ML Pipeline
+===================
 Stateless audio analysis. Given an audio file, this module:
   1. Transcribes the audio using Whisper (medium)
   2. Separates speakers using pyannote diarization

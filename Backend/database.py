@@ -746,6 +746,16 @@ def update_audio_result(audio_id: int, status: str, duration: float = 0.0) -> No
         conn.commit()
 
 
+def update_audio_metadata(audio_id: int, name: str, description: str, recorded_at: Optional[str]) -> bool:
+    with _get_conn() as conn:
+        cursor = conn.execute(
+            "UPDATE Audios SET Name=?, Description=?, RecordedAt=? WHERE Id=?",
+            (name, description, recorded_at, audio_id),
+        )
+        conn.commit()
+    return cursor.rowcount > 0
+
+
 def get_audio(audio_id: int) -> Optional[dict]:
     with _get_conn() as conn:
         row = conn.execute(
@@ -918,6 +928,15 @@ def get_or_create_speaker(voice_identifier: str, name: str) -> tuple[int, bool]:
         )
         conn.commit()
     return cursor.lastrowid, True
+
+
+def get_named_speaker_ids() -> set[int]:
+    """Return IDs of speakers that have a user-assigned name (not auto-generated 'Speaker N')."""
+    import re
+    _auto = re.compile(r'^Speaker \d+$')
+    with _get_conn() as conn:
+        rows = conn.execute("SELECT Id, Name FROM Speakers").fetchall()
+    return {r["Id"] for r in rows if not _auto.match(r["Name"])}
 
 
 def get_speaker(speaker_id: int) -> Optional[dict]:
@@ -1272,6 +1291,62 @@ def get_speaker_by_wikidata_id(entity_id: str) -> Optional[dict]:
     if not row:
         return None
     return get_speaker(row["Id"])
+
+
+def merge_ghost_into_speaker(ghost_id: int, real_id: int) -> bool:
+    """Merge a ghost speaker into a real speaker, preserving 'mentioned' relations.
+
+    merge_speakers() alone loses 'mentioned' Relations because ghosts have no
+    segments — the per-audio diff never sees them. This function copies those
+    Relations to the real speaker first, then delegates to merge_speakers().
+    """
+    if ghost_id == real_id:
+        return False
+    with _get_conn() as conn:
+        ghost = conn.execute(
+            "SELECT IsGhost FROM Speakers WHERE Id = ?", (ghost_id,)
+        ).fetchone()
+        if not ghost or not ghost["IsGhost"]:
+            return False
+
+        # Copy every 'mentioned' relation the ghost has to the real speaker.
+        rows = conn.execute(
+            """SELECT SpeakerAId, SpeakerBId, InteractionCount FROM Relations
+               WHERE (SpeakerAId = ? OR SpeakerBId = ?) AND Topic = 'mentioned'""",
+            (ghost_id, ghost_id),
+        ).fetchall()
+        for r in rows:
+            other = r["SpeakerBId"] if r["SpeakerAId"] == ghost_id else r["SpeakerAId"]
+            if other == real_id:
+                continue
+            a, b = (other, real_id) if other < real_id else (real_id, other)
+            count = r["InteractionCount"]
+            conn.execute(
+                """INSERT INTO Relations (SpeakerAId, SpeakerBId, Topic, InteractionCount, LastContact)
+                   VALUES (?, ?, 'mentioned', ?, CURRENT_TIMESTAMP)
+                   ON CONFLICT(SpeakerAId, SpeakerBId)
+                   DO UPDATE SET InteractionCount = InteractionCount + ?,
+                                 LastContact = CURRENT_TIMESTAMP""",
+                (a, b, count, count),
+            )
+
+        # Repoint EntityMentions so they reference the real speaker.
+        conn.execute(
+            "UPDATE EntityMentions SET ResolvedSpeakerId = ? WHERE ResolvedSpeakerId = ?",
+            (real_id, ghost_id),
+        )
+
+        # Clear the entity's ghost pointer before cascade can NULL it.
+        conn.execute(
+            "UPDATE Entities SET GhostSpeakerId = NULL WHERE GhostSpeakerId = ?",
+            (ghost_id,),
+        )
+        conn.commit()
+
+    # Ghost has no embeddings; move_embeddings is a safe no-op here.
+    move_embeddings(ghost_id, real_id)
+    # merge_speakers deletes the ghost row and cleans up its remaining relations.
+    return merge_speakers(ghost_id, real_id)
 
 
 def merge_speakers(source_id: int, target_id: int) -> bool:
@@ -1965,6 +2040,7 @@ def _row_to_alert(r) -> dict:
         "category": r["Category"] if "Category" in r.keys() else None,
         "message": r["Message"],
         "createdAt": r["CreatedAt"],
+        "speakerId": r["RelatedSpeakerId"] if "RelatedSpeakerId" in r.keys() else None,
         "speakerName": r["SpeakerName"] if "SpeakerName" in r.keys() else None,
         "audioName": r["AudioName"] if "AudioName" in r.keys() else None,
         "audioId": r["RelatedAudioId"] if "RelatedAudioId" in r.keys() else None,
@@ -2018,7 +2094,7 @@ def get_all_alerts(category: Optional[str] = None) -> list[dict]:
     """Return every alert, newest first. Optional category filter
     ('coded_language' | 'dangerous_word' | None for all)."""
     sql = """SELECT a.Id, a.Type, a.Category, a.Message, a.CreatedAt,
-                    a.RelatedAudioId, a.SegmentId, a.SubScores, a.LlmExplanation,
+                    a.RelatedSpeakerId, a.RelatedAudioId, a.SegmentId, a.SubScores, a.LlmExplanation,
                     sp.Name AS SpeakerName, au.Name AS AudioName
              FROM Alerts a
              LEFT JOIN Speakers sp ON sp.Id = a.RelatedSpeakerId

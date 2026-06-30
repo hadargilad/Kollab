@@ -1,6 +1,6 @@
 """
-AudioIntel Backend API
-======================
+Kollab Backend API
+===================
 Lightweight auth + user management service.
 Runs on port 8001. The ML service runs separately on port 8000.
 """
@@ -37,7 +37,7 @@ ML_URL = os.getenv("ML_API_URL", "http://127.0.0.1:8000")
 # Other modules that imported STORAGE_DIR from this file keep working unchanged.
 STORAGE_DIR = storage.LOCAL_DIR
 
-app = FastAPI(title="AudioIntel Backend", version="1.0.0")
+app = FastAPI(title="Kollab Backend", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -173,7 +173,7 @@ def _resolve_caller(user_id: Optional[int]) -> tuple[Optional[int], bool]:
 
 @app.get("/")
 def health():
-    return {"status": "AudioIntel backend running", "version": "1.0.0"}
+    return {"status": "Kollab backend running", "version": "1.0.0"}
 
 
 # ─── System Stats ─────────────────────────────────────────────────────────────
@@ -474,6 +474,22 @@ def delete_audio(audio_id: int):
     return {"success": ok}
 
 
+class UpdateAudioRequest(BaseModel):
+    name: str
+    description: str = ""
+    recorded_at: Optional[str] = None
+
+
+@app.put("/audios/{audio_id}")
+def update_audio(audio_id: int, body: UpdateAudioRequest):
+    if not body.name.strip():
+        raise HTTPException(status_code=422, detail="Name is required.")
+    ok = database.update_audio_metadata(audio_id, body.name.strip(), body.description, body.recorded_at)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Audio not found.")
+    return database.get_audio(audio_id)
+
+
 @app.post("/audios/batch-delete")
 def batch_delete_audios(body: BatchDeleteRequest):
     deleted: list[int] = []
@@ -643,7 +659,7 @@ def _attach_wikidata_image_if_needed(speaker_id: int) -> None:
             with httpx.Client(
                 timeout=15.0,
                 follow_redirects=True,
-                headers={"User-Agent": "AudioIntel/1.0 (profile image fetch)"},
+                headers={"User-Agent": "Kollab/1.0 (profile image fetch)"},
             ) as c:
                 r = c.get(url)
         except httpx.HTTPError:
@@ -892,6 +908,28 @@ def delete_speaker_endpoint(speaker_id: int):
     if not ok:
         raise HTTPException(status_code=500, detail="Failed to delete speaker.")
     return {"success": True}
+
+
+class ResolveGhostRequest(BaseModel):
+    real_speaker_id: int
+
+
+@app.post("/speakers/{ghost_id}/resolve-ghost", status_code=200)
+def resolve_ghost(ghost_id: int, body: ResolveGhostRequest):
+    ghost = database.get_speaker(ghost_id)
+    if not ghost:
+        raise HTTPException(status_code=404, detail="Ghost speaker not found.")
+    if not ghost.get("isGhost"):
+        raise HTTPException(status_code=422, detail="Speaker is not a ghost node.")
+    real = database.get_speaker(body.real_speaker_id)
+    if not real:
+        raise HTTPException(status_code=404, detail="Real speaker not found.")
+    if real.get("isGhost"):
+        raise HTTPException(status_code=422, detail="Target speaker is also a ghost.")
+    ok = database.merge_ghost_into_speaker(ghost_id, body.real_speaker_id)
+    if not ok:
+        raise HTTPException(status_code=500, detail="Failed to resolve ghost.")
+    return {"success": True, "mergedIntoId": body.real_speaker_id}
 
 
 @app.post("/speakers/batch-delete")

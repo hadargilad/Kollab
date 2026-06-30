@@ -1,4 +1,4 @@
-"""Restore the AudioIntel state captured by ``snapshot.py``.
+"""Restore the Kollab state captured by ``snapshot.py``.
 
 What this does:
   1. Wipe every table that the snapshot covers (Users are untouched).

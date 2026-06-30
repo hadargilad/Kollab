@@ -1,13 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Sliders, Save, Trash2, Plus, Loader2, ShieldAlert, Sparkles, Eye, X } from 'lucide-react';
+import { Save, Trash2, Plus, Loader2, ShieldAlert, Sparkles, Eye, X } from 'lucide-react';
 import { dangerousWords, euphemisms, type DangerousWordRecord, type EuphemismRecord } from '../lib/api';
 
 export default function Settings({ isAdmin }: { isAdmin?: boolean }) {
-  const [settings, setSettings] = useState({
-    speakerSimilarity: 75,
-    confidenceThreshold: 60,
-  });
-
   const [flaggedWords, setFlaggedWords] = useState<DangerousWordRecord[]>([]);
   const [newWord, setNewWord] = useState('');
   const [newSeverity, setNewSeverity] = useState<'low' | 'medium' | 'high'>('high');
@@ -99,31 +94,6 @@ export default function Settings({ isAdmin }: { isAdmin?: boolean }) {
       </div>
 
       <div className="max-w-3xl space-y-4">
-        {/* Thresholds */}
-        <div className={cardCls}>
-          <SectionHeader icon={Sliders} iconColor="text-cyan-400" label="Threshold Settings" />
-          <div className="p-5 space-y-5">
-            {[
-              { key: 'speakerSimilarity', label: 'Speaker Similarity', min: 50, max: 95, hint: 'Higher values require stronger voice matches' },
-              { key: 'confidenceThreshold', label: 'Confidence Threshold', min: 40, max: 90, hint: 'Minimum score for identity matches' },
-            ].map(({ key, label, min, max, hint }) => (
-              <div key={key}>
-                <div className="flex justify-between mb-2">
-                  <label className="text-zinc-200 text-sm">{label}</label>
-                  <span className="text-white text-sm font-mono">
-                    {settings[key as keyof typeof settings]}%
-                  </span>
-                </div>
-                <input type="range" min={min} max={max}
-                  value={settings[key as keyof typeof settings] as number}
-                  onChange={(e) => setSettings({ ...settings, [key]: parseInt(e.target.value) })}
-                  className="w-full h-1 rounded appearance-none cursor-pointer accent-blue-500 bg-zinc-800" />
-                <p className="text-zinc-200 text-xs font-mono mt-1.5">{hint}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-
         {/* Flagged Keywords — admin only */}
         {isAdmin && (
           <div className={cardCls}>
@@ -149,7 +119,7 @@ export default function Settings({ isAdmin }: { isAdmin?: boolean }) {
                   <option value="low">Low</option>
                 </select>
                 <button onClick={handleAddWord} disabled={addingWord || !newWord.trim()}
-                  className="flex items-center gap-1.5 px-4 py-2.5 bg-red-700 hover:bg-red-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm rounded transition-colors shrink-0">
+                  className="flex items-center gap-1.5 px-4 py-2.5 bg-red-700 hover:bg-red-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm rounded-md transition-colors shrink-0">
                   {addingWord ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
                   Add
                 </button>
@@ -219,15 +189,15 @@ export default function Settings({ isAdmin }: { isAdmin?: boolean }) {
                   <option value="low">Low</option>
                 </select>
                 <button onClick={handleAddEuph} disabled={addingEuph || !newEuph.trim()}
-                  className="flex items-center gap-1.5 px-4 py-2.5 bg-amber-700 hover:bg-amber-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm rounded transition-colors shrink-0">
+                  className="flex items-center gap-1.5 px-4 py-2.5 bg-amber-700 hover:bg-amber-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm rounded-md transition-colors shrink-0">
                   {addingEuph ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
                   Add
                 </button>
-                <button
+<button
                   type="button"
                   onClick={() => setShowBuiltInModal(true)}
                   disabled={builtInEuphList.length === 0}
-                  className="flex items-center gap-1.5 px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed text-zinc-200 text-sm rounded transition-colors shrink-0"
+                  className="flex items-center gap-1.5 px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed text-zinc-200 text-sm rounded-md transition-colors shrink-0"
                 >
                   <Eye className="w-3.5 h-3.5" />
                   View built-in ({builtInEuphList.length})
@@ -274,11 +244,11 @@ export default function Settings({ isAdmin }: { isAdmin?: boolean }) {
 
         {/* Save */}
         <div className="flex justify-end gap-2">
-          <button className="px-5 py-2.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-sm rounded transition-colors">
+          <button className="px-5 py-2.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-sm rounded-md transition-colors">
             Reset to Defaults
           </button>
           <button onClick={handleSave}
-            className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded transition-colors">
+            className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded-md transition-colors">
             <Save className="w-4 h-4" />
             Save Changes
           </button>

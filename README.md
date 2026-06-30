@@ -1,4 +1,4 @@
-# AudioIntel — Secure Intelligence Platform
+# Kollab — Secure Intelligence Platform
 
 Upload audio recordings → get a transcript, diarized speaker timeline, voice-fingerprint
 matching against known speakers, and a relationship graph of who speaks with whom.

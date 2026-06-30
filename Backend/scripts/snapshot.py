@@ -1,4 +1,4 @@
-"""Export the live AudioIntel DB + on-disk audio files into a repo-committable snapshot.
+"""Export the live Kollab DB + on-disk audio files into a repo-committable snapshot.
 
 The snapshot is two pieces:
 

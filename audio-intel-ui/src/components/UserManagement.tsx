@@ -119,7 +119,7 @@ export default function UserManagement({ currentUser }: Props) {
         </div>
         <div className="flex items-center gap-2">
           <button onClick={fetchUsers}
-            className="p-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-200 rounded transition-colors">
+            className="p-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-200 rounded-md transition-colors">
             <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
           </button>
           <div className="relative">
@@ -134,7 +134,7 @@ export default function UserManagement({ currentUser }: Props) {
               setFormData({ id: 0, username: '', password: '', firstName: '', lastName: '', idNumber: '', role: 'Analyst' });
               setIsModalOpen(true);
             }}
-            className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded font-medium transition-colors"
+            className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded-md font-medium transition-colors"
           >
             <UserPlus className="w-4 h-4" /> Add User
           </button>
@@ -191,12 +191,12 @@ export default function UserManagement({ currentUser }: Props) {
                 <td className="px-5 py-4 text-right">
                   <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button onClick={() => triggerSecureAction('EDIT', user)}
-                      className="p-1.5 text-zinc-200 hover:text-white hover:bg-zinc-700 rounded transition-colors">
+                      className="p-1.5 text-zinc-200 hover:text-white hover:bg-zinc-700 rounded-md transition-colors">
                       <Edit2 className="w-3.5 h-3.5" />
                     </button>
                     {user.username !== currentUser?.username && (
                       <button onClick={() => triggerSecureAction('DELETE', user)}
-                        className="p-1.5 text-zinc-200 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors">
+                        className="p-1.5 text-zinc-200 hover:text-red-400 hover:bg-red-500/10 rounded-md transition-colors">
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     )}
@@ -231,11 +231,11 @@ export default function UserManagement({ currentUser }: Props) {
               {verifyError && <p className="text-red-400 text-xs font-mono text-center">{verifyError}</p>}
               <div className="flex gap-2">
                 <button type="button" onClick={() => setIsVerifyOpen(false)}
-                  className="flex-1 py-2.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-sm rounded transition-colors">
+                  className="flex-1 py-2.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-sm rounded-md transition-colors">
                   Cancel
                 </button>
                 <button type="submit"
-                  className="flex-1 py-2.5 bg-red-600 hover:bg-red-500 text-white text-sm rounded font-medium transition-colors">
+                  className="flex-1 py-2.5 bg-red-600 hover:bg-red-500 text-white text-sm rounded-md font-medium transition-colors">
                   Authorize
                 </button>
               </div>
@@ -329,7 +329,7 @@ export default function UserManagement({ currentUser }: Props) {
               )}
 
               <button type="submit"
-                className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded transition-colors">
+                className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-md transition-colors">
                 {isEditMode ? 'Save Changes' : 'Create User'}
               </button>
             </form>

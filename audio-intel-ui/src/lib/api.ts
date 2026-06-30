@@ -226,6 +226,7 @@ export const audios = {
     description: string,
     uploadedBy: number,
     recordedAt: string,
+    onProgress?: (pct: number) => void,
   ): Promise<UploadResult> => {
     const form = new FormData();
     form.append("file", file);
@@ -233,18 +234,39 @@ export const audios = {
     form.append("description", description);
     form.append("uploaded_by", String(uploadedBy));
     form.append("recorded_at", recordedAt);
-    return fetch(`${BASE}/audios/upload`, { method: "POST", body: form }).then(async (r) => {
-      if (!r.ok) {
-        const err = await r.json().catch(() => ({ detail: "Upload failed" }));
-        throw new Error(err.detail ?? "Upload failed");
-      }
-      return r.json() as Promise<UploadResult>;
+    // fetch() has no upload-progress event, so the actual byte transfer uses
+    // XMLHttpRequest instead — onProgress reports real bytes-sent percentage.
+    return new Promise<UploadResult>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", `${BASE}/audios/upload`);
+      xhr.upload.onprogress = (e) => {
+        if (onProgress && e.lengthComputable) {
+          onProgress(Math.round((e.loaded / e.total) * 100));
+        }
+      };
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            resolve(JSON.parse(xhr.responseText) as UploadResult);
+          } catch {
+            reject(new Error("Invalid response"));
+          }
+        } else {
+          let detail = "Upload failed";
+          try { detail = JSON.parse(xhr.responseText).detail ?? detail; } catch { /* ignore */ }
+          reject(new Error(detail));
+        }
+      };
+      xhr.onerror = () => reject(new Error("Upload failed"));
+      xhr.send(form);
     });
   },
 
   list: () => request<AudioRecord[]>("GET", withUser("/audios")),
   get: (id: number) => request<AudioRecord>("GET", withUser(`/audios/${id}`)),
   remove: (id: number) => request<{ success: boolean }>("DELETE", `/audios/${id}`),
+  update: (id: number, data: { name: string; description: string; recorded_at: string | null }) =>
+    request<AudioRecord>("PUT", `/audios/${id}`, data),
   batchDelete: (ids: number[]) =>
     request<{ deleted: number[]; failed: { id: number; reason: string }[] }>(
       "POST", "/audios/batch-delete", { ids },
@@ -364,6 +386,11 @@ export const speakers = {
 
   matchSuggestions: (id: number, limit = 5) =>
     request<MatchSuggestion[]>("GET", `/speakers/${id}/match-suggestions?limit=${limit}`),
+
+  resolveGhost: (ghostId: number, realSpeakerId: number) =>
+    request<{ success: boolean; mergedIntoId: number }>(
+      "POST", `/speakers/${ghostId}/resolve-ghost`, { real_speaker_id: realSpeakerId }
+    ),
 };
 
 export interface MatchSuggestion {
@@ -388,7 +415,7 @@ export const suggestions = {
 
 // ─── Alerts ───────────────────────────────────────────────────────────────────
 
-export type AlertCategory = 'coded_language' | 'dangerous_word';
+export type AlertCategory = 'coded_language' | 'dangerous_word' | 'intelligence';
 
 export interface AlertRecord {
   id: number;
@@ -396,6 +423,7 @@ export interface AlertRecord {
   category: AlertCategory | null;
   message: string;
   createdAt: string;
+  speakerId: number | null;
   speakerName: string | null;
   audioName: string | null;
   audioId: number | null;

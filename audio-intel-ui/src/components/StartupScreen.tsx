@@ -69,8 +69,8 @@ export default function StartupScreen({ onReady }: Props) {
 
       <div className="relative flex flex-col items-center gap-8 w-full max-w-xs">
         {/* Boot header */}
-        <div className="text-center text-zinc-300 font-mono text-[10px] uppercase tracking-widest w-full">
-          AUDIOINTEL v2.0 // SECURE BOOT
+        <div className="text-center text-zinc-300 font-mono text-[10px] tracking-widest w-full">
+          Kollab v2.0 // Secure Boot
         </div>
 
         {/* Logo */}
@@ -80,7 +80,7 @@ export default function StartupScreen({ onReady }: Props) {
             <h1 className="text-white text-2xl font-bold tracking-tight">
               Kol<span className="text-blue-400">L</span>ab
             </h1>
-            <p className="text-zinc-200 text-xs font-mono uppercase tracking-widest mt-0.5">
+            <p className="text-zinc-200 text-xs font-mono tracking-widest mt-0.5">
               Intelligence Management Platform
             </p>
           </div>
@@ -129,7 +129,7 @@ export default function StartupScreen({ onReady }: Props) {
             </p>
             <button
               onClick={() => setAttempt(a => a + 1)}
-              className="mt-1 px-4 py-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-300 text-xs rounded transition-colors font-mono"
+              className="mt-1 px-4 py-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-300 text-xs rounded-md transition-colors font-mono"
             >
               RETRY
             </button>

@@ -1,6 +1,6 @@
-# AudioIntel Frontend
+# Kollab Frontend
 
-React UI for the AudioIntel platform. Runs as a web app in dev (port 5173)
+React UI for the Kollab platform. Runs as a web app in dev (port 5173)
 and as a Tauri desktop app in production (Rust shell + the same React bundle).
 
 For overall project context, prerequisites, and the one-command run, see the

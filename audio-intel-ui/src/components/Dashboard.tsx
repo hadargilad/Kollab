@@ -139,7 +139,7 @@ export default function Dashboard() {
             <span className="text-zinc-200 text-xs font-mono uppercase tracking-widest">Recent Uploads</span>
             <Link
               to="/all-uploads"
-              className="flex items-center gap-1.5 px-3 py-1 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-xs rounded transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-xs rounded-md transition-colors"
             >
               View All <ArrowRight className="w-3 h-3" />
             </Link>

@@ -1,4 +1,4 @@
-# AudioIntel — Database Schema
+# Kollab — Database Schema
 
 SQLite database. Path is controlled by the `AUDIO_INTEL_DB` environment variable
 (default: `~/.audio-intel/AudioIntelDB.db`, or `/data/AudioIntelDB.db` inside Docker).
