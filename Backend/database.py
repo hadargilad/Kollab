@@ -2677,6 +2677,18 @@ def delete_suggestion(suggestion_id: int) -> bool:
     return result.rowcount > 0
 
 
+def delete_suggestions_for_unknown(speaker_id: int) -> int:
+    """Delete all pending suggestions where speaker_id is the unnamed unknown.
+    Called when a speaker is explicitly renamed so stale 'X may be Y' banners
+    don't appear after both sides are known people."""
+    with _get_conn() as conn:
+        result = conn.execute(
+            "DELETE FROM SpeakerSuggestions WHERE UnknownSpeakerId = ?", (speaker_id,)
+        )
+        conn.commit()
+    return result.rowcount
+
+
 # ─── Projects (top-level groups) ──────────────────────────────────────────────
 
 def list_projects(user_id: Optional[int] = None, is_admin: bool = True) -> list[dict]:

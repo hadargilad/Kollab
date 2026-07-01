@@ -1001,6 +1001,7 @@ def update_speaker(speaker_id: int, body: UpdateSpeakerRequest):
     ok = database.update_speaker(speaker_id, new_name, body.riskLevel)
     if not ok:
         raise HTTPException(status_code=404, detail="Speaker not found.")
+    database.delete_suggestions_for_unknown(speaker_id)
     return {"success": True, "merged": False}
 
 

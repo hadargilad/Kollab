@@ -12,4 +12,4 @@ EXPOSE 8001
 
 ENV AUDIO_INTEL_DB=/data/AudioIntelDB.db
 
-CMD ["python", "-m", "uvicorn", "api:app", "--host", "0.0.0.0", "--port", "8001", "--reload"]
+CMD ["python", "-m", "uvicorn", "api:app", "--host", "0.0.0.0", "--port", "8001"]

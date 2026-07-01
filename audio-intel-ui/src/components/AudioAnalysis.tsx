@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { Play, Pause, Volume2, FileText, Network, Clock, Loader2, AlertCircle, RefreshCw, UserX, Merge, UserCheck, X, Scissors, EyeOff, Eye, Wand2, Search, Camera } from 'lucide-react';
+import { Play, Pause, Volume2, FileText, Network, Clock, Loader2, AlertCircle, RefreshCw, UserX, Merge, UserCheck, X, Scissors, EyeOff, Eye, Wand2, Search, Camera, ArrowLeft } from 'lucide-react';
 import { audios, speakers as speakersApi, suggestions as suggestionsApi, alerts as alertsApi, type AudioRecord, type SegmentRecord, type SpeakerRecord, type SpeakerSuggestion, type AlertRecord, type MatchSuggestion } from '../lib/api';
 import SpeakerAvatar from './SpeakerAvatar';
 import Loader from './Loader';
@@ -336,6 +336,10 @@ export default function AudioAnalysis() {
   return (<>
     <input ref={imageInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
     <div className="p-6 space-y-5">
+      <button onClick={() => navigate(-1)}
+        className="inline-flex items-center gap-1.5 text-zinc-400 hover:text-zinc-200 text-sm transition-colors">
+        <ArrowLeft className="w-3.5 h-3.5" /> Back
+      </button>
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <div className="text-zinc-200 text-[10px] font-mono uppercase tracking-widest mb-1">Analysis</div>
