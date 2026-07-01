@@ -97,7 +97,7 @@ export default function Profile({ currentUser, onUpdateSuccess }: Props) {
                       <input className={inputCls} value={formData.firstName}
                         onChange={e => setFormData({ ...formData, firstName: e.target.value })} />
                     ) : (
-                      <div className="text-white text-sm py-2.5 px-1">{currentUser?.firstName || '—'}</div>
+                      <div className="text-white text-sm py-2.5 px-1">{currentUser?.firstName || '-'}</div>
                     )}
                   </div>
                   <div>
@@ -106,7 +106,7 @@ export default function Profile({ currentUser, onUpdateSuccess }: Props) {
                       <input className={inputCls} value={formData.lastName}
                         onChange={e => setFormData({ ...formData, lastName: e.target.value })} />
                     ) : (
-                      <div className="text-white text-sm py-2.5 px-1">{currentUser?.lastName || '—'}</div>
+                      <div className="text-white text-sm py-2.5 px-1">{currentUser?.lastName || '-'}</div>
                     )}
                   </div>
                 </div>

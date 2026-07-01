@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { FileAudio, Search, Filter, Calendar, CheckCircle, Clock, AlertCircle, PlayCircle, Loader2, RefreshCw, Trash2, Pencil, X } from 'lucide-react';
+import { FileAudio, Search, Filter, Calendar, CheckCircle, Clock, AlertCircle, PlayCircle, Loader2, RefreshCw, Trash2, Pencil, X, ArrowLeft } from 'lucide-react';
 import { audios, type AudioRecord } from '../lib/api';
 
 export default function AllUploads() {
@@ -75,14 +75,14 @@ export default function AllUploads() {
   });
 
   const formatDuration = (seconds: number) => {
-    if (!seconds) return '—';
+    if (!seconds) return '-';
     const m = Math.floor(seconds / 60);
     const s = Math.floor(seconds % 60);
     return `${m}:${s.toString().padStart(2, '0')}`;
   };
 
   const formatFileSize = (bytes: number) => {
-    if (!bytes) return '—';
+    if (!bytes) return '-';
     const k = 1024;
     const sizes = ['B', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
@@ -192,6 +192,10 @@ export default function AllUploads() {
 
   return (
     <div className="p-6 space-y-5">
+      <button onClick={() => navigate(-1)}
+        className="inline-flex items-center gap-1.5 text-zinc-400 hover:text-zinc-200 text-sm transition-colors">
+        <ArrowLeft className="w-3.5 h-3.5" /> Back
+      </button>
       <div>
         <div className="text-zinc-200 text-[10px] font-mono uppercase tracking-widest mb-1">Files</div>
         <h1 className="text-white text-2xl font-bold tracking-tight">All Uploads</h1>

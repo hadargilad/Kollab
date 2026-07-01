@@ -37,7 +37,12 @@ from . import models
 
 log = logging.getLogger(__name__)
 
-ALERT_THRESHOLD = 0.65
+ALERT_THRESHOLD = 0.50  # small-corpus tuning: Signal B is floored to 0 below
+                        # TFIDF_MIN_CORPUS (50 segments), so combined scores
+                        # cap around 0.55 on a fresh install. 0.50 surfaces
+                        # the top handful of segments as demonstrable coded-
+                        # language candidates; bump back toward 0.65 once the
+                        # corpus is well over 50 to avoid noise.
 WEIGHTS = {"a": 0.30, "b": 0.20, "c": 0.25, "d": 0.25}
 
 PERPLEXITY_MIN_TOKENS = 4   # below this, distilgpt2 is too noisy

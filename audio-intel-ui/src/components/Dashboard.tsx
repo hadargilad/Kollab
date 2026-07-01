@@ -14,7 +14,10 @@ export default function Dashboard() {
     Promise.all([
       audios.list(),
       speakers.list(),
-      alerts.list(),
+      // Split the two panels cleanly. The left card is "flagged keyword"
+      // hits, the right card is coded-language. Sharing one all-categories
+      // list used to double-count coded alerts across both panels.
+      alerts.list({ category: 'dangerous_word' }),
       alerts.list({ category: 'coded_language' }),
     ])
       .then(([a, s, al, cl]) => {
@@ -31,7 +34,7 @@ export default function Dashboard() {
   const recentUploads = uploadList.slice(0, 4);
 
   const formatDuration = (seconds: number) => {
-    if (!seconds) return '—';
+    if (!seconds) return '-';
     const m = Math.floor(seconds / 60);
     const s = Math.floor(seconds % 60);
     return `${m}:${s.toString().padStart(2, '0')}`;
@@ -110,7 +113,7 @@ export default function Dashboard() {
         </Link>
 
         <Link
-          to="/alerts"
+          to="/alerts?category=dangerous_word"
           className="bg-zinc-900 border border-zinc-800 border-l-2 border-l-red-500 rounded-md p-5 text-left transition-all hover:bg-zinc-800 hover:border-zinc-700 group block"
         >
           <div className="flex items-start justify-between mb-3">
@@ -124,7 +127,7 @@ export default function Dashboard() {
           </div>
           <div className="text-white text-3xl font-bold font-mono">{alertList.length}</div>
           <div className="text-zinc-300 text-xs mt-1 flex items-center gap-1">
-            Pending Alerts
+            Flagged Keyword Hits
             <ArrowRight className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity ml-0.5" />
           </div>
         </Link>
@@ -180,21 +183,22 @@ export default function Dashboard() {
 
         {/* Alerts */}
         <div className="bg-zinc-900 border border-zinc-800 rounded-md">
-          <div className="px-5 py-3.5 border-b border-zinc-800 flex items-center justify-between">
-            <span className="text-zinc-200 text-xs font-mono uppercase tracking-widest">Alerts</span>
-            <Link to="/alerts" className="text-blue-400 hover:text-blue-300 text-[11px] font-mono transition-colors">
-              View all →
-            </Link>
-          </div>
+          <Link
+            to="/alerts?category=dangerous_word"
+            className="px-5 py-3.5 border-b border-zinc-800 flex items-center justify-between hover:bg-white/3 transition-colors"
+          >
+            <span className="text-zinc-200 text-xs font-mono uppercase tracking-widest">Flagged Keywords</span>
+            <span className="text-blue-400 text-[11px] font-mono">View all →</span>
+          </Link>
 
           {alertList.length === 0 ? (
             <div className="text-center py-10">
               <AlertTriangle className="w-8 h-8 text-zinc-800 mx-auto mb-3" />
-              <p className="text-zinc-200 text-sm">No active alerts.</p>
+              <p className="text-zinc-200 text-sm">No flagged keyword hits.</p>
             </div>
           ) : (
-            <div className="divide-y divide-zinc-800">
-              {alertList.slice(0, 5).map((alert) => (
+            <div className="divide-y divide-zinc-800 max-h-96 overflow-y-auto">
+              {alertList.map((alert) => (
                 <Link
                   key={alert.id}
                   to={alert.audioId && alert.segmentId
@@ -205,7 +209,11 @@ export default function Dashboard() {
                   <AlertTriangle className={`w-3.5 h-3.5 mt-0.5 shrink-0 ${alertIcon(alert.type)}`} />
                   <div className="min-w-0">
                     <p className="text-zinc-300 text-xs leading-relaxed">{alert.message}</p>
-                    <p className="text-zinc-200 text-[10px] font-mono mt-1">{timeAgo(alert.createdAt)}</p>
+                    <p className="text-zinc-200 text-[10px] font-mono mt-1">
+                      {alert.audioName && <span className="text-blue-400">{alert.audioName}</span>}
+                      {alert.audioName && ' · '}
+                      {timeAgo(alert.createdAt)}
+                    </p>
                   </div>
                 </Link>
               ))}
@@ -215,31 +223,48 @@ export default function Dashboard() {
 
         {/* Coded-language hits — sits in the same row, matches the Alerts shape */}
         <div className="bg-zinc-900 border border-zinc-800 rounded-md">
-          <div className="px-5 py-3.5 border-b border-zinc-800 flex items-center justify-between gap-2">
+          <Link
+            to="/alerts?category=coded_language"
+            className="px-5 py-3.5 border-b border-zinc-800 flex items-center justify-between gap-2 hover:bg-white/3 transition-colors"
+          >
             <div className="flex items-center gap-1.5 min-w-0">
               <Radar className="w-3.5 h-3.5 text-orange-300 shrink-0" />
               <span className="text-zinc-200 text-xs font-mono uppercase tracking-widest truncate">Coded-Language</span>
             </div>
-            <Link to="/alerts?category=coded_language" className="text-blue-400 hover:text-blue-300 text-[11px] font-mono transition-colors shrink-0">
-              View all →
-            </Link>
-          </div>
+            <span className="text-blue-400 text-[11px] font-mono shrink-0">View all →</span>
+          </Link>
 
           {codedList.length === 0 ? (
             <div className="text-center py-10">
               <Radar className="w-8 h-8 text-zinc-800 mx-auto mb-3" />
               <p className="text-zinc-200 text-sm">No detections.</p>
-              <p className="text-zinc-300 text-xs mt-1">Flags fire above 0.65.</p>
+              <p className="text-zinc-300 text-xs mt-1">Flags fire above 0.50.</p>
             </div>
           ) : (
-            <div className="divide-y divide-zinc-800">
-              {codedList.slice(0, 5).map((a) => {
-                const combined = a.subScores
-                  ? 0.30 * (a.subScores.a ?? 0) + 0.20 * (a.subScores.b ?? 0)
-                    + 0.25 * (a.subScores.c ?? 0) + 0.25 * (a.subScores.d ?? 0)
-                  : 0;
+            <div className="divide-y divide-zinc-800 max-h-96 overflow-y-auto">
+              {codedList.map((a) => {
+                // Match backend/nlp/coded_language.py `_combine`: when a
+                // signal is null (e.g. Signal B "Rare wording" is floored on
+                // a small corpus), skip it and renormalize the remaining
+                // weights so the score sits on the same 0-1 scale. Naively
+                // treating null as 0 gave a number ~25% lower than what the
+                // backend actually used to fire the alert.
+                const WEIGHTS = { a: 0.30, b: 0.20, c: 0.25, d: 0.25 } as const;
+                let numerator = 0, denom = 0;
+                if (a.subScores) {
+                  for (const k of ['a', 'b', 'c', 'd'] as const) {
+                    const v = a.subScores[k];
+                    if (v != null) { numerator += v * WEIGHTS[k]; denom += WEIGHTS[k]; }
+                  }
+                }
+                const combined = denom > 0 ? numerator / denom : 0;
                 const tint = combined > 0.80 ? 'border-l-red-500 bg-red-500/4' : 'border-l-orange-500 bg-orange-500/4';
                 const scoreColor = combined > 0.80 ? 'text-red-300' : 'text-orange-300';
+                // The panel is already titled "Coded-Language" — the per-row
+                // "Possible coded language:" prefix on the backend message
+                // just repeats that. Strip it so the row shows the actual
+                // snippet, which is the informative part.
+                const cleanedMsg = a.message.replace(/^Possible coded language:\s*/i, '');
                 return (
                   <Link
                     key={a.id}
@@ -250,9 +275,14 @@ export default function Dashboard() {
                   >
                     <Radar className={`w-3.5 h-3.5 mt-0.5 shrink-0 ${scoreColor}`} />
                     <div className="min-w-0 flex-1">
-                      <p className="text-zinc-300 text-xs leading-relaxed line-clamp-2">{a.message}</p>
+                      <p className="text-zinc-300 text-xs leading-relaxed line-clamp-2">{cleanedMsg}</p>
                       <p className="text-zinc-200 text-[10px] font-mono mt-1">
-                        <span className={scoreColor}>{combined.toFixed(2)}</span> · {timeAgo(a.createdAt)}
+                        <span className={scoreColor} title="Suspicion score: weighted mix of Off-topic / Rare wording / Unnatural / Coded phrase signals. Fires above 0.50.">
+                          score {combined.toFixed(2)}
+                        </span>
+                        {a.audioName && ' · '}
+                        {a.audioName && <span className="text-blue-400">{a.audioName}</span>}
+                        {' · '}{timeAgo(a.createdAt)}
                       </p>
                     </div>
                   </Link>

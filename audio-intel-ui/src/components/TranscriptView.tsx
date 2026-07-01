@@ -395,7 +395,7 @@ export default function TranscriptView() {
                 { label: 'Segments',    value: segments.length },
                 { label: 'Speakers',    value: participants.length },
                 { label: 'Duration',    value: formatTime(audio.duration) },
-                { label: 'Uploaded by', value: audio.uploadedBy || '—' },
+                { label: 'Uploaded by', value: audio.uploadedBy || '-' },
               ].map(({ label, value }) => (
                 <div key={label} className="flex items-center justify-between">
                   <span className="text-zinc-200 text-xs uppercase tracking-wider">{label}</span>

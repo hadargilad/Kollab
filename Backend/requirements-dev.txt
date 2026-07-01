@@ -1,0 +1,5 @@
+-r requirements.txt
+
+pytest
+pytest-httpx      # mock outgoing httpx calls (Backend → ML)
+moto[s3]          # mock boto3 S3 client (stand-in for Cloudflare R2)

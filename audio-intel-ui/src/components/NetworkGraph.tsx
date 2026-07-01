@@ -5,7 +5,7 @@ import {
   Network as NetworkIcon, Plus, Trash2, X, Users, GitBranch, ChevronDown,
 } from 'lucide-react';
 import {
-  speakers as speakersApi, relations as relationsApi, groups as groupsApi,
+  speakers as speakersApi, relations as relationsApi, groups as groupsApi, type EdgeEntityBadge,
   type SpeakerRecord, type RelationRecord, type GroupRecord,
   API_BASE,
 } from '../lib/api';
@@ -147,6 +147,7 @@ type Tab = 'filters' | 'groups' | 'bridges';
 export default function NetworkGraph({ isAdmin = false }: { isAdmin?: boolean }) {
   const [allSpeakers, setAllSpeakers] = useState<SpeakerRecord[]>([]);
   const [allRelations, setAllRelations] = useState<RelationRecord[]>([]);
+  const [edgeBadges, setEdgeBadges] = useState<EdgeEntityBadge[]>([]);
   const [allGroups, setAllGroups] = useState<GroupRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -180,6 +181,10 @@ export default function NetworkGraph({ isAdmin = false }: { isAdmin?: boolean })
   const [nodeAction, setNodeAction] = useState<{ node: Node; x: number; y: number } | null>(null);
   const [nodeActionGroupPicker, setNodeActionGroupPicker] = useState(false);
   const [nodeActionGhostPicker, setNodeActionGhostPicker] = useState(false);
+  const [ghostPromoteModal, setGhostPromoteModal] = useState<{ ghostId: number; suggestedName: string } | null>(null);
+  const [ghostPromoteName, setGhostPromoteName] = useState('');
+  const [ghostPromoteBusy, setGhostPromoteBusy] = useState(false);
+  const [ghostPromoteError, setGhostPromoteError] = useState('');
   const [ghostPickerSearch, setGhostPickerSearch] = useState('');
   const [ghostPickerBusy, setGhostPickerBusy] = useState(false);
 
@@ -195,10 +200,10 @@ export default function NetworkGraph({ isAdmin = false }: { isAdmin?: boolean })
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([speakersApi.list(), relationsApi.list(), groupsApi.list()])
-      .then(([sp, rl, gr]) => {
+    Promise.all([speakersApi.list(), relationsApi.list(), groupsApi.list(), relationsApi.edgeBadges()])
+      .then(([sp, rl, gr, eb]) => {
         if (cancelled) return;
-        setAllSpeakers(sp); setAllRelations(rl); setAllGroups(gr);
+        setAllSpeakers(sp); setAllRelations(rl); setAllGroups(gr); setEdgeBadges(eb);
       })
       .catch(() => { if (!cancelled) setError('Failed to load network data.'); })
       .finally(() => { if (!cancelled) setLoading(false); });
@@ -252,12 +257,28 @@ export default function NetworkGraph({ isAdmin = false }: { isAdmin?: boolean })
     return Array.from(set).sort();
   }, [allRelations]);
 
-  const speakerGroupMap = useMemo(() => {
-    const map = new Map<number, GroupRecord>();
+  // Multi-membership is fully supported: PK (GroupId, SpeakerId) on the DB
+  // side lets a speaker belong to any number of groups. Store every group
+  // per speaker so the node ring can render one arc segment per group and
+  // visually distinguish "in project A" from "in projects A and B".
+  const speakerGroupsMap = useMemo(() => {
+    const map = new Map<number, GroupRecord[]>();
     for (const group of allGroups)
-      for (const member of group.members) map.set(member.id, group);
+      for (const member of group.members) {
+        const bucket = map.get(member.id);
+        if (bucket) bucket.push(group);
+        else map.set(member.id, [group]);
+      }
     return map;
   }, [allGroups]);
+  // Back-compat shim: existing edge / label logic reads `.get(id)?.color` for
+  // the "primary" group. Keep the same API but resolve to the first group
+  // in the multi-list (stable via allGroups iteration order).
+  const speakerGroupMap = useMemo(() => {
+    const map = new Map<number, GroupRecord>();
+    for (const [sid, groups] of speakerGroupsMap) map.set(sid, groups[0]);
+    return map;
+  }, [speakerGroupsMap]);
 
   // Top-level groups (projects) drive the filter dropdown.
   const projects = useMemo(
@@ -414,6 +435,99 @@ export default function NetworkGraph({ isAdmin = false }: { isAdmin?: boolean })
       ctx.globalAlpha = 1;
     }
 
+    // ── Item-entity nodes (ORG / LOC / MISC promoted from Entities) ────────
+    // Rendered as small violet nodes connected by thin lines to the speaker(s)
+    // who mentioned them. Solo: line from the single utterer to the item.
+    // Pair: item sits near the edge midpoint with lines out to each speaker.
+    // Share the "Include Ghost speakers & entities" toggle with ghost nodes
+    // so analysts have a single control for all non-real-speaker overlay.
+    ctx.font = '11px ui-monospace, monospace';
+    ctx.textBaseline = 'middle';
+    const pairBadges = new Map<string, EdgeEntityBadge[]>();
+    const soloBadges = new Map<number, EdgeEntityBadge[]>();
+    for (const b of showGhosts ? edgeBadges : []) {
+      if (b.speakerBId == null) {
+        (soloBadges.get(b.speakerAId) ?? soloBadges.set(b.speakerAId, []).get(b.speakerAId)!).push(b);
+      } else {
+        const a = Math.min(b.speakerAId, b.speakerBId);
+        const c = Math.max(b.speakerAId, b.speakerBId);
+        const key = `${a}-${c}`;
+        (pairBadges.get(key) ?? pairBadges.set(key, []).get(key)!).push(b);
+      }
+    }
+
+    const drawItemNode = (
+      itemX: number, itemY: number, text: string,
+      connectFrom: Array<{ x: number; y: number }>,
+    ) => {
+      // Thin dashed connector(s) first so they render underneath the node.
+      ctx.strokeStyle = 'rgba(139, 92, 246, 0.55)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3, 3]);
+      for (const src of connectFrom) {
+        ctx.beginPath();
+        ctx.moveTo(src.x, src.y);
+        ctx.lineTo(itemX, itemY);
+        ctx.stroke();
+      }
+      ctx.setLineDash([]);
+      // Small filled circle.
+      const r = 7;
+      ctx.beginPath();
+      ctx.arc(itemX, itemY, r, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(124, 58, 237, 0.85)';
+      ctx.strokeStyle = '#c4b5fd';
+      ctx.lineWidth = 1.5;
+      ctx.fill();
+      ctx.stroke();
+      // Name label under the circle.
+      ctx.fillStyle = '#e9d5ff';
+      ctx.textAlign = 'center';
+      ctx.fillText(text, itemX, itemY + r + 10);
+    };
+
+    // Pair badges: item sits at the bezier midpoint of the two speakers'
+    // relation edge, with a thin line to each speaker.
+    for (const edge of allRelations) {
+      if (!visibleNodeIds.has(edge.speakerA.id) || !visibleNodeIds.has(edge.speakerB.id)) continue;
+      const a = Math.min(edge.speakerA.id, edge.speakerB.id);
+      const c = Math.max(edge.speakerA.id, edge.speakerB.id);
+      const badges = pairBadges.get(`${a}-${c}`);
+      if (!badges?.length) continue;
+      const fromNode = nodeById.get(edge.speakerA.id);
+      const toNode = nodeById.get(edge.speakerB.id);
+      if (!fromNode || !toNode) continue;
+      const dx = toNode.x - fromNode.x;
+      const dy = toNode.y - fromNode.y;
+      const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+      const bow = Math.min(dist * 0.15, 40);
+      const midX = (fromNode.x + toNode.x) / 2 + (-dy / dist) * bow;
+      const midY = (fromNode.y + toNode.y) / 2 + (dx / dist) * bow;
+      badges.forEach((b, i) => {
+        // Fan out multiple pair badges along the normal direction so they
+        // don't stack on top of each other.
+        const offset = (i - (badges.length - 1) / 2) * 26;
+        const ix = midX + (-dy / dist) * offset;
+        const iy = midY + (dx / dist) * offset;
+        drawItemNode(ix, iy, b.entityText, [
+          { x: fromNode.x, y: fromNode.y },
+          { x: toNode.x, y: toNode.y },
+        ]);
+      });
+    }
+    // Solo badges: item node hangs off the sole speaker with one connector.
+    for (const [speakerId, badges] of soloBadges) {
+      const n = nodeById.get(speakerId);
+      if (!n || !visibleNodeIds.has(speakerId)) continue;
+      const offsetX = 80;
+      const step = 32;
+      const startY = n.y - ((badges.length - 1) / 2) * step;
+      badges.forEach((b, i) => {
+        drawItemNode(n.x + offsetX, startY + i * step, b.entityText, [{ x: n.x, y: n.y }]);
+      });
+    }
+    ctx.textAlign = 'left';
+
     for (const node of nodes) {
       if (!visibleNodeIds.has(node.id)) continue;
       const isSelected = selectedNode?.id === node.id;
@@ -489,13 +603,30 @@ export default function NetworkGraph({ isAdmin = false }: { isAdmin?: boolean })
         }
       }
 
-      if (groupColor) {
-        ctx.beginPath();
-        ctx.arc(node.x, node.y, nodeRadius + 3, 0, Math.PI * 2);
-        ctx.strokeStyle = groupColor;
+      // Draw the group ring: one full circle if a single group, or evenly
+      // divided arc segments (with tiny gaps between) if the speaker belongs
+      // to multiple groups. Makes multi-membership visible at a glance.
+      const memberGroups = speakerGroupsMap.get(node.id) ?? [];
+      if (memberGroups.length > 0) {
+        const ringR = nodeRadius + 3;
         ctx.lineWidth = 2.5;
         ctx.setLineDash([]);
-        ctx.stroke();
+        if (memberGroups.length === 1) {
+          ctx.beginPath();
+          ctx.arc(node.x, node.y, ringR, 0, Math.PI * 2);
+          ctx.strokeStyle = memberGroups[0].color;
+          ctx.stroke();
+        } else {
+          const gap = 0.08;                                // radians between arcs
+          const sweep = (Math.PI * 2) / memberGroups.length - gap;
+          for (let i = 0; i < memberGroups.length; i++) {
+            const start = i * ((Math.PI * 2) / memberGroups.length) + gap / 2 - Math.PI / 2;
+            ctx.beginPath();
+            ctx.arc(node.x, node.y, ringR, start, start + sweep);
+            ctx.strokeStyle = memberGroups[i].color;
+            ctx.stroke();
+          }
+        }
       }
 
       if (hoveredNodeId === node.id && !isSelected) {
@@ -541,7 +672,7 @@ export default function NetworkGraph({ isAdmin = false }: { isAdmin?: boolean })
     }
 
     ctx.restore();
-  }, [nodes, allRelations, selectedNode, hoveredNodeId, zoom, pan, filter, speakerGroupMap, bridgeNodeIds, imageVersion]);
+  }, [nodes, allRelations, selectedNode, hoveredNodeId, zoom, pan, filter, speakerGroupMap, speakerGroupsMap, bridgeNodeIds, imageVersion, edgeBadges, showGhosts]);
 
   const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     // A drag-to-pan gesture ends with a click event too — swallow it so
@@ -674,6 +805,36 @@ export default function NetworkGraph({ isAdmin = false }: { isAdmin?: boolean })
       setAllRelations(rl);
     } catch { /* swallow — keep popup open */ } finally {
       setGhostPickerBusy(false);
+    }
+  }
+
+  function handlePromoteGhostToReal() {
+    if (!nodeAction) return;
+    // Open the in-app modal instead of window.prompt so the analyst gets
+    // proper styling, keyboard handling, and an error surface for
+    // rename-collision cases.
+    setGhostPromoteModal({ ghostId: nodeAction.node.id, suggestedName: nodeAction.node.label });
+    setGhostPromoteName(nodeAction.node.label);
+    setGhostPromoteError('');
+  }
+
+  async function confirmPromoteGhost() {
+    if (!ghostPromoteModal) return;
+    const name = ghostPromoteName.trim();
+    if (!name) { setGhostPromoteError('Name cannot be empty.'); return; }
+    setGhostPromoteBusy(true); setGhostPromoteError('');
+    try {
+      await speakersApi.promoteGhostToReal(ghostPromoteModal.ghostId, name);
+      setGhostPromoteModal(null);
+      setNodeAction(null);
+      setNodeActionGhostPicker(false);
+      const [sp, rl] = await Promise.all([speakersApi.list(), relationsApi.list()]);
+      setAllSpeakers(sp);
+      setAllRelations(rl);
+    } catch (e: any) {
+      setGhostPromoteError(e?.message ?? 'Failed to create speaker.');
+    } finally {
+      setGhostPromoteBusy(false);
     }
   }
 
@@ -873,7 +1034,7 @@ export default function NetworkGraph({ isAdmin = false }: { isAdmin?: boolean })
                       onChange={e => setShowGhosts(e.target.checked)}
                       className="accent-violet-500"
                     />
-                    Include Ghost speakers
+                    Include Ghost speakers &amp; entities
                   </label>
                   <div className="ml-auto flex items-center gap-4 text-[10px] text-zinc-200 font-mono">
                     <div className="flex items-center gap-1.5">
@@ -973,7 +1134,7 @@ export default function NetworkGraph({ isAdmin = false }: { isAdmin?: boolean })
                         value={newGroupParentId == null ? '' : String(newGroupParentId)}
                         onChange={e => setNewGroupParentId(e.target.value === '' ? null : Number(e.target.value))}
                         className="bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-zinc-200 text-xs font-mono focus:outline-none focus:border-blue-500"
-                        title="Parent group — leave as 'Top-level' to create a project"
+                        title="Parent group. Leave as 'Top-level' to create a project."
                       >
                         <option value="">Top-level (project)</option>
                         {allGroups.filter(g => g.parentGroupId === null).map(g => (
@@ -989,7 +1150,7 @@ export default function NetworkGraph({ isAdmin = false }: { isAdmin?: boolean })
                   )}
 
                   {allGroups.length === 0 && !showNewGroupForm && (
-                    <p className="text-zinc-300 text-xs font-mono">No groups yet — create one to start organizing speakers.</p>
+                    <p className="text-zinc-300 text-xs font-mono">No groups yet. Create one to start organizing speakers.</p>
                   )}
                   {allGroups.length > 0 && filteredGroups.length === 0 && (
                     <p className="text-zinc-300 text-xs font-mono">
@@ -1165,6 +1326,62 @@ export default function NetworkGraph({ isAdmin = false }: { isAdmin?: boolean })
         </>
       )}
 
+      {/* Ghost → real speaker promotion modal (replaces window.prompt) */}
+      {ghostPromoteModal && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4"
+          onClick={() => !ghostPromoteBusy && setGhostPromoteModal(null)}
+        >
+          <div
+            className="w-full max-w-md bg-zinc-950 border border-zinc-800 rounded-md shadow-xl"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="px-5 py-3.5 border-b border-zinc-800 flex items-center gap-2">
+              <Plus className="w-4 h-4 text-emerald-400" />
+              <span className="text-zinc-200 text-xs font-mono uppercase tracking-widest">Create new speaker</span>
+            </div>
+            <div className="p-5 space-y-4">
+              <p className="text-zinc-300 text-sm">
+                Turn this ghost node into a real speaker. You can enroll a voice sample later from the speaker's profile.
+              </p>
+              <div>
+                <label className="text-zinc-200 text-[10px] font-mono uppercase tracking-widest block mb-1.5">Name</label>
+                <input
+                  autoFocus
+                  type="text"
+                  value={ghostPromoteName}
+                  onChange={e => setGhostPromoteName(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && !ghostPromoteBusy && confirmPromoteGhost()}
+                  className="w-full bg-black border border-zinc-800 rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 transition-all"
+                />
+              </div>
+              {ghostPromoteError && (
+                <div className="px-3 py-2 bg-red-500/8 border border-red-500/25 rounded text-red-400 text-xs">
+                  {ghostPromoteError}
+                </div>
+              )}
+              <div className="flex justify-end gap-2 pt-1">
+                <button
+                  onClick={() => setGhostPromoteModal(null)}
+                  disabled={ghostPromoteBusy}
+                  className="px-4 py-2 text-sm text-zinc-200 hover:text-white bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-md transition-colors disabled:opacity-40"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmPromoteGhost}
+                  disabled={ghostPromoteBusy || !ghostPromoteName.trim()}
+                  className="flex items-center gap-1.5 px-4 py-2 text-sm bg-emerald-600 hover:bg-emerald-500 disabled:bg-zinc-800 disabled:text-zinc-500 text-white rounded-md transition-colors"
+                >
+                  {ghostPromoteBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+                  Create
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Speaker-node click popup */}
       {nodeAction && (() => {
         const POPUP_W = 220;
@@ -1188,12 +1405,21 @@ export default function NetworkGraph({ isAdmin = false }: { isAdmin?: boolean })
               {!nodeActionGroupPicker && !nodeActionGhostPicker ? (
                 <div className="p-2 space-y-1">
                   {nodeAction.node.isGhost && (
-                    <button
-                      onClick={() => { setNodeActionGhostPicker(true); setGhostPickerSearch(''); }}
-                      className="flex items-center gap-2 w-full px-2 py-1.5 text-violet-300 hover:bg-violet-500/10 rounded-md text-sm text-left transition-colors"
-                    >
-                      <User className="w-3.5 h-3.5" /> Link to real speaker
-                    </button>
+                    <>
+                      <button
+                        onClick={() => { setNodeActionGhostPicker(true); setGhostPickerSearch(''); }}
+                        className="flex items-center gap-2 w-full px-2 py-1.5 text-violet-300 hover:bg-violet-500/10 rounded-md text-sm text-left transition-colors"
+                      >
+                        <User className="w-3.5 h-3.5" /> Link to existing speaker
+                      </button>
+                      <button
+                        onClick={handlePromoteGhostToReal}
+                        disabled={ghostPickerBusy}
+                        className="flex items-center gap-2 w-full px-2 py-1.5 text-emerald-300 hover:bg-emerald-500/10 rounded-md text-sm text-left transition-colors disabled:opacity-50"
+                      >
+                        <Plus className="w-3.5 h-3.5" /> Create new speaker
+                      </button>
+                    </>
                   )}
                   {!nodeAction.node.isGhost && (
                     <button

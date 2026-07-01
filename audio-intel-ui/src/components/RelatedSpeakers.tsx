@@ -270,7 +270,7 @@ export default function RelatedSpeakers() {
             </div>
             <div className="p-5">
               <p className="text-zinc-300 text-xs mb-4">
-                Find the public entity for <span className="text-zinc-200 font-medium">{source.name}</span>. Pick carefully — Wikidata often has multiple people with the same name.
+                Find the public entity for <span className="text-zinc-200 font-medium">{source.name}</span>. Pick carefully, since Wikidata often has multiple people with the same name.
               </p>
               <div className="flex flex-col sm:flex-row gap-2 mb-4">
                 <input type="text" placeholder="e.g. Lewis Hamilton" value={searchQuery}
@@ -335,7 +335,7 @@ export default function RelatedSpeakers() {
             <div className="flex items-center justify-between px-5 py-3.5 border-b border-zinc-800">
               <div className="flex items-center gap-2">
                 <Link2 className="w-4 h-4 text-blue-400" />
-                <span className="text-zinc-200 text-xs font-mono uppercase tracking-widest">Suggested Connections — {source.name}</span>
+                <span className="text-zinc-200 text-xs font-mono uppercase tracking-widest">Suggested Connections for {source.name}</span>
               </div>
               <button onClick={() => setStep(2)} className="text-zinc-300 hover:text-zinc-100 text-xs font-mono">← Re-match</button>
             </div>

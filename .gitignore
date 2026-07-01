@@ -224,3 +224,7 @@ dist/
 # Database files (Optional: keep if you want to share the DB file itself)
 *.db-shm
 *.db-wal
+*.db-info
+
+# Local audio samples (kept out of git — too large; each analyst provides their own)
+samples/

@@ -13,11 +13,28 @@ Built for analysts working with intercepted / recorded audio.
 - **Semantic search** — hybrid BM25 + dense (FAISS) + cross-encoder rerank across
   every transcript; toggle for exact-word match.
 - **Entity extraction** — NER for PERSON / ORG / LOC / PHONE / EMAIL / MONEY,
-  with ghost-node creation for unknown referenced entities.
-- **Coded-language detection** — multi-signal scoring (perplexity, lexical anomaly,
-  context-vector similarity, euphemism-dictionary match) flags suspicious segments.
-- **Projects / subgroups** — admins scope analysts to specific speaker subgroups
-  so each analyst only sees the data assigned to them.
+  with ghost-node creation for unknown referenced entities. Analysts can also
+  manually promote any entity to the network graph: PERSON entities become
+  ghost speaker nodes; ORG/LOC/MISC items render as small badge nodes attached
+  to the edges between the speakers who mentioned them.
+- **Ghost node resolution** — click any ghost on the graph to either link it
+  to an existing speaker (merges with their voice bucket) or create a fresh
+  real speaker awaiting voice enrollment.
+- **Attribution confirmation** — auto-matches in the 0.60–0.85 confidence
+  band get an amber "% match" badge and a ✓ button on the speaker card, so
+  analysts can approve the identity and feed the samples back into the voice
+  model without needing a perfect match.
+- **Coded-language detection** — multi-signal scoring (topic incoherence,
+  lexical anomaly, perplexity, coded-phrase similarity to a euphemism
+  dictionary) flags suspicious segments.
+- **Retroactive rescans** — one-click "Re-scan all" buttons on both settings
+  sections apply newly-added flagged keywords and coded-language phrases
+  to every previously-processed recording, so historical audio picks up new
+  detections without re-uploading.
+- **Projects / subgroups** — admins scope analysts to specific speaker
+  subgroups so each analyst only sees the data assigned to them. Speakers
+  can belong to multiple subgroups; the network graph shows this as a
+  ring split into arc segments, one per group.
 - **Alerts** — flagged-keyword hits and coded-language detections surface in a
   dedicated tab; click any row to jump to the segment.
 
@@ -172,5 +189,34 @@ analysis. ML never reads/writes its own state.
 | [nlp/reranker.py](Backend/nlp/reranker.py) | Cross-encoder used by semantic search step 6. |
 
 See [Backend/DATABASE.md](Backend/DATABASE.md) for the schema and
-[ml/README.md](ml/README.md) for the ML pipeline stages. See [CLAUDE.md](CLAUDE.md)
-for non-obvious gotchas before changing speaker-matching or NLP code.
+[ml/README.md](ml/README.md) for the ML pipeline stages.
+
+---
+
+## Testing
+
+The backend ships with a pytest suite (107 tests) that covers:
+- `matcher.py` thresholds and the per-recording de-collision rule
+- Speaker identity: unknown-numbering, embedding CAP-trim, FK cascades,
+  merge / move-embeddings ordering
+- Auth (ID validation, duplicates, password change, force-change lifecycle)
+- Group hierarchy invariants and speaker-group bridges
+- API-level rename / reassign / suggestion-accept / split flows
+- Entity → graph promotion (ghost speakers for PERSON, edge badges for items)
+- Confirm-attribution flow for the 0.60–0.85 auto-match band
+- Retroactive rescan endpoints for flagged keywords and coded language
+- Idempotent init-time migrations (composite UNIQUE on `DangerousWords`,
+  category backfill on legacy alerts, entity count refresh, `EdgeEntityBadges`)
+
+Run the whole suite inside the backend container:
+
+```bash
+docker compose exec backend python -m pytest tests/ -q
+```
+
+Individual files run the same way with `pytest tests/test_foo.py`.
+Slow / opt-in tests are marked `@pytest.mark.slow` and skipped by default;
+run them with `pytest -m slow`. See [`Backend/tests/conftest.py`](Backend/tests/conftest.py)
+for the isolated `db` / `client` fixtures — every test runs against a
+throwaway SQLite file with `_USE_TURSO=False` and a tmp `storage.LOCAL_DIR`,
+so nothing touches shared cloud state.

@@ -408,7 +408,7 @@ export default function SpeakerProfile() {
                       <div className="flex items-center gap-2 mb-1">
                         <h2 className="text-white text-xl font-bold">{speaker.name}</h2>
                         {speaker.isUntracked && (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono uppercase border border-zinc-700 bg-zinc-800/50 text-zinc-200" title="Untracked — hidden from connection graph">
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono uppercase border border-zinc-700 bg-zinc-800/50 text-zinc-200" title="Untracked (hidden from connection graph)">
                             <EyeOff className="w-3 h-3" /> Untracked
                           </span>
                         )}

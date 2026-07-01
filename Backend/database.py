@@ -264,6 +264,17 @@ def _is_recoverable_libsql_error(err: Exception) -> bool:
     return any(needle in msg for needle in _LIBSQL_RECOVERABLE_ERRORS)
 
 
+def _is_unique_constraint_error(err: Exception) -> bool:
+    """True for both plain sqlite3 UNIQUE violations and Turso/libsql's
+    ValueError-wrapped equivalents (`Hrana: ... UNIQUE constraint failed`).
+    Callers map this to a clean 'already exists' result instead of a 500.
+    Deliberately excludes generic SQLITE_CONSTRAINT (FK / CHECK / NOT NULL) —
+    those are real bugs and should surface, not be silently returned as None."""
+    if isinstance(err, sqlite3.IntegrityError):
+        return "UNIQUE" in str(err).upper()
+    return "UNIQUE constraint" in str(err)
+
+
 def _get_conn():
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     if _USE_TURSO:
@@ -413,6 +424,22 @@ def init_db():
                 CreatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        # SpeakerAudioAttribution — records the confidence at which an
+        # auto-match happened, and whether the analyst has explicitly
+        # confirmed it. Populated by matcher for status="auto_matched" rows.
+        # A 0.60-0.85 match starts Confirmed=0; the UI shows a "% match" badge
+        # and a check button that flips this to 1 (and appends embeddings).
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS SpeakerAudioAttribution (
+                Id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                AudioId    INTEGER NOT NULL REFERENCES Audios(Id)   ON DELETE CASCADE,
+                SpeakerId  INTEGER NOT NULL REFERENCES Speakers(Id) ON DELETE CASCADE,
+                Confidence REAL    NOT NULL,
+                Confirmed  INTEGER NOT NULL DEFAULT 0,
+                CreatedAt  DATETIME DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(AudioId, SpeakerId)
+            )
+        """)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS SpeakerGroups (
                 Id        INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -446,6 +473,26 @@ def init_db():
         alert_cols = {row[1] for row in conn.execute("PRAGMA table_info(Alerts)").fetchall()}
         if "Category" not in alert_cols:
             conn.execute("ALTER TABLE Alerts ADD COLUMN Category TEXT")
+        # Backfill: before the api-side category-tagging fix, dangerous-word
+        # alerts were created with Category=NULL. Any of those still sitting
+        # around from earlier scans would linger past a rescan-all's
+        # category-scoped cleanup, resurfacing as duplicates. Idempotent —
+        # the WHERE clause skips anything already tagged.
+        conn.execute(
+            """UPDATE Alerts
+               SET Category = 'dangerous_word'
+               WHERE Category IS NULL
+                 AND Message LIKE 'Flagged keyword %'"""
+        )
+        # Cleanup: alerts whose audio was deleted (FK is ON DELETE SET NULL, so
+        # the row survives with RelatedAudioId=NULL — but with no audio to link
+        # to, the UI can only show the stale hardcoded id in the message text.
+        # No usable navigation → not worth keeping. Idempotent.
+        conn.execute(
+            """DELETE FROM Alerts
+               WHERE Category IN ('dangerous_word', 'coded_language')
+                 AND RelatedAudioId IS NULL"""
+        )
         if "SegmentId" not in alert_cols:
             # NOTE: FK ref cannot be added via ALTER; column is a plain INTEGER.
             # Join manually with ON Alerts.SegmentId = Segments.Id.
@@ -466,6 +513,40 @@ def init_db():
             conn.execute("ALTER TABLE DangerousWords ADD COLUMN Embedding BLOB")
         if "EmbeddingModel" not in dw_cols:
             conn.execute("ALTER TABLE DangerousWords ADD COLUMN EmbeddingModel TEXT")
+        # Migration: split UNIQUE(Word) into UNIQUE(Word, IsEuphemism) so the
+        # same word can appear in both Flagged Keywords (IsEuphemism=0) and
+        # Coded-Language Phrases (IsEuphemism=1). Idempotent: skips if the
+        # CREATE TABLE sql already carries the composite UNIQUE. SQLite can't
+        # ALTER a UNIQUE constraint in place, hence the table-swap dance.
+        dw_sql = (conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='DangerousWords'"
+        ).fetchone() or [""])[0] or ""
+        if "UNIQUE(Word, IsEuphemism)" not in dw_sql and "UNIQUE (Word, IsEuphemism)" not in dw_sql:
+            conn.execute("""
+                CREATE TABLE DangerousWords_new (
+                    Id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                    Word           TEXT    NOT NULL COLLATE NOCASE,
+                    Severity       TEXT    NOT NULL DEFAULT 'high' CHECK(Severity IN ('low','medium','high')),
+                    CreatedBy      INTEGER REFERENCES Users(Id) ON DELETE SET NULL,
+                    CreatedAt      TEXT    NOT NULL DEFAULT (datetime('now')),
+                    IsEuphemism    INTEGER NOT NULL DEFAULT 0,
+                    AutoLearned    INTEGER NOT NULL DEFAULT 0,
+                    Confidence     REAL,
+                    Embedding      BLOB,
+                    EmbeddingModel TEXT,
+                    UNIQUE(Word, IsEuphemism)
+                )
+            """)
+            conn.execute("""
+                INSERT INTO DangerousWords_new
+                    (Id, Word, Severity, CreatedBy, CreatedAt, IsEuphemism, AutoLearned,
+                     Confidence, Embedding, EmbeddingModel)
+                SELECT Id, Word, Severity, CreatedBy, CreatedAt, IsEuphemism, AutoLearned,
+                       Confidence, Embedding, EmbeddingModel
+                FROM DangerousWords
+            """)
+            conn.execute("DROP TABLE DangerousWords")
+            conn.execute("ALTER TABLE DangerousWords_new RENAME TO DangerousWords")
         # ─── NLP migrations: Ofek — NER / Ghost Nodes / Entity Resolution ───
         spk_cols = {row[1] for row in conn.execute("PRAGMA table_info(Speakers)").fetchall()}
         if "IsGhost" not in spk_cols:
@@ -516,6 +597,100 @@ def init_db():
             CREATE INDEX IF NOT EXISTS IX_EntityMentions_SegmentId
                 ON EntityMentions(SegmentId)
         """)
+        # Refresh Entity counts from live EntityMentions. Rows can drift when
+        # segments/audios are deleted (mentions cascade out, but the entity's
+        # denormalised MentionCount / DistinctSpeakerCount / DistinctAudioCount
+        # aren't recomputed automatically). A stale entity that says
+        # MentionCount=3 with zero live mentions used to let analysts promote a
+        # ghost node that then had nothing to connect to.
+        conn.execute(
+            """UPDATE Entities SET
+                 MentionCount = COALESCE((
+                   SELECT COUNT(*) FROM EntityMentions WHERE EntityId = Entities.Id
+                 ), 0),
+                 DistinctSpeakerCount = COALESCE((
+                   SELECT COUNT(DISTINCT ResolvedSpeakerId) FROM EntityMentions
+                    WHERE EntityId = Entities.Id AND ResolvedSpeakerId IS NOT NULL
+                 ), 0),
+                 DistinctAudioCount = COALESCE((
+                   SELECT COUNT(DISTINCT sg.AudioId) FROM EntityMentions em
+                     JOIN Segments sg ON sg.Id = em.SegmentId
+                    WHERE em.EntityId = Entities.Id
+                 ), 0)"""
+        )
+        # Drop entities that are now truly empty — no segments still reference
+        # them anywhere. Prevents zombie rows like "Co" from reappearing.
+        # Keeps promoted-then-orphaned ones (GhostSpeakerId set) so a running
+        # ghost isn't yanked from the graph underneath the analyst.
+        conn.execute(
+            """DELETE FROM Entities
+               WHERE MentionCount = 0
+                 AND GhostSpeakerId IS NULL"""
+        )
+        # EdgeEntityBadges: non-person entities (ORG / LOC / MISC) that the
+        # analyst asked to display on the network graph. They don't get their
+        # own ghost speaker node — a "Ferrari" isn't a talker. Instead we tag
+        # the relation edge between the two people who both mentioned it, or
+        # (SpeakerBId NULL) attach it directly to the sole utterer if only
+        # one person did. Rendered as edge/node labels on the graph.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS EdgeEntityBadges (
+                Id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                SpeakerAId INTEGER NOT NULL REFERENCES Speakers(Id) ON DELETE CASCADE,
+                SpeakerBId INTEGER          REFERENCES Speakers(Id) ON DELETE CASCADE,
+                EntityId   INTEGER NOT NULL REFERENCES Entities(Id) ON DELETE CASCADE,
+                CreatedAt  DATETIME DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(SpeakerAId, SpeakerBId, EntityId)
+            )
+        """)
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS IX_EdgeEntityBadges_Pair
+                ON EdgeEntityBadges(SpeakerAId, SpeakerBId)
+        """)
+        # Migration: convert legacy non-PERSON ghost speakers (created before
+        # the People vs Items split) into EdgeEntityBadges. A "Ferrari" ghost
+        # speaker with a triangle node on the graph was never conceptually
+        # right — Ferrari doesn't talk. Rewire each existing edge from a real
+        # speaker to that ghost as an edge badge or solo attachment, then
+        # delete the ghost so the graph stops rendering the node.
+        legacy = conn.execute("""
+            SELECT s.Id AS GhostId, s.PromotedFromEntityId AS EntityId
+            FROM Speakers s
+            JOIN Entities e ON e.Id = s.PromotedFromEntityId
+            WHERE s.IsGhost = 1 AND e.Type != 'PERSON'
+        """).fetchall()
+        for row in legacy:
+            ghost_id, entity_id = row["GhostId"], row["EntityId"]
+            # Every utterer that had a 'mentioned' edge to this ghost becomes
+            # a candidate for the new badge attachment.
+            utterers = [
+                r["SpeakerAId"] if r["SpeakerBId"] == ghost_id else r["SpeakerBId"]
+                for r in conn.execute(
+                    """SELECT SpeakerAId, SpeakerBId FROM Relations
+                       WHERE (SpeakerAId = ? OR SpeakerBId = ?) AND Topic = 'mentioned'""",
+                    (ghost_id, ghost_id),
+                ).fetchall()
+            ]
+            utterers = sorted(set(utterers))
+            if len(utterers) == 1:
+                conn.execute(
+                    """INSERT OR IGNORE INTO EdgeEntityBadges (SpeakerAId, SpeakerBId, EntityId)
+                       VALUES (?, NULL, ?)""",
+                    (utterers[0], entity_id),
+                )
+            elif len(utterers) >= 2:
+                for i in range(len(utterers)):
+                    for j in range(i + 1, len(utterers)):
+                        a, b = sorted((utterers[i], utterers[j]))
+                        conn.execute(
+                            """INSERT OR IGNORE INTO EdgeEntityBadges (SpeakerAId, SpeakerBId, EntityId)
+                               VALUES (?, ?, ?)""",
+                            (a, b, entity_id),
+                        )
+            # Unlink the entity so subsequent inits don't re-migrate, then
+            # cascade-drop the ghost speaker (Relations CASCADE follows).
+            conn.execute("UPDATE Entities SET GhostSpeakerId = NULL WHERE Id = ?", (entity_id,))
+            conn.execute("DELETE FROM Speakers WHERE Id = ?", (ghost_id,))
         # ─────────────────────────────────────────────────────────────────────
 
         # ─── Groups / Projects migrations ──────────────────────────────────
@@ -827,6 +1002,16 @@ def delete_audio(audio_id: int) -> bool:
                 (audio_id,),
             ).fetchall()
         ]
+        # Nuke the audio's detection-derived alerts up front. The FK on Alerts
+        # is ON DELETE SET NULL, which would otherwise leave orphan rows with
+        # a dead "audio N" reference in the message and no working transcript
+        # link. Manual-severity alerts (Category NULL) are kept.
+        conn.execute(
+            """DELETE FROM Alerts
+               WHERE RelatedAudioId = ?
+                 AND Category IN ('dangerous_word', 'coded_language')""",
+            (audio_id,),
+        )
         result = conn.execute("DELETE FROM Audios WHERE Id = ?", (audio_id,))
         if result.rowcount > 0:
             _prune_orphan_unknown_speakers(conn, prior_speakers)
@@ -1513,7 +1698,7 @@ def get_all_segment_embeddings() -> list[dict]:
 
 # ─── Entities ─────────────────────────────────────────────────────────────────
 
-def _row_to_entity(r) -> dict:
+def _row_to_entity(r, *, has_badge: bool = False) -> dict:
     return {
         "id": r["Id"],
         "type": r["Type"],
@@ -1527,6 +1712,12 @@ def _row_to_entity(r) -> dict:
         "distinctAudioCount": r["DistinctAudioCount"],
         "firstSeen": r["FirstSeen"],
         "lastSeen": r["LastSeen"],
+        # True whenever this entity has any live representation on the
+        # network graph: either a ghost Speaker (PERSON path) or at least
+        # one EdgeEntityBadge row (ITEM path). The Entities page uses this
+        # to decide whether to show "Remove from graph" instead of the
+        # promotion button.
+        "onGraph": bool(r["GhostSpeakerId"]) or has_badge,
     }
 
 
@@ -1535,13 +1726,22 @@ def get_all_entities() -> list[dict]:
         rows = conn.execute(
             "SELECT * FROM Entities ORDER BY MentionCount DESC"
         ).fetchall()
-    return [_row_to_entity(r) for r in rows]
+        # One query for every entity with at least one live edge badge — used
+        # to compute `onGraph` for non-person items without an N+1 pattern.
+        badge_ids = {
+            r["EntityId"] for r in
+            conn.execute("SELECT DISTINCT EntityId FROM EdgeEntityBadges").fetchall()
+        }
+    return [_row_to_entity(r, has_badge=r["Id"] in badge_ids) for r in rows]
 
 
 def get_entity(entity_id: int) -> Optional[dict]:
     with _get_conn() as conn:
         row = conn.execute("SELECT * FROM Entities WHERE Id = ?", (entity_id,)).fetchone()
-    return _row_to_entity(row) if row else None
+        has_badge = conn.execute(
+            "SELECT 1 FROM EdgeEntityBadges WHERE EntityId = ? LIMIT 1", (entity_id,),
+        ).fetchone() is not None
+    return _row_to_entity(row, has_badge=has_badge) if row else None
 
 
 def upsert_entity(
@@ -1750,6 +1950,55 @@ def create_ghost_speaker(entity_id: int, name: str) -> Optional[int]:
 def upsert_mention_relation(speaker_id: int, ghost_speaker_id: int) -> None:
     """Upsert a 'mentioned' relation between a real speaker and a ghost speaker."""
     upsert_relation(speaker_id, ghost_speaker_id, topic="mentioned")
+
+
+def upsert_edge_entity_badge(speaker_a_id: int, speaker_b_id: Optional[int],
+                             entity_id: int) -> None:
+    """Attach an item entity to an edge (both speakers set) or to a single
+    speaker's node (SpeakerBId None). Idempotent via UNIQUE constraint.
+    Enforces `a < b` when both are set so lookup / dedupe is straightforward."""
+    a, b = speaker_a_id, speaker_b_id
+    if b is not None and a > b:
+        a, b = b, a
+    with _get_conn() as conn:
+        conn.execute(
+            """INSERT OR IGNORE INTO EdgeEntityBadges (SpeakerAId, SpeakerBId, EntityId)
+               VALUES (?, ?, ?)""",
+            (a, b, entity_id),
+        )
+        conn.commit()
+
+
+def get_all_edge_entity_badges() -> list[dict]:
+    """Return every currently-visible non-person entity attached to an edge
+    or a lone speaker. Powers the network graph's item-label rendering."""
+    with _get_conn() as conn:
+        rows = conn.execute(
+            """SELECT b.SpeakerAId, b.SpeakerBId, b.EntityId,
+                      e.RawText AS EntityText, e.Type AS EntityType
+               FROM EdgeEntityBadges b
+               JOIN Entities e ON e.Id = b.EntityId"""
+        ).fetchall()
+    return [
+        {
+            "speakerAId": r["SpeakerAId"],
+            "speakerBId": r["SpeakerBId"],
+            "entityId": r["EntityId"],
+            "entityText": r["EntityText"],
+            "entityType": r["EntityType"],
+        }
+        for r in rows
+    ]
+
+
+def delete_edge_entity_badges_for_entity(entity_id: int) -> int:
+    """Remove every badge row for a given entity — used to undo a promotion."""
+    with _get_conn() as conn:
+        result = conn.execute(
+            "DELETE FROM EdgeEntityBadges WHERE EntityId = ?", (entity_id,),
+        )
+        conn.commit()
+    return result.rowcount or 0
 
 
 def link_entity_wikidata(entity_id: int, wikidata_id: str) -> bool:
@@ -2109,6 +2358,19 @@ def get_all_alerts(category: Optional[str] = None) -> list[dict]:
     return [_row_to_alert(r) for r in rows]
 
 
+def delete_alerts_by_audio_and_category(audio_id: int, category: str) -> int:
+    """Wipe every alert on this audio in the given category. Used by the
+    rescan-all endpoints so a re-run doesn't double-up rows from the previous
+    scan."""
+    with _get_conn() as conn:
+        result = conn.execute(
+            "DELETE FROM Alerts WHERE RelatedAudioId = ? AND Category = ?",
+            (audio_id, category),
+        )
+        conn.commit()
+    return result.rowcount or 0
+
+
 def get_alerts_for_audio(audio_id: int) -> list[dict]:
     with _get_conn() as conn:
         rows = conn.execute(
@@ -2144,17 +2406,25 @@ def get_dangerous_words(include_euphemisms: bool = False) -> list[dict]:
     return [{"id": r["Id"], "word": r["Word"], "severity": r["Severity"], "createdAt": r["CreatedAt"]} for r in rows]
 
 
-def add_dangerous_word(word: str, severity: str, created_by: Optional[int] = None) -> dict:
-    with _get_conn() as conn:
-        cursor = conn.execute(
-            "INSERT INTO DangerousWords (Word, Severity, CreatedBy) VALUES (?, ?, ?)",
-            (word.strip(), severity, created_by or None),
-        )
-        conn.commit()
-        row = conn.execute(
-            "SELECT Id, Word, Severity, CreatedAt FROM DangerousWords WHERE Id = ?",
-            (cursor.lastrowid,),
-        ).fetchone()
+def add_dangerous_word(word: str, severity: str, created_by: Optional[int] = None) -> Optional[dict]:
+    """Insert a flagged keyword. Returns the new row, or None if the word
+    already exists (UNIQUE COLLATE NOCASE on Word). Caller (api.py) maps
+    None to a clean 409."""
+    try:
+        with _get_conn() as conn:
+            cursor = conn.execute(
+                "INSERT INTO DangerousWords (Word, Severity, CreatedBy) VALUES (?, ?, ?)",
+                (word.strip(), severity, created_by or None),
+            )
+            conn.commit()
+            row = conn.execute(
+                "SELECT Id, Word, Severity, CreatedAt FROM DangerousWords WHERE Id = ?",
+                (cursor.lastrowid,),
+            ).fetchone()
+    except Exception as e:
+        if _is_unique_constraint_error(e):
+            return None
+        raise
     return {"id": row["Id"], "word": row["Word"], "severity": row["Severity"], "createdAt": row["CreatedAt"]}
 
 
@@ -2310,8 +2580,10 @@ def add_euphemism(
                    FROM DangerousWords WHERE Id = ?""",
                 (new_id,),
             ).fetchone()
-    except sqlite3.IntegrityError:
-        return None
+    except Exception as e:
+        if _is_unique_constraint_error(e):
+            return None
+        raise
     return {
         "id": row["Id"],
         "phrase": row["Word"],
@@ -2689,6 +2961,54 @@ def delete_suggestions_for_unknown(speaker_id: int) -> int:
     return result.rowcount
 
 
+# ─── Speaker Audio Attribution ────────────────────────────────────────────────
+
+def upsert_attribution(audio_id: int, speaker_id: int, confidence: float,
+                       confirmed: bool = False) -> None:
+    """Record the score at which an auto-match happened, once per
+    (audio, speaker). If it already exists (e.g. re-analysis), replace the
+    row so the newest confidence wins."""
+    with _get_conn() as conn:
+        conn.execute(
+            """INSERT INTO SpeakerAudioAttribution
+                    (AudioId, SpeakerId, Confidence, Confirmed)
+               VALUES (?, ?, ?, ?)
+               ON CONFLICT(AudioId, SpeakerId) DO UPDATE SET
+                    Confidence = excluded.Confidence,
+                    Confirmed  = excluded.Confirmed""",
+            (audio_id, speaker_id, float(confidence), 1 if confirmed else 0),
+        )
+        conn.commit()
+
+
+def get_attributions_for_audio(audio_id: int) -> list[dict]:
+    with _get_conn() as conn:
+        rows = conn.execute(
+            """SELECT SpeakerId, Confidence, Confirmed
+               FROM SpeakerAudioAttribution WHERE AudioId = ?""",
+            (audio_id,),
+        ).fetchall()
+    return [
+        {
+            "speakerId": r["SpeakerId"],
+            "confidence": r["Confidence"],
+            "confirmed": bool(r["Confirmed"]),
+        }
+        for r in rows
+    ]
+
+
+def set_attribution_confirmed(audio_id: int, speaker_id: int) -> bool:
+    with _get_conn() as conn:
+        result = conn.execute(
+            """UPDATE SpeakerAudioAttribution SET Confirmed = 1
+               WHERE AudioId = ? AND SpeakerId = ?""",
+            (audio_id, speaker_id),
+        )
+        conn.commit()
+    return result.rowcount > 0
+
+
 # ─── Projects (top-level groups) ──────────────────────────────────────────────
 
 def list_projects(user_id: Optional[int] = None, is_admin: bool = True) -> list[dict]:
@@ -2966,3 +3286,13 @@ def get_user_role(user_id: int) -> Optional[str]:
     with _get_conn() as conn:
         row = conn.execute("SELECT Role FROM Users WHERE Id = ?", (user_id,)).fetchone()
     return row["Role"] if row else None
+
+
+def user_exists(user_id: Optional[int]) -> bool:
+    """Cheap FK-preflight for endpoints that record `created_by`. Returns False
+    for None so callers can null-safely wrap in `if not user_exists(x): x = None`."""
+    if user_id is None:
+        return False
+    with _get_conn() as conn:
+        row = conn.execute("SELECT 1 FROM Users WHERE Id = ? LIMIT 1", (user_id,)).fetchone()
+    return row is not None

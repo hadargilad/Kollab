@@ -1,17 +1,22 @@
 import type { SubScores } from '../lib/api';
 
+// Human-readable labels replace the internal a/b/c/d signal keys. The map
+// is: a = topic incoherence, b = TF-IDF lexical anomaly, c = distilgpt2
+// perplexity, d = cosine similarity to the euphemism dictionary.
 export const SUB_LABELS: Array<[keyof SubScores, string, string]> = [
-  ['a', 'A', 'bg-fuchsia-500'],
-  ['b', 'B', 'bg-amber-500'],
-  ['c', 'C', 'bg-cyan-500'],
-  ['d', 'D', 'bg-rose-500'],
+  ['a', 'Off-topic',    'bg-fuchsia-500'],
+  ['b', 'Rare wording', 'bg-amber-500'],
+  ['c', 'Unnatural',    'bg-cyan-500'],
+  ['d', 'Coded phrase', 'bg-rose-500'],
 ];
 
+// Full-length tooltip descriptions — one line per signal explaining what
+// it actually measures. Shown when the analyst hovers a bar segment.
 export const SUB_LEGEND: Record<keyof SubScores, string> = {
-  a: 'Topic incoherence',
-  b: 'Lexical anomaly',
-  c: 'Perplexity',
-  d: 'Euphemism match',
+  a: 'Off-topic: segment drifts from the speaker\'s usual subject',
+  b: 'Rare wording: words that are unusually rare in the corpus',
+  c: 'Unnatural: phrasing that sounds statistically weird to a language model',
+  d: 'Coded phrase: semantic similarity to known euphemisms',
 };
 
 interface Props {
