@@ -287,12 +287,16 @@ async def _poll_ml_progress(audio_id: int, stop: asyncio.Event) -> None:
         await asyncio.sleep(3)
 
 
-def _scan_for_dangerous_words(audio_id: int) -> None:
-    """Check all segments of audio_id against flagged keywords and create alerts."""
+def _scan_for_dangerous_words(audio_id: int) -> int:
+    """Check all segments of audio_id against flagged keywords and create
+    `dangerous_word`-category alerts. Returns count created. Tag the category
+    so the frontend's `?category=dangerous_word` filter (and any rescan-all
+    cleanup) can find them."""
     words = database.get_dangerous_words()
     if not words:
-        return
+        return 0
     segments = database.get_segments_by_audio(audio_id)
+    created = 0
     seen: set[int] = set()
     for word_row in words:
         if word_row["id"] in seen:
@@ -302,11 +306,18 @@ def _scan_for_dangerous_words(audio_id: int) -> None:
             if needle in (seg["text"] or "").lower():
                 database.create_alert(
                     word_row["severity"],
-                    f'Flagged keyword "{word_row["word"]}" detected in audio {audio_id}',
+                    # The audio name is joined into the response separately —
+                    # embedding an ID in the text made rows read "detected in
+                    # audio 13" which is meaningless once the audio is renamed
+                    # or deleted.
+                    f'Flagged keyword "{word_row["word"]}" detected',
                     related_audio_id=audio_id,
+                    category="dangerous_word",
                 )
                 seen.add(word_row["id"])
+                created += 1
                 break
+    return created
 
 
 async def _run_ml_and_save(audio_id: int, audio_handle: str, original_name: str) -> None:
@@ -368,6 +379,15 @@ async def _run_ml_and_save(audio_id: int, audio_handle: str, original_name: str)
         )
         speaker_id_map[spk["speaker_label"]] = match.speaker_id
         taken.add(match.speaker_id)
+        if match.status == "auto_matched":
+            # Record the score so the UI can badge un-learned matches (0.60-0.85)
+            # and offer the analyst a Confirm button that appends embeddings.
+            # ≥ LEARN_THRESHOLD is auto-confirmed since the matcher already
+            # sharpened the bucket.
+            database.upsert_attribution(
+                audio_id, match.speaker_id, match.confidence,
+                confirmed=match.confidence >= matcher.LEARN_THRESHOLD,
+            )
         if match.status == "suggested" and match.suggested_speaker_id is not None:
             pending_suggestions.append(
                 (match.speaker_id, match.suggested_speaker_id, match.confidence)
@@ -932,6 +952,69 @@ def resolve_ghost(ghost_id: int, body: ResolveGhostRequest):
     return {"success": True, "mergedIntoId": body.real_speaker_id}
 
 
+class PromoteGhostRequest(BaseModel):
+    name: Optional[str] = None  # optional rename; default keeps the ghost's name
+
+
+@app.post("/speakers/{ghost_id}/promote-to-real", status_code=200)
+def promote_ghost_to_real(ghost_id: int, body: PromoteGhostRequest):
+    """Turn a ghost node into a full speaker awaiting voice enrollment.
+    Unlike resolve-ghost (which merges into an existing speaker), this keeps
+    the ghost as its own identity — just flips `IsGhost` to 0 so it stops
+    being rendered as a triangle placeholder. Analysts can enroll a voice
+    sample from the speaker profile page afterwards."""
+    ghost = database.get_speaker(ghost_id)
+    if not ghost:
+        raise HTTPException(status_code=404, detail="Ghost speaker not found.")
+    if not ghost.get("isGhost"):
+        raise HTTPException(status_code=422, detail="Speaker is not a ghost node.")
+
+    new_name = (body.name or ghost["name"]).strip() or ghost["name"]
+    # Detect a rename-collision with an existing named speaker and merge into
+    # them instead — same principle as PUT /speakers/{id}. Prevents duplicate
+    # identities under the same name.
+    existing = database.find_speaker_by_name(new_name, exclude_id=ghost_id)
+    if existing and not existing.get("isGhost"):
+        database.move_embeddings(ghost_id, existing["id"])
+        database.merge_speakers(ghost_id, existing["id"])
+        return {"success": True, "mergedIntoId": existing["id"], "promoted": False}
+
+    # A ghost's VoiceIdentifier looks like "ghost_entity_24" — that string is
+    # rendered on the speaker profile, which reads like leftover plumbing
+    # after the promotion. Regenerate a fresh `speaker_<8hex>` identifier so
+    # the profile looks the same as any hand-enrolled speaker. Do the same
+    # for Color (grab an unused palette entry) since the original ghost was
+    # picked from the palette based on its early-life state.
+    new_voice_id = f"speaker_{uuid.uuid4().hex[:8]}"
+    with database._get_conn() as conn:
+        new_color = database._pick_unused_color(conn)
+        conn.execute(
+            """UPDATE Speakers
+               SET IsGhost = 0, Name = ?, VoiceIdentifier = ?, Color = ?
+               WHERE Id = ?""",
+            (new_name, new_voice_id, new_color, ghost_id),
+        )
+        # Also clear the entity's ghostSpeakerId link so future promotes of
+        # the same entity create a fresh ghost rather than reusing the row
+        # we just converted into a real speaker.
+        conn.execute(
+            "UPDATE Entities SET GhostSpeakerId = NULL WHERE GhostSpeakerId = ?",
+            (ghost_id,),
+        )
+        # The ghost's incoming edges were tagged Topic='mentioned', which the
+        # graph renders as dashed violet — semantically "somebody mentioned
+        # this person we haven't heard". Now that the person is a real
+        # speaker, those edges should read like any other conversation edge,
+        # so clear the topic tag on relations that touch this speaker.
+        conn.execute(
+            """UPDATE Relations SET Topic = ''
+               WHERE (SpeakerAId = ? OR SpeakerBId = ?) AND Topic = 'mentioned'""",
+            (ghost_id, ghost_id),
+        )
+        conn.commit()
+    return {"success": True, "promoted": True, "speakerId": ghost_id}
+
+
 @app.post("/speakers/batch-delete")
 def batch_delete_speakers(body: BatchDeleteRequest):
     deleted: list[int] = []
@@ -1327,6 +1410,52 @@ def reject_suggestion(audio_id: int, suggestion_id: int):
     return {"success": True}
 
 
+# ─── Speaker attribution confidence (auto-match audit) ────────────────────────
+
+@app.get("/audios/{audio_id}/attributions")
+def get_audio_attributions(audio_id: int):
+    """Per-speaker match scores from the diarization pass. Powers the "% match"
+    badge + Confirm button on the AudioAnalysis speaker cards."""
+    if not database.get_audio(audio_id):
+        raise HTTPException(status_code=404, detail="Audio not found.")
+    return database.get_attributions_for_audio(audio_id)
+
+
+@app.post("/audios/{audio_id}/speakers/{speaker_id}/confirm-attribution", status_code=200)
+async def confirm_attribution(audio_id: int, speaker_id: int):
+    """Analyst confirms an auto-match in the 0.60-0.85 band. Re-extracts
+    embeddings for the speaker's segments in this audio and appends them —
+    end result identical to what would have happened if the original match
+    had scored ≥ LEARN_THRESHOLD."""
+    audio = database.get_audio(audio_id)
+    if not audio:
+        raise HTTPException(status_code=404, detail="Audio not found.")
+    speaker = database.get_speaker(speaker_id)
+    if not speaker:
+        raise HTTPException(status_code=404, detail="Speaker not found.")
+    audio_bytes = storage.read_bytes(audio["filePath"])
+    if audio_bytes is None:
+        raise HTTPException(status_code=404, detail="Audio file no longer in storage.")
+
+    ranges = [
+        (s["startTime"], s["endTime"])
+        for s in database.get_segments_by_audio(audio_id)
+        if s["speakerId"] == speaker_id
+    ]
+    if not ranges:
+        raise HTTPException(status_code=400, detail="Speaker has no segments in this audio.")
+
+    embeddings, model_version = await _embeddings_for_ranges(
+        audio_bytes, Path(audio["filePath"]).name, ranges,
+    )
+    if embeddings.size == 0:
+        raise HTTPException(status_code=400, detail="No usable embeddings could be extracted.")
+
+    added = database.insert_embeddings(speaker_id, embeddings, model_version, audio_id)
+    database.set_attribution_confirmed(audio_id, speaker_id)
+    return {"success": True, "added": int(added)}
+
+
 # ─── Relations ────────────────────────────────────────────────────────────────
 
 @app.get("/relations")
@@ -1506,10 +1635,14 @@ def add_dangerous_word(body: DangerousWordIn):
         raise HTTPException(status_code=400, detail="word cannot be empty.")
     if body.severity not in ("low", "medium", "high"):
         raise HTTPException(status_code=400, detail="severity must be low, medium, or high.")
-    try:
-        return database.add_dangerous_word(word, body.severity, body.created_by)
-    except Exception:
+    # A stale/deleted client-side user id shouldn't turn a save into a 500 via
+    # FK constraint failure. Preflight and drop it to NULL if unknown; the
+    # entry itself is still what the user asked to add.
+    created_by = body.created_by if database.user_exists(body.created_by) else None
+    row = database.add_dangerous_word(word, body.severity, created_by)
+    if row is None:
         raise HTTPException(status_code=409, detail="Word already exists.")
+    return row
 
 
 @app.delete("/dangerous-words/{word_id}")
@@ -1518,6 +1651,24 @@ def delete_dangerous_word(word_id: int):
     if not ok:
         raise HTTPException(status_code=404, detail="Word not found.")
     return {"success": True}
+
+
+@app.post("/dangerous-words/rescan-all")
+def rescan_all_dangerous_words():
+    """Re-scan every processed audio's segments against the CURRENT flagged
+    keyword list. Wipes each audio's dangerous_word-category alerts first so
+    a re-run doesn't double-up rows. Use after adding new keywords so old
+    recordings surface matches they never got scanned for."""
+    audios = database.get_all_audios()
+    total_created = 0
+    scanned = 0
+    for audio in audios:
+        if audio.get("status") != "processed":
+            continue
+        database.delete_alerts_by_audio_and_category(audio["id"], "dangerous_word")
+        total_created += _scan_for_dangerous_words(audio["id"])
+        scanned += 1
+    return {"audiosScanned": scanned, "alertsCreated": total_created}
 
 
 # ─── Euphemisms (Ofir — coded-language dictionary) ────────────────────────────
@@ -1545,6 +1696,8 @@ def add_euphemism(body: EuphemismIn):
     except Exception:
         import logging
         logging.exception("euphemism pre-embed failed; storing without vector")
+    # See add_dangerous_word — clean-null a stale user id instead of 500-ing on FK.
+    created_by = body.created_by if database.user_exists(body.created_by) else None
     row = database.add_euphemism(
         phrase=phrase,
         severity=body.severity,
@@ -1552,7 +1705,7 @@ def add_euphemism(body: EuphemismIn):
         confidence=None,
         embedding=embedding,
         embedding_model=embedding_model,
-        created_by=body.created_by,
+        created_by=created_by,
     )
     if row is None:
         raise HTTPException(status_code=409, detail="Phrase already exists.")
@@ -1573,6 +1726,28 @@ async def expand_euphemisms():
     Sync from the caller's perspective but uses a thread so the event loop
     isn't blocked while sklearn fits and embeds candidates."""
     return await asyncio.to_thread(_euphemism_expansion.expand_euphemisms)
+
+
+@app.post("/euphemisms/rescan-all")
+async def rescan_all_euphemisms():
+    """Re-run the coded-language scorer on every processed audio using the
+    CURRENT euphemism list AND alert threshold. Nukes each audio's existing
+    coded_language alerts first so a threshold bump (e.g. 0.50 → 0.60) can't
+    leave the stale sub-threshold rows floating around. Slower than the
+    flagged-word rescan — the embedding model runs per segment."""
+    audios = database.get_all_audios()
+    scanned = 0
+    for audio in audios:
+        if audio.get("status") != "processed":
+            continue
+        try:
+            database.delete_alerts_by_audio_and_category(audio["id"], "coded_language")
+            await asyncio.to_thread(nlp.score_coded_language, audio["id"])
+            scanned += 1
+        except Exception:
+            import logging
+            logging.exception("euphemism rescan failed for audio %s", audio["id"])
+    return {"audiosScanned": scanned}
 
 
 @app.post("/audios/{audio_id}/rescore-coded-language")
@@ -1618,6 +1793,121 @@ def get_entity_related_speakers(entity_id: int):
     if database.get_entity(entity_id) is None:
         raise HTTPException(status_code=404, detail="Entity not found.")
     return database.get_entity_related_speakers(entity_id)
+
+
+def _utterers_of_entity(entity_id: int) -> list[int]:
+    """Distinct speaker IDs who UTTERED a segment containing this entity —
+    who was talking when the name/word was mentioned. Used by both promotion
+    paths."""
+    mentions = database.get_entity_mentions(entity_id)
+    seg_ids = list({m["segmentId"] for m in mentions if m.get("segmentId")})
+    utterers: set[int] = set()
+    for seg in database.get_segments_by_ids(seg_ids):
+        sid = seg.get("speakerId")
+        if sid:
+            utterers.add(sid)
+    return sorted(utterers)
+
+
+@app.post("/entities/{entity_id}/promote-to-ghost", status_code=201)
+def promote_entity_to_ghost(entity_id: int):
+    """Analyst-triggered escalation of a mentioned entity onto the network
+    graph. Behaviour depends on entity type:
+
+    - PERSON: create a ghost Speaker row + draw 'mentioned' edges from every
+      utterer to it. A ghost person is still an identity, just one we don't
+      have voice for yet.
+
+    - ORG / LOC / MISC (items): items are NOT speakers, so they don't get
+      their own node. Instead, we tag each pair of utterers with the entity
+      via EdgeEntityBadges (rendered as edge labels), or attach a solo badge
+      to the sole utterer if only one person mentioned it.
+
+    Idempotent in both cases.
+    """
+    ent = database.get_entity(entity_id)
+    if ent is None:
+        raise HTTPException(status_code=404, detail="Entity not found.")
+
+    utterers = _utterers_of_entity(entity_id)
+    if not utterers:
+        raise HTTPException(
+            status_code=400,
+            detail="Entity has no live mentions — nothing on the graph to attach it to.",
+        )
+
+    if ent.get("type") == "PERSON":
+        # ─── Ghost speaker path (unchanged) ─────────────────────────────────
+        if ent.get("ghostSpeakerId"):
+            return {
+                "success": True, "kind": "ghost_person",
+                "ghostSpeakerId": ent["ghostSpeakerId"], "alreadyPromoted": True,
+            }
+        ghost_id = database.create_ghost_speaker(entity_id, ent["rawText"])
+        if not ghost_id:
+            raise HTTPException(status_code=500, detail="Failed to promote entity.")
+        edges = 0
+        for utterer_id in utterers:
+            if utterer_id != ghost_id:
+                database.upsert_mention_relation(utterer_id, ghost_id)
+                edges += 1
+        return {
+            "success": True, "kind": "ghost_person",
+            "ghostSpeakerId": ghost_id, "alreadyPromoted": False,
+            "edgesCreated": edges,
+        }
+
+    # ─── Item badge path ────────────────────────────────────────────────────
+    # Multi-speaker: pin the item name onto every pair of utterers' edge.
+    # Solo: attach the badge to just that speaker's node (SpeakerBId=NULL).
+    badges = 0
+    if len(utterers) == 1:
+        database.upsert_edge_entity_badge(utterers[0], None, entity_id)
+        badges = 1
+    else:
+        for i in range(len(utterers)):
+            for j in range(i + 1, len(utterers)):
+                database.upsert_edge_entity_badge(utterers[i], utterers[j], entity_id)
+                badges += 1
+    return {
+        "success": True, "kind": "edge_badge",
+        "badgesCreated": badges,
+        "utterers": utterers,
+    }
+
+
+@app.get("/relations/edge-badges")
+def list_edge_entity_badges():
+    """Every currently-visible non-person entity attached to an edge or a
+    lone speaker. Powers the network graph's item-label rendering."""
+    return database.get_all_edge_entity_badges()
+
+
+@app.delete("/entities/{entity_id}/promote-to-ghost", status_code=200)
+def remove_entity_from_graph(entity_id: int):
+    """Undo a manual promotion. For PERSON entities: delete the ghost
+    Speaker row (its Relations cascade out) and unlink the entity. For
+    ORG/LOC/MISC items: wipe every EdgeEntityBadge row that referenced
+    this entity. Idempotent — a no-op if the entity was never promoted."""
+    ent = database.get_entity(entity_id)
+    if ent is None:
+        raise HTTPException(status_code=404, detail="Entity not found.")
+    removed = 0
+    if ent.get("ghostSpeakerId"):
+        # PERSON path: drop the ghost Speaker (cascade removes its edges).
+        if database.delete_speaker(ent["ghostSpeakerId"]):
+            removed += 1
+        # Unlink so a future promote creates a fresh ghost.
+        with database._get_conn() as conn:
+            conn.execute(
+                "UPDATE Entities SET GhostSpeakerId = NULL WHERE Id = ?",
+                (entity_id,),
+            )
+            conn.commit()
+    # ITEM path: wipe every badge for this entity (works even when this is
+    # also a PERSON — no-op if there are none).
+    removed += database.delete_edge_entity_badges_for_entity(entity_id)
+    return {"success": True, "removed": removed}
 
 
 @app.post("/entities/{entity_id}/link-wikidata")

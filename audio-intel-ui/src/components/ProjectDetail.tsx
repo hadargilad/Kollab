@@ -71,6 +71,16 @@ export default function ProjectDetail({ isAdmin }: Props) {
     }
   };
 
+  const handleRemoveMember = async (subgroupId: number, speakerId: number, name: string) => {
+    if (!confirm(`Remove "${name}" from this subgroup?`)) return;
+    try {
+      await groups.removeMember(subgroupId, speakerId);
+      await load();
+    } catch (e: any) {
+      alert(e.message ?? 'Failed to remove speaker from subgroup.');
+    }
+  };
+
   const load = async () => {
     if (!projectId) return;
     setLoading(true); setError('');
@@ -311,12 +321,20 @@ export default function ProjectDetail({ isAdmin }: Props) {
                     {sg.members.length > 0 && (
                       <div className="flex flex-wrap gap-2 mb-3">
                         {sg.members.slice(0, 10).map(m => (
-                          <Link key={m.id} to={`/speaker/${m.id}`}
-                            className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border border-zinc-800 bg-black hover:bg-zinc-800 transition-colors">
-                            <SpeakerAvatar speakerId={m.id} name={m.name} color={m.color}
-                              imagePath={m.imagePath} size={16} />
-                            <span className="text-zinc-200 text-xs">{m.name}</span>
-                          </Link>
+                          <span key={m.id} className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border border-zinc-800 bg-black">
+                            <Link to={`/speaker/${m.id}`}
+                              className="inline-flex items-center gap-1.5 hover:text-blue-300 transition-colors">
+                              <SpeakerAvatar speakerId={m.id} name={m.name} color={m.color}
+                                imagePath={m.imagePath} size={16} />
+                              <span className="text-zinc-200 text-xs">{m.name}</span>
+                            </Link>
+                            <button
+                              onClick={() => handleRemoveMember(sg.id, m.id, m.name)}
+                              title={`Remove ${m.name} from ${sg.name}`}
+                              className="text-zinc-500 hover:text-red-400 transition-colors ml-0.5">
+                              <X className="w-3 h-3" />
+                            </button>
+                          </span>
                         ))}
                         {sg.members.length > 10 && (
                           <span className="text-zinc-200 text-[11px] font-mono px-2 py-0.5">+{sg.members.length - 10} more</span>

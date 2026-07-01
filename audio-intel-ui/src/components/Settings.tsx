@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Save, Trash2, Plus, Loader2, ShieldAlert, Sparkles, Eye, X } from 'lucide-react';
+import { Trash2, Plus, Loader2, ShieldAlert, Sparkles, Eye, X, RefreshCw } from 'lucide-react';
 import { dangerousWords, euphemisms, type DangerousWordRecord, type EuphemismRecord } from '../lib/api';
 
 export default function Settings({ isAdmin }: { isAdmin?: boolean }) {
@@ -17,8 +17,16 @@ export default function Settings({ isAdmin }: { isAdmin?: boolean }) {
   const [euphError, setEuphError] = useState('');
   const [removingEuphIds, setRemovingEuphIds] = useState<Set<number>>(new Set());
   const [showBuiltInModal, setShowBuiltInModal] = useState(false);
-  const euphList = allEuphList.filter(e => e.createdBy != null);
-  const builtInEuphList = allEuphList.filter(e => e.createdBy == null);
+  const [rescanningWords, setRescanningWords] = useState(false);
+  const [rescanningEuphs, setRescanningEuphs] = useState(false);
+  const [rescanNotice, setRescanNotice] = useState<string | null>(null);
+  // IDs of rows the user added in *this* session. We show these in the main
+  // list even if the backend row came back with CreatedBy=NULL (e.g. no
+  // logged-in user id at click time) — otherwise the user's own additions
+  // would silently land in the "built-in" modal and look like nothing happened.
+  const [sessionAddedIds, setSessionAddedIds] = useState<Set<number>>(new Set());
+  const euphList = allEuphList.filter(e => e.createdBy != null || sessionAddedIds.has(e.id));
+  const builtInEuphList = allEuphList.filter(e => e.createdBy == null && !sessionAddedIds.has(e.id));
 
   const loadWords = async () => {
     try { setFlaggedWords(await dangerousWords.list()); } catch { /* ignore */ }
@@ -41,7 +49,10 @@ export default function Settings({ isAdmin }: { isAdmin?: boolean }) {
     if (!newEuph.trim()) return;
     setAddingEuph(true); setEuphError('');
     try {
-      await euphemisms.add(newEuph.trim(), newEuphSeverity);
+      const created = await euphemisms.add(newEuph.trim(), newEuphSeverity);
+      // Remember this id so the main-list filter shows it even if the row
+      // came back with CreatedBy=NULL — see sessionAddedIds above.
+      setSessionAddedIds(prev => new Set(prev).add(created.id));
       setNewEuph('');
       await loadEuphemisms();
     } catch (e: any) {
@@ -73,7 +84,37 @@ export default function Settings({ isAdmin }: { isAdmin?: boolean }) {
     finally { setRemovingWordIds(prev => { const s = new Set(prev); s.delete(id); return s; }); }
   };
 
-  const handleSave = () => alert('Settings saved successfully!');
+  const handleRescanWords = async () => {
+    setRescanningWords(true); setRescanNotice(null);
+    try {
+      const r = await dangerousWords.rescanAll();
+      setRescanNotice(
+        `Re-scanned ${r.audiosScanned} recording${r.audiosScanned === 1 ? '' : 's'}` +
+        ` for flagged keywords. ${r.alertsCreated} alert${r.alertsCreated === 1 ? '' : 's'} created.`
+      );
+    } catch (e: any) {
+      setRescanNotice(`Rescan failed: ${e.message ?? 'unknown error'}`);
+    } finally {
+      setRescanningWords(false);
+      setTimeout(() => setRescanNotice(null), 8000);
+    }
+  };
+
+  const handleRescanEuphs = async () => {
+    setRescanningEuphs(true); setRescanNotice(null);
+    try {
+      const r = await euphemisms.rescanAll();
+      setRescanNotice(
+        `Re-scored ${r.audiosScanned} recording${r.audiosScanned === 1 ? '' : 's'}` +
+        ` for coded-language similarity. Check the Alerts page for new hits.`
+      );
+    } catch (e: any) {
+      setRescanNotice(`Rescan failed: ${e.message ?? 'unknown error'}`);
+    } finally {
+      setRescanningEuphs(false);
+      setTimeout(() => setRescanNotice(null), 8000);
+    }
+  };
 
   const cardCls = 'bg-zinc-900 border border-zinc-800 rounded-md';
   const inputCls = 'w-full bg-black border border-zinc-800 rounded px-3 py-2.5 text-white text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 transition-all';
@@ -94,6 +135,11 @@ export default function Settings({ isAdmin }: { isAdmin?: boolean }) {
       </div>
 
       <div className="max-w-3xl space-y-4">
+        {rescanNotice && (
+          <div className="px-4 py-2.5 bg-blue-500/8 border border-blue-500/25 rounded text-blue-300 text-xs">
+            {rescanNotice}
+          </div>
+        )}
         {/* Flagged Keywords */}
         <div className={cardCls}>
             <SectionHeader icon={ShieldAlert} iconColor="text-red-400" label="Flagged Keywords" />
@@ -121,6 +167,16 @@ export default function Settings({ isAdmin }: { isAdmin?: boolean }) {
                   className="flex items-center gap-1.5 px-4 py-2.5 bg-red-700 hover:bg-red-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm rounded-md transition-colors shrink-0">
                   {addingWord ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
                   Add
+                </button>
+                <button
+                  type="button"
+                  onClick={handleRescanWords}
+                  disabled={rescanningWords}
+                  title="Re-scan every processed recording against the current keyword list. Surfaces alerts for words that were added after those recordings were analyzed."
+                  className="flex items-center gap-1.5 px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed text-zinc-200 text-sm rounded-md transition-colors shrink-0"
+                >
+                  {rescanningWords ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                  Re-scan all
                 </button>
               </div>
 
@@ -190,7 +246,17 @@ export default function Settings({ isAdmin }: { isAdmin?: boolean }) {
                   {addingEuph ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
                   Add
                 </button>
-<button
+                <button
+                  type="button"
+                  onClick={handleRescanEuphs}
+                  disabled={rescanningEuphs}
+                  title="Re-score every processed recording against the current phrase list. Surfaces coded-language matches for phrases added after those recordings were analyzed. Slower than the flagged-keyword rescan."
+                  className="flex items-center gap-1.5 px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed text-zinc-200 text-sm rounded-md transition-colors shrink-0"
+                >
+                  {rescanningEuphs ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                  Re-scan all
+                </button>
+                <button
                   type="button"
                   onClick={() => setShowBuiltInModal(true)}
                   disabled={builtInEuphList.length === 0}
@@ -238,17 +304,6 @@ export default function Settings({ isAdmin }: { isAdmin?: boolean }) {
             </div>
           </div>
 
-        {/* Save */}
-        <div className="flex justify-end gap-2">
-          <button className="px-5 py-2.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-sm rounded-md transition-colors">
-            Reset to Defaults
-          </button>
-          <button onClick={handleSave}
-            className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded-md transition-colors">
-            <Save className="w-4 h-4" />
-            Save Changes
-          </button>
-        </div>
       </div>
 
       {showBuiltInModal && (

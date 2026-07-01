@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { Play, Pause, Volume2, FileText, Network, Clock, Loader2, AlertCircle, RefreshCw, UserX, Merge, UserCheck, X, Scissors, EyeOff, Eye, Wand2, Search, Camera, ArrowLeft } from 'lucide-react';
-import { audios, speakers as speakersApi, suggestions as suggestionsApi, alerts as alertsApi, type AudioRecord, type SegmentRecord, type SpeakerRecord, type SpeakerSuggestion, type AlertRecord, type MatchSuggestion } from '../lib/api';
+import { Play, Pause, Volume2, FileText, Network, Clock, Loader2, AlertCircle, RefreshCw, UserX, Merge, UserCheck, X, Scissors, EyeOff, Eye, Wand2, Search, Camera, ArrowLeft, Check } from 'lucide-react';
+import { audios, speakers as speakersApi, suggestions as suggestionsApi, alerts as alertsApi, attributions as attributionsApi, type AudioRecord, type SegmentRecord, type SpeakerRecord, type SpeakerSuggestion, type AlertRecord, type MatchSuggestion, type AudioAttribution } from '../lib/api';
 import SpeakerAvatar from './SpeakerAvatar';
 import Loader from './Loader';
 
@@ -49,6 +49,10 @@ export default function AudioAnalysis() {
   const [imageUploadBusyId, setImageUploadBusyId] = useState<number | null>(null);
   const [imageUploadTargetId, setImageUploadTargetId] = useState<number | null>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
+  // speakerId → attribution row; used to render the "% match" badge and the
+  // Confirm button on speaker cards for auto-matches in the 0.60-0.85 band.
+  const [attributionMap, setAttributionMap] = useState<Map<number, AudioAttribution>>(new Map());
+  const [confirmingIds, setConfirmingIds] = useState<Set<number>>(new Set());
 
   // Fetch ranked co-occurring matches whenever the reassign modal opens — but
   // only for unrecognized "Speaker N" speakers. For an already-named speaker,
@@ -121,6 +125,9 @@ export default function AudioAnalysis() {
         if (audioData.status === 'processed') {
           refreshSuggestions();
           alertsApi.listForAudio(audioId).then(setAudioAlerts).catch(() => {});
+          attributionsApi.listForAudio(audioId)
+            .then(rows => { if (!cancelled) setAttributionMap(new Map(rows.map(r => [r.speakerId, r]))); })
+            .catch(() => {});
         }
         if (audioData.status === 'processing') setTimeout(() => { if (!cancelled) fetchAll(); }, 5000);
       } catch {
@@ -131,6 +138,27 @@ export default function AudioAnalysis() {
     speakersApi.list().then(s => { if (!cancelled) setKnownSpeakers(s); }).catch(() => {});
     return () => { cancelled = true; };
   }, [audioId]);
+
+  const handleConfirmAttribution = async (speakerId: number) => {
+    setConfirmingIds(prev => new Set(prev).add(speakerId));
+    try {
+      const result = await attributionsApi.confirm(audioId, speakerId);
+      // Mark confirmed locally so the badge hides without waiting for a refetch.
+      setAttributionMap(prev => {
+        const next = new Map(prev);
+        const row = next.get(speakerId);
+        if (row) next.set(speakerId, { ...row, confirmed: true });
+        return next;
+      });
+      setMergeNotice(`Match confirmed. ${result.added} voice sample${result.added === 1 ? '' : 's'} added to this speaker.`);
+      setTimeout(() => setMergeNotice(null), 6000);
+    } catch {
+      setMergeNotice('Failed to confirm attribution.');
+      setTimeout(() => setMergeNotice(null), 4000);
+    } finally {
+      setConfirmingIds(prev => { const s = new Set(prev); s.delete(speakerId); return s; });
+    }
+  };
 
   const handleAcceptSuggestion = async (suggestion: SpeakerSuggestion) => {
     setResolvingSuggestionIds(prev => new Set(prev).add(suggestion.id));
@@ -650,6 +678,14 @@ export default function AudioAnalysis() {
                   const spkSegs = segments.filter(s => s.speakerId === spk.id);
                   const totalTime = spkSegs.reduce((acc, s) => acc + (s.endTime - s.startTime), 0);
                   const busy = trackingBusyIds.has(spk.id);
+                  const attribution = attributionMap.get(spk.id);
+                  // Badge + Confirm button appear only in the gray band: an
+                  // auto-match strong enough to attribute but too weak for
+                  // the matcher to feed back into the voice model on its own.
+                  const showConfirmUI = attribution
+                    && !attribution.confirmed
+                    && attribution.confidence < 0.85;
+                  const confirming = confirmingIds.has(spk.id);
                   return (
                     <div key={spk.id} className={`px-5 py-3 flex items-center gap-3 ${spk.isUntracked ? 'opacity-60' : ''}`}>
                       <SpeakerAvatar
@@ -669,9 +705,28 @@ export default function AudioAnalysis() {
                               <EyeOff className="w-2.5 h-2.5 inline" />
                             </span>
                           )}
+                          {showConfirmUI && (
+                            <span
+                              className="text-[9px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded border border-amber-500/40 bg-amber-500/10 text-amber-300"
+                              title="Auto-matched but not yet confirmed. The voice model won't learn from this recording until you confirm."
+                            >
+                              {Math.round(attribution!.confidence * 100)}% match
+                            </span>
+                          )}
                         </div>
                         <div className="text-zinc-200 text-xs font-mono">{spkSegs.length} seg · {formatTime(totalTime)}</div>
                       </div>
+                      {showConfirmUI && (
+                        <button
+                          onClick={() => handleConfirmAttribution(spk.id)}
+                          disabled={confirming}
+                          title="Yes, that's them. Add these samples to the voice model."
+                          className="text-emerald-300 hover:text-emerald-200 disabled:opacity-50 transition-colors p-1 shrink-0">
+                          {confirming
+                            ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            : <Check className="w-3.5 h-3.5" />}
+                        </button>
+                      )}
                       <button
                         onClick={() => { setImageUploadTargetId(spk.id); imageInputRef.current?.click(); }}
                         disabled={imageUploadBusyId === spk.id}
@@ -683,13 +738,14 @@ export default function AudioAnalysis() {
                       </button>
                       <button onClick={() => toggleUntracked(spk.id, !!spk.isUntracked)}
                         disabled={busy}
-                        title={spk.isUntracked ? 'Re-track this speaker' : 'Untrack — hide from graph'}
+                        title={spk.isUntracked ? 'Re-track this speaker' : 'Untrack (hide from graph)'}
                         className="text-zinc-300 hover:text-blue-300 transition-colors p-1 shrink-0">
                         {busy
                           ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
                           : spk.isUntracked ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
                       </button>
                       <button onClick={() => { setReassignTarget(spk); setReassignName(''); }}
+                        title="Reassign: this speaker is actually somebody else. Repoints their segments in this recording."
                         className="text-zinc-300 hover:text-red-400 transition-colors p-1 shrink-0">
                         <UserX className="w-3.5 h-3.5" />
                       </button>
@@ -732,8 +788,8 @@ export default function AudioAnalysis() {
               {[
                 { label: 'Uploaded', value: new Date(audio.uploadedAt).toLocaleDateString('en-GB', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) },
                 { label: 'Duration', value: formatTime(duration) },
-                { label: 'Size', value: audio.fileSize > 0 ? (audio.fileSize / (1024 * 1024)).toFixed(1) + ' MB' : '—' },
-                { label: 'By', value: audio.uploadedBy || '—' },
+                { label: 'Size', value: audio.fileSize > 0 ? (audio.fileSize / (1024 * 1024)).toFixed(1) + ' MB' : '-' },
+                { label: 'By', value: audio.uploadedBy || '-' },
               ].map(({ label, value }) => (
                 <div key={label} className="flex items-center justify-between gap-2">
                   <span className="text-zinc-200 text-xs uppercase tracking-wider">{label}</span>

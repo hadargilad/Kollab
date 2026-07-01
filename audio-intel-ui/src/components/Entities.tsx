@@ -19,12 +19,16 @@ const TYPE_META: Record<string, { label: string; icon: React.ElementType; color:
 const ALL_TYPES = ['all', 'PERSON', 'ORG', 'LOC', 'MISC', 'PHONE', 'EMAIL', 'MONEY'] as const;
 type TypeFilter = typeof ALL_TYPES[number];
 
-function EntityRow({ ent }: { ent: EntityRecord }) {
+function EntityRow({ ent, onPromoted, onRemoved }: {
+  ent: EntityRecord;
+  onPromoted: (entityId: number, ghostId: number) => void;
+  onRemoved: (entityId: number) => void;
+}) {
   const [expanded, setExpanded] = useState(false);
   const [mentions, setMentions] = useState<EntityMentionRecord[]>([]);
   const [loadingMentions, setLoadingMentions] = useState(false);
-  const [wikidataInput, setWikidataInput] = useState(ent.wikidataId ?? '');
-  const [linkSaving, setLinkSaving] = useState(false);
+  const [promoting, setPromoting] = useState(false);
+  const [promoteMsg, setPromoteMsg] = useState<string | null>(null);
 
   const meta = TYPE_META[ent.type] ?? TYPE_META.MISC;
   const Icon = meta.icon;
@@ -42,13 +46,45 @@ function EntityRow({ ent }: { ent: EntityRecord }) {
     setExpanded(v => !v);
   }
 
-  async function handleLinkWikidata() {
-    if (!wikidataInput.trim()) return;
-    setLinkSaving(true);
+  async function handlePromote() {
+    setPromoting(true); setPromoteMsg(null);
     try {
-      await entities.linkWikidata(ent.id, wikidataInput.trim());
+      const result = await entities.promoteToGhost(ent.id);
+      if (result.kind === 'ghost_person') {
+        // People become ghost speakers awaiting voice enrollment.
+        onPromoted(ent.id, result.ghostSpeakerId);
+        setPromoteMsg(result.alreadyPromoted
+          ? 'This person is already a ghost node on the graph.'
+          : `Ghost node created. ${result.edgesCreated ?? 0} edge${result.edgesCreated === 1 ? '' : 's'} drawn.`);
+      } else {
+        // Items become edge/solo badges — no ghost speaker id to track.
+        onPromoted(ent.id, 0);
+        setPromoteMsg(
+          result.badgesCreated === 0
+            ? 'Nothing to attach to on the graph.'
+            : `Shown on the graph as ${result.badgesCreated} badge${result.badgesCreated === 1 ? '' : 's'} across ${result.utterers.length} speaker${result.utterers.length === 1 ? '' : 's'}.`
+        );
+      }
+    } catch (e: any) {
+      setPromoteMsg(`Failed: ${e.message ?? 'unknown error'}`);
     } finally {
-      setLinkSaving(false);
+      setPromoting(false);
+      setTimeout(() => setPromoteMsg(null), 6000);
+    }
+  }
+
+  async function handleRemoveFromGraph() {
+    if (!confirm(`Remove "${ent.rawText}" from the network graph?`)) return;
+    setPromoting(true); setPromoteMsg(null);
+    try {
+      await entities.removeFromGraph(ent.id);
+      onRemoved(ent.id);
+      setPromoteMsg('Removed from the graph.');
+    } catch (e: any) {
+      setPromoteMsg(`Failed: ${e.message ?? 'unknown error'}`);
+    } finally {
+      setPromoting(false);
+      setTimeout(() => setPromoteMsg(null), 6000);
     }
   }
 
@@ -82,31 +118,30 @@ function EntityRow({ ent }: { ent: EntityRecord }) {
 
       {expanded && (
         <div className="border-t border-zinc-800 px-4 py-3 space-y-3">
-          {/* Wikidata link */}
-          <div className="flex items-center gap-2">
-            <input
-              value={wikidataInput}
-              onChange={e => setWikidataInput(e.target.value)}
-              placeholder="Wikidata ID (e.g. Q76)"
-              className="flex-1 bg-zinc-900 border border-zinc-700 rounded px-2.5 py-1.5 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-blue-500"
-            />
-            <button
-              onClick={handleLinkWikidata}
-              disabled={linkSaving || !wikidataInput.trim()}
-              className="px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white rounded-md transition-colors"
-            >
-              {linkSaving ? 'Saving…' : 'Link'}
-            </button>
-            {ent.wikidataId && (
-              <a
-                href={`https://www.wikidata.org/wiki/${ent.wikidataId}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-blue-400 hover:text-blue-300"
+          {/* Add to relation graph — PERSON becomes a ghost speaker awaiting
+              voice enrollment; ORG/LOC/MISC become non-speaker nodes so their
+              co-mention edges can render on the Network page. */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {ent.onGraph ? (
+              <button
+                onClick={handleRemoveFromGraph}
+                disabled={promoting}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-zinc-800 hover:bg-red-600 border border-zinc-700 hover:border-red-500 text-zinc-200 hover:text-white rounded-md transition-colors"
               >
-                <ExternalLink className="w-4 h-4" />
-              </a>
+                {promoting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Ghost className="w-3 h-3" />}
+                {ent.type === 'PERSON' ? 'Remove ghost node' : 'Remove from graph'}
+              </button>
+            ) : (
+              <button
+                onClick={handlePromote}
+                disabled={promoting}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-violet-600 hover:bg-violet-500 disabled:bg-zinc-800 disabled:text-zinc-500 text-white rounded-md transition-colors"
+              >
+                {promoting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Ghost className="w-3 h-3" />}
+                {ent.type === 'PERSON' ? 'Promote to ghost node' : 'Show on relation graph'}
+              </button>
             )}
+            {promoteMsg && <span className="text-xs text-zinc-300">{promoteMsg}</span>}
           </div>
 
           {/* Mentions list */}
@@ -206,7 +241,7 @@ export default function Entities() {
       <div>
         <h1 className="text-white text-xl font-semibold">Entities</h1>
         <p className="text-zinc-300 text-sm mt-0.5">
-          Named entities extracted from transcripts — people, organisations, locations, and more.
+          Named entities extracted from transcripts. People, organisations, locations, and more.
         </p>
       </div>
 
@@ -241,7 +276,20 @@ export default function Entities() {
         <div className="text-center text-zinc-400 py-16 text-sm">No entities found.</div>
       ) : (
         <div className="space-y-2">
-          {filtered.map(ent => <EntityRow key={ent.id} ent={ent} />)}
+          {filtered.map(ent => (
+            <EntityRow
+              key={ent.id}
+              ent={ent}
+              onPromoted={(entityId, ghostId) =>
+                setAllEntities(prev => prev.map(e =>
+                  e.id === entityId ? { ...e, ghostSpeakerId: ghostId || e.ghostSpeakerId, onGraph: true } : e))
+              }
+              onRemoved={(entityId) =>
+                setAllEntities(prev => prev.map(e =>
+                  e.id === entityId ? { ...e, ghostSpeakerId: null, onGraph: false } : e))
+              }
+            />
+          ))}
         </div>
       )}
     </div>

@@ -370,6 +370,11 @@ def process_audio(audio_path: str) -> dict:
     """
     print(f"\n🎙️  Processing: {audio_path}")
 
+    # Reset the shared progress dict so a caller polling /status doesn't
+    # briefly see the previous run's "100% Done" between the moment we're
+    # invoked and the first _set_progress() call below. Without this the
+    # Backend's upload UI would jump to 100% then drop back to 5%.
+    _set_progress(0, "Queued")
     # ── Step 0: Load + denoise once, reuse for both Whisper and diarization ───
     _set_progress(5, "Applying noise reduction…")
     print("🔇 Step 0: Applying noise reduction & loudness normalization...")

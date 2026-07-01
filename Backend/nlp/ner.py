@@ -113,6 +113,12 @@ def extract_entities(text: str) -> list[EntitySpan]:
         # bert may return "##suffix" artifacts — skip
         if not raw or raw.startswith("##"):
             continue
+        # Reject junk short fragments. A single "S" or "N" or two-letter
+        # blob like "Co" is almost always a subword split or a misfired
+        # tokenisation, not a real name. This filter also stops such junk
+        # from ever appearing as an edge badge on the network graph.
+        if len(raw) < 3 or not any(ch.isalpha() for ch in raw):
+            continue
         score = float(ent.get("score", 0.0))
         if score < 0.6:
             continue

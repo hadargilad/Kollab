@@ -112,11 +112,21 @@ export default function AudioUpload({ userId }: Props) {
           audios.get(audioId),
           audios.getProgress(audioId).catch(() => ({ pct: 0, label: '' })),
         ]);
-        setFiles(prev => prev.map(f =>
-          f.id === fileId
-            ? { ...f, progress: prog.pct > 0 ? Math.max(20, prog.pct) : f.progress, progressLabel: prog.label || f.progressLabel }
-            : f
-        ));
+        setFiles(prev => prev.map(f => {
+          if (f.id !== fileId) return f;
+          // ML's `/status` is a shared global that keeps its last-set pct
+          // (e.g. 100 "Done") between analyses. Naively adopting whatever
+          // it reports causes the bar to briefly jump to 100% (leftover
+          // from the previous audio) and then drop back when this audio's
+          // pipeline actually starts at 5%. Two guards:
+          //   1. Reject pct === 100 during processing — that's the "Done"
+          //      leftover; the real 100 comes from audio.status === 'processed'
+          //      handled below.
+          //   2. Progress is monotonically non-decreasing.
+          const isStaleDone = prog.pct >= 100;
+          const candidate = !isStaleDone && prog.pct > f.progress ? prog.pct : f.progress;
+          return { ...f, progress: candidate, progressLabel: prog.label || f.progressLabel };
+        }));
         if (audio.status === 'processed') {
           setFiles(prev => prev.map(f => f.id === fileId ? { ...f, status: 'completed', progress: 100, progressLabel: undefined } : f));
           toast.success(`"${name}" finished processing`, {
@@ -249,7 +259,7 @@ export default function AudioUpload({ userId }: Props) {
         {!mlReady && (
           <div className="mb-4 flex items-center gap-2.5 px-4 py-3 rounded bg-amber-500/8 border border-amber-500/25 text-amber-300 text-sm">
             <Loader2 className="w-4 h-4 animate-spin shrink-0" />
-            <span>ML models loading — uploads available shortly.</span>
+            <span>ML models loading. Uploads available shortly.</span>
           </div>
         )}
         <div
@@ -329,14 +339,14 @@ export default function AudioUpload({ userId }: Props) {
                         <>
                           <Loader2 className="w-3.5 h-3.5 text-blue-400 animate-spin" />
                           <span className="text-blue-400 text-xs font-mono">Uploading…</span>
-                          {file.progress > 0 && <span className="text-blue-600 text-xs font-mono">{Math.round(file.progress * 5)}%</span>}
+                          <span className="text-blue-300 text-xs font-mono ml-auto">{file.progress}%</span>
                         </>
                       )}
                       {file.status === 'processing' && (
                         <>
-                          <Loader2 className="w-3.5 h-3.5 text-amber-400 animate-spin" />
-                          <span className="text-amber-400 text-xs font-mono">{file.progressLabel || 'Analysing…'}</span>
-                          {file.progress > 0 && <span className="text-amber-600 text-xs font-mono">{file.progress}%</span>}
+                          <Loader2 className="w-3.5 h-3.5 text-blue-400 animate-spin" />
+                          <span className="text-blue-400 text-xs font-mono">{file.progressLabel || 'Analysing…'}</span>
+                          <span className="text-blue-300 text-xs font-mono ml-auto">{file.progress}%</span>
                         </>
                       )}
                       {file.status === 'completed' && (

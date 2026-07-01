@@ -387,6 +387,11 @@ export const speakers = {
   matchSuggestions: (id: number, limit = 5) =>
     request<MatchSuggestion[]>("GET", `/speakers/${id}/match-suggestions?limit=${limit}`),
 
+  promoteGhostToReal: (ghostId: number, name?: string) =>
+    request<
+      | { success: boolean; promoted: true; speakerId: number }
+      | { success: boolean; mergedIntoId: number; promoted: false }
+    >("POST", `/speakers/${ghostId}/promote-to-real`, { name: name ?? null }),
   resolveGhost: (ghostId: number, realSpeakerId: number) =>
     request<{ success: boolean; mergedIntoId: number }>(
       "POST", `/speakers/${ghostId}/resolve-ghost`, { real_speaker_id: realSpeakerId }
@@ -402,6 +407,14 @@ export interface MatchSuggestion {
   confidence: number;
 }
 
+export interface EdgeEntityBadge {
+  speakerAId: number;
+  speakerBId: number | null;  // null → solo attachment to speakerAId
+  entityId: number;
+  entityText: string;
+  entityType: string;
+}
+
 export const suggestions = {
   listForAudio: (audioId: number) =>
     request<SpeakerSuggestion[]>("GET", `/audios/${audioId}/suggestions`),
@@ -411,6 +424,23 @@ export const suggestions = {
     ),
   reject: (audioId: number, suggestionId: number) =>
     request<{ success: boolean }>("DELETE", `/audios/${audioId}/suggestions/${suggestionId}`),
+};
+
+// ─── Speaker attribution (auto-match confidence + confirm) ────────────────────
+
+export interface AudioAttribution {
+  speakerId: number;
+  confidence: number;
+  confirmed: boolean;
+}
+
+export const attributions = {
+  listForAudio: (audioId: number) =>
+    request<AudioAttribution[]>("GET", `/audios/${audioId}/attributions`),
+  confirm: (audioId: number, speakerId: number) =>
+    request<{ success: boolean; added: number }>(
+      "POST", `/audios/${audioId}/speakers/${speakerId}/confirm-attribution`
+    ),
 };
 
 // ─── Alerts ───────────────────────────────────────────────────────────────────
@@ -454,6 +484,10 @@ export const dangerousWords = {
   add: (word: string, severity: string) =>
     request<DangerousWordRecord>("POST", "/dangerous-words", { word, severity }),
   remove: (id: number) => request<{ success: boolean }>("DELETE", `/dangerous-words/${id}`),
+  rescanAll: () =>
+    request<{ audiosScanned: number; alertsCreated: number }>(
+      "POST", "/dangerous-words/rescan-all"
+    ),
 };
 
 // ─── Euphemisms (coded-language dictionary) ───────────────────────────────────
@@ -486,6 +520,8 @@ export const euphemisms = {
     }),
   remove: (id: number) => request<{ success: boolean }>("DELETE", `/euphemisms/${id}`),
   expand: () => request<EuphemismExpandSummary>("POST", "/euphemisms/expand"),
+  rescanAll: () =>
+    request<{ audiosScanned: number }>("POST", "/euphemisms/rescan-all"),
 };
 
 // ─── System Stats ─────────────────────────────────────────────────────────────
@@ -515,6 +551,7 @@ export interface RelationRecord {
 
 export const relations = {
   list: () => request<RelationRecord[]>("GET", "/relations"),
+  edgeBadges: () => request<EdgeEntityBadge[]>("GET", "/relations/edge-badges"),
 };
 
 // ─── Groups ───────────────────────────────────────────────────────────────────
@@ -692,6 +729,7 @@ export interface EntityRecord {
   distinctAudioCount: number;
   firstSeen: string;
   lastSeen: string;
+  onGraph: boolean;      // true if a ghost speaker or edge badge exists
 }
 
 export interface EntityMentionRecord {
@@ -737,6 +775,15 @@ export const entities = {
     ),
   linkWikidata: (id: number, wikidataId: string) =>
     request<{ success: boolean }>("POST", `/entities/${id}/link-wikidata`, { wikidataId }),
+  promoteToGhost: (id: number) =>
+    request<
+      | { success: boolean; kind: 'ghost_person'; ghostSpeakerId: number; alreadyPromoted: boolean; edgesCreated?: number }
+      | { success: boolean; kind: 'edge_badge'; badgesCreated: number; utterers: number[] }
+    >("POST", `/entities/${id}/promote-to-ghost`),
+  removeFromGraph: (id: number) =>
+    request<{ success: boolean; removed: number }>(
+      "DELETE", `/entities/${id}/promote-to-ghost`
+    ),
   segmentMentions: (audioId: number) =>
     request<SegmentMentionRecord[]>("GET", `/audios/${audioId}/segment-mentions`),
 };

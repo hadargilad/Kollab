@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  Loader2, AlertCircle, ShieldAlert, Sparkles, ExternalLink, Filter, Ghost,
+  Loader2, AlertCircle, ShieldAlert, Sparkles, ExternalLink, Filter, Ghost, ArrowLeft,
 } from 'lucide-react';
 import { alerts, type AlertRecord, type AlertCategory } from '../lib/api';
 import SubScoresBar from './SubScoresBar';
@@ -39,7 +39,12 @@ function AlertCard({ a }: { a: AlertRecord }) {
             </span>
             <span className="text-[10px] font-mono text-zinc-300 ml-auto">{a.createdAt}</span>
           </div>
-          <p className="text-zinc-300 text-sm leading-relaxed wrap-break-word">{a.message}</p>
+          <p className="text-zinc-300 text-sm leading-relaxed wrap-break-word">
+            {/* The category badge already says "Coded language" — strip the
+                same prefix from the message body so the row shows only the
+                actual quoted snippet, which is the informative bit. */}
+            {isCoded ? a.message.replace(/^Possible coded language:\s*/i, '') : a.message}
+          </p>
           <div className="flex items-center gap-3 mt-1.5 text-[11px] font-mono text-zinc-200">
             {a.audioName && (
               <span className="truncate max-w-50">{a.audioName}</span>
@@ -86,10 +91,20 @@ function AlertCard({ a }: { a: AlertRecord }) {
 }
 
 export default function Alerts() {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  // Honour ?category=… when the Dashboard (or elsewhere) links here so the
+  // page opens pre-filtered to what the user clicked on.
+  const initialCategory = (() => {
+    const q = searchParams.get('category');
+    return q === 'coded_language' || q === 'dangerous_word' || q === 'intelligence'
+      ? (q as CategoryFilter)
+      : 'all';
+  })();
   const [items, setItems] = useState<AlertRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [category, setCategory] = useState<CategoryFilter>('all');
+  const [category, setCategory] = useState<CategoryFilter>(initialCategory);
   const [severity, setSeverity] = useState<SeverityFilter>('all');
   const [query, setQuery] = useState('');
 
@@ -126,6 +141,10 @@ export default function Alerts() {
 
   return (
     <div className="p-6 space-y-5">
+      <button onClick={() => navigate(-1)}
+        className="inline-flex items-center gap-1.5 text-zinc-400 hover:text-zinc-200 text-sm transition-colors">
+        <ArrowLeft className="w-3.5 h-3.5" /> Back
+      </button>
       <div>
         <div className="text-zinc-200 text-[10px] font-mono uppercase tracking-widest mb-1">Security</div>
         <h1 className="text-white text-2xl font-bold tracking-tight">Alerts</h1>

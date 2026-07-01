@@ -1,10 +1,11 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Search, User, FileAudio, Calendar, ArrowRight, Loader2, AlertCircle, Fingerprint, Trash2 } from 'lucide-react';
+import { Search, User, FileAudio, Calendar, ArrowRight, Loader2, AlertCircle, Fingerprint, Trash2, ArrowLeft } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { speakers as speakersApi, type SpeakerRecord } from '../lib/api';
 import SpeakerAvatar from './SpeakerAvatar';
 
 export default function ProfileSearch() {
+  const navigate = useNavigate();
   const [profiles, setProfiles] = useState<SpeakerRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -14,7 +15,6 @@ export default function ProfileSearch() {
   const [batchConfirmOpen, setBatchConfirmOpen] = useState(false);
   const [batchBusy, setBatchBusy] = useState(false);
   const [batchError, setBatchError] = useState('');
-  const navigate = useNavigate();
 
   useEffect(() => {
     let cancelled = false;
@@ -45,7 +45,7 @@ export default function ProfileSearch() {
   };
 
   const formatDate = (dateString: string) => {
-    if (!dateString) return '—';
+    if (!dateString) return '-';
     return new Date(dateString).toLocaleDateString('en-GB', { year: 'numeric', month: 'short', day: 'numeric' });
   };
 
@@ -81,6 +81,10 @@ export default function ProfileSearch() {
 
   return (
     <div className="p-6 space-y-5">
+      <button onClick={() => navigate(-1)}
+        className="inline-flex items-center gap-1.5 text-zinc-400 hover:text-zinc-200 text-sm transition-colors">
+        <ArrowLeft className="w-3.5 h-3.5" /> Back
+      </button>
       <div>
         <div className="text-zinc-200 text-[10px] font-mono uppercase tracking-widest mb-1">Intelligence</div>
         <h1 className="text-white text-2xl font-bold tracking-tight">Profile Search</h1>
