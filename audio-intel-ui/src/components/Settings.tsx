@@ -24,7 +24,7 @@ export default function Settings({ isAdmin }: { isAdmin?: boolean }) {
     try { setFlaggedWords(await dangerousWords.list()); } catch { /* ignore */ }
   };
 
-  useEffect(() => { if (isAdmin) loadWords(); }, [isAdmin]);
+  useEffect(() => { loadWords(); }, []);
 
   const loadEuphemisms = async () => {
     try {
@@ -35,7 +35,7 @@ export default function Settings({ isAdmin }: { isAdmin?: boolean }) {
     } catch { /* ignore */ }
   };
 
-  useEffect(() => { if (isAdmin) loadEuphemisms(); }, [isAdmin]);
+  useEffect(() => { loadEuphemisms(); }, []);
 
   const handleAddEuph = async () => {
     if (!newEuph.trim()) return;
@@ -94,9 +94,8 @@ export default function Settings({ isAdmin }: { isAdmin?: boolean }) {
       </div>
 
       <div className="max-w-3xl space-y-4">
-        {/* Flagged Keywords — admin only */}
-        {isAdmin && (
-          <div className={cardCls}>
+        {/* Flagged Keywords */}
+        <div className={cardCls}>
             <SectionHeader icon={ShieldAlert} iconColor="text-red-400" label="Flagged Keywords" />
             <div className="p-5 space-y-4">
               <p className="text-zinc-300 text-xs">
@@ -160,11 +159,9 @@ export default function Settings({ isAdmin }: { isAdmin?: boolean }) {
               )}
             </div>
           </div>
-        )}
 
-        {/* Euphemism Dictionary — admin only */}
-        {isAdmin && (
-          <div className={cardCls}>
+        {/* Coded-Language Phrases */}
+        <div className={cardCls}>
             <SectionHeader icon={Sparkles} iconColor="text-amber-400" label="Coded-Language Phrases" />
             <div className="p-5 space-y-4">
               <p className="text-zinc-300 text-xs">
@@ -240,7 +237,6 @@ export default function Settings({ isAdmin }: { isAdmin?: boolean }) {
               )}
             </div>
           </div>
-        )}
 
         {/* Save */}
         <div className="flex justify-end gap-2">
