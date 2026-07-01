@@ -575,9 +575,9 @@ def _seed_default_users():
 def validate_user(username: str, password: str) -> Optional[dict]:
     with _get_conn() as conn:
         row = conn.execute(
-            """SELECT Id, PasswordHash, Salt, Role, ForceChangePassword,
+            """SELECT Id, Username, PasswordHash, Salt, Role, ForceChangePassword,
                       FirstName, LastName, IDNumber, CreatedAt
-               FROM Users WHERE Username = ?""",
+               FROM Users WHERE LOWER(Username) = LOWER(?)""",
             (username,),
         ).fetchone()
     if not row:
@@ -587,7 +587,7 @@ def validate_user(username: str, password: str) -> Optional[dict]:
         return None
     return {
         "id": row["Id"],
-        "username": username,
+        "username": row["Username"],
         "role": row["Role"],
         "mustChangePassword": bool(row["ForceChangePassword"]),
         "firstName": row["FirstName"] or "",
@@ -603,7 +603,7 @@ def register_user(username: str, password: str, role: str,
         return False, "Invalid Identification Number. Must be 9 digits."
     with _get_conn() as conn:
         clash = conn.execute(
-            "SELECT COUNT(*) FROM Users WHERE Username = ? OR IDNumber = ?",
+            "SELECT COUNT(*) FROM Users WHERE LOWER(Username) = LOWER(?) OR IDNumber = ?",
             (username, id_number),
         ).fetchone()[0]
         if clash:
